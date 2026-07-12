@@ -16,7 +16,7 @@
     "db:reset": "supabase db reset",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
   },
-  "packageManager": "pnpm@9.15.9",
+  "packageManager": "pnpm@11.12.0",
   "dependencies": {
     "@lexical/list": "^0.47.0",
     "@lexical/markdown": "^0.47.0",

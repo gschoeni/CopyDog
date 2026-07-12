@@ -9,13 +9,19 @@ import { fetchImportHtml, ImportFetchError } from "@/lib/import/fetch-url";
 import { extractSectionsFromImage, extractSectionsWithLlm } from "@/lib/import/llm-extract";
 import { serializeBlocks } from "@/lib/copy/markdown";
 import {
+  adoptVersion,
+  draftBranchName,
+  hasUnpublishedChanges,
+  publishDraft,
   readDoc,
   readSectionVersion,
   readSite,
+  syncPageFromMain,
   writeDoc,
   writeSectionVersion,
   writeWireframe,
 } from "@/lib/content/store";
+import { createClient } from "@/lib/supabase/server";
 import { SITE_FILE_PATH, serializeSiteFile } from "@/lib/content/site";
 import { parseSectionMarkdown } from "@/lib/copy/markdown";
 import { getLlmClient } from "@/lib/llm";
@@ -104,6 +110,136 @@ export async function readVersionAction(input: z.infer<typeof readVersionInput>)
   const { oxen, view } = await requireProjectAccess(projectId);
   const markdown = (await readSectionVersion(oxen, view, pageSlug, sectionSlug, versionSlug)) ?? "";
   return { markdown };
+}
+
+const publishInput = z.object({
+  projectId: z.uuid(),
+  message: z.string().trim().max(200).optional(),
+});
+
+/**
+ * Publishes the caller's staged edits to their draft branch and refreshes
+ * their rows in the section_versions index so teammates can discover and
+ * adopt their versions.
+ */
+export async function publishAction(input: z.infer<typeof publishInput>): Promise<{ ok: boolean }> {
+  const { projectId, message } = publishInput.parse(input);
+  const { oxen, view, user, project } = await requireProjectAccess(projectId);
+
+  const supabase = await createClient();
+  const { data: profile } = await supabase.from("profiles").select("display_name").eq("id", user.id).single();
+  const author = { name: profile?.display_name ?? "copydog", email: user.email ?? "unknown@copydog.app" };
+
+  if (await hasUnpublishedChanges(oxen, view)) {
+    await publishDraft(oxen, view, { message: message?.trim() || "Publish drafts", author });
+  }
+
+  // refresh this user's published-versions index from their doc files
+  const site = await readSite(oxen, view);
+  const rows: Record<string, unknown>[] = [];
+  for (const page of site.pages) {
+    const doc = await readDoc(oxen, view, page.slug);
+    for (const section of doc.sections) {
+      for (const version of section.versions) {
+        rows.push({
+          project_id: project.id,
+          author_id: user.id,
+          page_slug: page.slug,
+          section_slug: section.slug,
+          version_slug: version.slug,
+          label: version.label,
+        });
+      }
+    }
+  }
+  await supabase.from("section_versions").delete().match({ project_id: project.id, author_id: user.id });
+  if (rows.length) await supabase.from("section_versions").insert(rows);
+
+  return { ok: true };
+}
+
+const proposeInput = z.object({
+  projectId: z.uuid(),
+  title: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(2000).optional(),
+});
+
+/** Publishes any pending edits, then opens a proposal from the caller's draft to main. */
+export async function proposeAction(input: z.infer<typeof proposeInput>): Promise<{ proposalId: string }> {
+  const { projectId, title, description } = proposeInput.parse(input);
+  const { oxen, view, user, project } = await requireProjectAccess(projectId);
+
+  await publishAction({ projectId });
+  const main = await oxen.getBranch(project.oxenRepo, "main");
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("proposals")
+    .insert({
+      project_id: project.id,
+      author_id: user.id,
+      title,
+      description: description || null,
+      source_branch: view.branch,
+      base_commit: main.commit_id,
+    })
+    .select("id")
+    .single<{ id: string }>();
+  if (error || !data) {
+    console.error("proposal insert failed", error);
+    throw new Error(error?.message ?? "could not create proposal");
+  }
+
+  return { proposalId: data.id };
+}
+
+const adoptInput = z.object({
+  projectId: z.uuid(),
+  pageSlug: slugSchema,
+  sectionSlug: slugSchema,
+  versionSlug: slugSchema,
+  authorId: z.uuid(),
+  label: z.string().trim().min(1).max(80),
+  existingSlugs: z.array(slugSchema).max(100),
+});
+
+/** Copies a teammate's published version into the caller's draft as a new alternate. */
+export async function adoptVersionAction(
+  input: z.infer<typeof adoptInput>,
+): Promise<{ slug: string; markdown: string }> {
+  const { projectId, pageSlug, sectionSlug, versionSlug, authorId, label, existingSlugs } = adoptInput.parse(input);
+  const { oxen, view } = await requireProjectAccess(projectId);
+
+  const base =
+    label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "adopted";
+  let slug = base;
+  for (let n = 2; existingSlugs.includes(slug); n++) slug = `${base}-${n}`;
+
+  const markdown = await adoptVersion(oxen, view, {
+    fromBranch: draftBranchName(authorId),
+    pageSlug,
+    sectionSlug,
+    versionSlug,
+    asVersionSlug: slug,
+  });
+  return { slug, markdown };
+}
+
+const syncInput = z.object({
+  projectId: z.uuid(),
+  pageSlug: slugSchema,
+});
+
+/** Replaces this page in the caller's draft with main's published state. */
+export async function syncPageFromMainAction(input: z.infer<typeof syncInput>): Promise<{ ok: boolean }> {
+  const { projectId, pageSlug } = syncInput.parse(input);
+  const { oxen, view } = await requireProjectAccess(projectId);
+  await syncPageFromMain(oxen, view, pageSlug);
+  return { ok: true };
 }
 
 const importPageInput = z.object({

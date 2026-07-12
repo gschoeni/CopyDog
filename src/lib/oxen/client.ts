@@ -177,6 +177,23 @@ export class OxenClient {
     return res.text();
   }
 
+  /** Paths currently staged in a workspace (the user's unpublished edits). */
+  async workspaceChanges(repo: string, workspaceId: string): Promise<{ added: string[]; modified: string[]; removed: string[] }> {
+    const data = await this.request<{
+      staged: {
+        added_files: { entries: { filename: string }[] };
+        modified_files: { entries: { filename: string }[] };
+        removed_files: { entries: { filename: string }[] };
+      };
+    }>("GET", `${this.repoPath(repo)}/workspaces/${encodeURIComponent(workspaceId)}/changes`);
+    const names = (list: { entries: { filename: string }[] }) => list.entries.map((e) => e.filename);
+    return {
+      added: names(data.staged.added_files),
+      modified: names(data.staged.modified_files),
+      removed: names(data.staged.removed_files),
+    };
+  }
+
   /**
    * Commits everything staged in the workspace onto `branch` as one atomic commit.
    * Fails with 422 if the branch has advanced past the workspace's base commit.

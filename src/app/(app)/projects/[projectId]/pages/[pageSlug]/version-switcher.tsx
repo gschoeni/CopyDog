@@ -1,28 +1,46 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { SectionVersionRef } from "@/lib/content/doc";
+import { createClient } from "@/lib/supabase/client";
+
+interface TeammateVersion {
+  authorId: string;
+  versionSlug: string;
+  label: string;
+  authorName: string;
+}
 
 /**
- * The version pill on a section: shows the active version's label and opens
- * a menu to switch versions or branch a new one from the current copy.
+ * The version pill on a section: shows the active version's label, switches
+ * between your versions, branches a new one, and adopts teammates'
+ * published versions into your draft.
  */
 export function VersionSwitcher({
+  projectId,
+  pageSlug,
+  sectionSlug,
   versions,
   activeVersion,
   onSwitch,
   onCreate,
+  onAdopt,
   disabled,
 }: {
+  projectId: string;
+  pageSlug: string;
+  sectionSlug: string;
   versions: SectionVersionRef[];
   activeVersion: string;
   onSwitch: (slug: string) => void;
   onCreate: (label: string) => void;
+  onAdopt: (source: { authorId: string; versionSlug: string; label: string }) => void;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [naming, setNaming] = useState(false);
+  const [teammates, setTeammates] = useState<TeammateVersion[] | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,6 +55,33 @@ export function VersionSwitcher({
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
 
+  const loadTeammates = useCallback(async () => {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const { data } = await supabase
+      .from("section_versions")
+      .select("author_id, version_slug, label, author:profiles(display_name)")
+      .match({ project_id: projectId, page_slug: pageSlug, section_slug: sectionSlug })
+      .neq("author_id", user?.id ?? "");
+    setTeammates(
+      ((data ?? []) as unknown as { author_id: string; version_slug: string; label: string; author: { display_name: string } | null }[]).map(
+        (row) => ({
+          authorId: row.author_id,
+          versionSlug: row.version_slug,
+          label: row.label,
+          authorName: row.author?.display_name ?? "Teammate",
+        }),
+      ),
+    );
+  }, [projectId, pageSlug, sectionSlug]);
+
+  const toggleOpen = useCallback(() => {
+    setOpen((wasOpen) => !wasOpen);
+    if (!open) void loadTeammates();
+  }, [open, loadTeammates]);
+
   const active = versions.find((v) => v.slug === activeVersion);
   const hasAlternates = versions.length > 1;
 
@@ -45,7 +90,7 @@ export function VersionSwitcher({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggleOpen}
         aria-haspopup="menu"
         aria-expanded={open}
         className={`flex h-6 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium transition-colors ${
@@ -62,10 +107,10 @@ export function VersionSwitcher({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-7 z-20 w-56 rounded-lg border border-border bg-surface p-1 shadow-raised"
+          className="absolute right-0 top-7 z-20 w-60 rounded-lg border border-border bg-surface p-1 shadow-raised"
         >
           <p className="px-2 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-ink-tertiary">
-            Versions
+            Your versions
           </p>
           {versions.map((version) => (
             <button
@@ -83,6 +128,33 @@ export function VersionSwitcher({
               {version.slug === activeVersion && <span className="text-accent">✓</span>}
             </button>
           ))}
+
+          {teammates !== null && teammates.length > 0 && (
+            <>
+              <p className="px-2 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-ink-tertiary">
+                From teammates
+              </p>
+              {teammates.map((tv) => (
+                <button
+                  key={`${tv.authorId}:${tv.versionSlug}`}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setOpen(false);
+                    onAdopt({ authorId: tv.authorId, versionSlug: tv.versionSlug, label: `${tv.label} (${tv.authorName})` });
+                  }}
+                  className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
+                  title={`Adopt ${tv.authorName}'s “${tv.label}” into your draft`}
+                >
+                  <span className="truncate">
+                    {tv.label} <span className="text-ink-tertiary">— {tv.authorName}</span>
+                  </span>
+                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-accent">Adopt</span>
+                </button>
+              ))}
+            </>
+          )}
+
           <div className="mx-1 my-1 h-px bg-border" />
           {naming ? (
             <input

@@ -211,6 +211,24 @@ export class OxenStub {
       return json({ status: "success" });
     }
 
+    if (rest[1] === "changes" && req.method === "GET") {
+      const base = repo.commits.get(ws.baseCommitId)!;
+      const added: { filename: string }[] = [];
+      const modified: { filename: string }[] = [];
+      for (const [path] of ws.staged) {
+        (base.files.has(path) ? modified : added).push({ filename: path });
+      }
+      return json({
+        status: "success",
+        staged: {
+          added_dirs: {},
+          added_files: { entries: added },
+          modified_files: { entries: modified },
+          removed_files: { entries: [] },
+        },
+      });
+    }
+
     if (rest[1] === "files") {
       const path = rest.slice(2).join("/");
       if (req.method === "POST") {
