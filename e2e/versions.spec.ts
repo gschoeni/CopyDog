@@ -15,7 +15,6 @@ test("alternate versions: create, edit independently, toggle back", async ({ pag
   await createProjectAndOpenHome(page, `Versions ${Date.now()}`);
 
   // one section with some original copy
-  await page.getByRole("button", { name: "+ Add section" }).click();
   await page.getByRole("textbox", { name: "Section copy" }).click();
   await page.keyboard.type("Original headline idea");
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
@@ -53,8 +52,6 @@ test("alternate versions: create, edit independently, toggle back", async ({ pag
 test("notes: add, see count, resolve", async ({ page }) => {
   await signIn(page);
   await createProjectAndOpenHome(page, `Notes ${Date.now()}`);
-
-  await page.getByRole("button", { name: "+ Add section" }).click();
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
 
   await page.getByRole("button", { name: /^Notes/ }).click();

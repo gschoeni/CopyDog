@@ -31,7 +31,6 @@ test("two users: invite → publish → propose → merge → sync → adopt", a
 
   // Alice writes hero copy and an alternate version
   await alice.page.getByRole("link", { name: /Home/ }).click();
-  await alice.page.getByRole("button", { name: "+ Add section" }).click();
   await alice.page.getByRole("textbox", { name: "Section copy" }).click();
   await alice.page.keyboard.type("# Alice's headline");
   const title = alice.page.getByLabel("Section title");

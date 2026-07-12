@@ -13,6 +13,19 @@ async function latestEmailHtml(recipient: string): Promise<string | null> {
   return body.HTML;
 }
 
+/**
+ * Follows an emailed auth link, rewritten onto the test server's origin —
+ * emails are built from supabase's site_url (the dev port), but token_hash
+ * verification works on any app instance.
+ */
+export async function gotoEmailLink(page: Page, href: string): Promise<void> {
+  const link = new URL(href.replace(/&amp;/g, "&"));
+  const base = new URL(page.url());
+  link.protocol = base.protocol;
+  link.host = base.host;
+  await page.goto(link.toString());
+}
+
 /** Full magic-link sign-in via the local Mailpit inbox. Returns the email used. */
 export async function signIn(page: Page): Promise<string> {
   const email = `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@copydog.test`;
@@ -29,7 +42,7 @@ export async function signIn(page: Page): Promise<string> {
 
   const match = html!.match(/href="([^"]*\/auth\/confirm[^"]*)"/);
   expect(match, "magic link email should contain an /auth/confirm link").not.toBeNull();
-  await page.goto(match![1]!.replace(/&amp;/g, "&"));
+  await gotoEmailLink(page, match![1]!);
   await expect(page).toHaveURL(/\/projects/);
 
   return email;

@@ -37,9 +37,11 @@ export interface SectionEditorProps {
   /** Fires with the section's canonical markdown after every edit. */
   onMarkdownChange: (markdown: string) => void;
   placeholder?: string;
+  /** Focus the end of the content on mount (used after auto-splits). */
+  autoFocus?: boolean;
 }
 
-export function SectionEditor({ initialBlocks, onMarkdownChange, placeholder }: SectionEditorProps) {
+export function SectionEditor({ initialBlocks, onMarkdownChange, placeholder, autoFocus }: SectionEditorProps) {
   const initialConfig = {
     namespace: "copydog-section",
     theme: {
@@ -86,9 +88,18 @@ export function SectionEditor({ initialBlocks, onMarkdownChange, placeholder }: 
         <ListPlugin />
         <MarkdownShortcutsPlugin />
         <OnChangePlugin onChange={handleChange} ignoreSelectionChange />
+        {autoFocus && <AutoFocusPlugin />}
       </div>
     </LexicalComposer>
   );
+}
+
+function AutoFocusPlugin() {
+  const [editor] = useLexicalComposerContext();
+  useEffect(() => {
+    editor.focus(undefined, { defaultSelection: "rootEnd" });
+  }, [editor]);
+  return null;
 }
 
 function MarkdownShortcutsPlugin() {

@@ -8,7 +8,8 @@ import { SectionEditor } from "@/components/editor/section-editor";
 import { Button } from "@/components/ui/button";
 import type { Block } from "@/lib/copy/blocks";
 import type { DocSection } from "@/lib/content/doc";
-import { parseSectionMarkdown } from "@/lib/copy/markdown";
+import { parseSectionMarkdown, serializeBlocks } from "@/lib/copy/markdown";
+import { DEFAULT_SECTION_TITLE, deriveSectionTitle, splitIntoSections } from "@/lib/copy/sections";
 import { injectCopy } from "@/lib/wireframe/inject";
 
 import {
@@ -27,6 +28,26 @@ import { adoptVersionAction } from "./actions";
 
 export interface EditorSection extends DocSection {
   blocks: Block[];
+  /**
+   * Client-only remount counter: bumped when a section's content changes
+   * outside its own editor (auto-splits), so the uncontrolled editor
+   * re-reads its blocks.
+   */
+  epoch?: number;
+}
+
+function emptySection(existing: EditorSection[]): EditorSection {
+  let n = existing.length + 1;
+  let slug = `section-${n}`;
+  while (existing.some((s) => s.slug === slug)) slug = `section-${++n}`;
+  return {
+    slug,
+    title: DEFAULT_SECTION_TITLE,
+    activeVersion: "original",
+    versions: [{ slug: "original", label: "Original" }],
+    wireframeSlot: null,
+    blocks: [],
+  };
 }
 
 export interface PageEditorProps {
@@ -60,7 +81,11 @@ export function PageEditor({
   initialDirty,
 }: PageEditorProps) {
   const router = useRouter();
-  const [sections, setSections] = useState<EditorSection[]>(initialSections);
+  // a page is never empty: like a fresh doc, there's always somewhere to type
+  const [sections, setSections] = useState<EditorSection[]>(() =>
+    initialSections.length > 0 ? initialSections : [emptySection([])],
+  );
+  const [focusSlug, setFocusSlug] = useState<string | null>(null);
   const [wireframe, setWireframe] = useState<string | null>(initialWireframe);
   const [mode, setMode] = useState<ViewMode>("copy");
   const [saveState, setSaveState] = useState<SaveState>("saved");
@@ -122,34 +147,163 @@ export function PageEditor({
     [settle],
   );
 
-  /** Debounced per section, so a burst of typing is one workspace write. */
-  const handleMarkdownChange = useCallback(
-    (section: EditorSection, markdown: string) => {
-      // live preview: the wireframe projection updates immediately
-      setSections((current) =>
-        current.map((s) => (s.slug === section.slug ? { ...s, blocks: parseSectionMarkdown(markdown) } : s)),
-      );
+  // synchronous view of sections for handlers that need to compute
+  // next-state + side effects together (auto-splitting)
+  const sectionsRef = useRef(sections);
+  useEffect(() => {
+    sectionsRef.current = sections;
+  }, [sections]);
 
-      const existing = timers.current.get(section.slug);
+  // a brand-new page seeds its first section server-side, once
+  const seededEmptyPage = useRef(false);
+  useEffect(() => {
+    if (initialSections.length > 0 || seededEmptyPage.current) return;
+    seededEmptyPage.current = true;
+    const seeded = sectionsRef.current;
+    const structural = seeded.map(({ slug, title, activeVersion, versions, wireframeSlot }) => ({
+      slug,
+      title,
+      activeVersion,
+      versions,
+      wireframeSlot,
+    }));
+    void trackSave(saveStructureAction({ projectId, pageSlug, sections: structural }));
+    void trackSave(
+      saveSectionAction({ projectId, pageSlug, sectionSlug: seeded[0]!.slug, versionSlug: "original", markdown: "" }),
+    );
+  }, [initialSections.length, projectId, pageSlug, trackSave]);
+
+  // sections whose structure (e.g. auto-title) changed since the last
+  // structural save — sticky, so a later content-only keystroke on the same
+  // section can't clobber the pending flag before the debounce fires
+  const structuralDirty = useRef(new Set<string>());
+
+  const scheduleSectionSave = useCallback(
+    (sectionSlug: string, versionSlug: string, markdown: string, structuralToo: boolean) => {
+      if (structuralToo) structuralDirty.current.add(sectionSlug);
+      const existing = timers.current.get(sectionSlug);
       if (existing) clearTimeout(existing);
       setSaveState("saving");
       timers.current.set(
-        section.slug,
+        sectionSlug,
         setTimeout(() => {
-          timers.current.delete(section.slug);
-          void trackSave(
-            saveSectionAction({
-              projectId,
-              pageSlug,
-              sectionSlug: section.slug,
-              versionSlug: section.activeVersion,
-              markdown,
-            }),
-          );
+          timers.current.delete(sectionSlug);
+          void trackSave(saveSectionAction({ projectId, pageSlug, sectionSlug, versionSlug, markdown }));
+          if (structuralDirty.current.delete(sectionSlug)) {
+            const structural = sectionsRef.current.map(({ slug, title, activeVersion, versions, wireframeSlot }) => ({
+              slug,
+              title,
+              activeVersion,
+              versions,
+              wireframeSlot,
+            }));
+            void trackSave(saveStructureAction({ projectId, pageSlug, sections: structural }));
+          }
         }, AUTOSAVE_DELAY_MS),
       );
     },
     [projectId, pageSlug, trackSave],
+  );
+
+  /**
+   * Every keystroke lands here. One group → normal debounced autosave with
+   * live title derivation. Multiple groups → the document just grew a new
+   * section under the writer's cursor: split it out, keep typing.
+   */
+  const handleMarkdownChange = useCallback(
+    (section: EditorSection, markdown: string) => {
+      const blocks = parseSectionMarkdown(markdown);
+      const groups = splitIntoSections(blocks);
+      const current = sectionsRef.current;
+      const index = current.findIndex((s) => s.slug === section.slug);
+      if (index === -1) return;
+
+      if (groups.length === 1) {
+        // auto-title: sections named by their first heading until renamed by hand
+        const existing = current[index]!;
+        const derived = deriveSectionTitle(blocks);
+        const shouldRename =
+          existing.title === DEFAULT_SECTION_TITLE || existing.title === deriveSectionTitle(existing.blocks);
+        const title = shouldRename ? derived : existing.title;
+
+        const next = current.map((s, i) => (i === index ? { ...s, blocks, title } : s));
+        sectionsRef.current = next;
+        setSections(next);
+        scheduleSectionSave(section.slug, section.activeVersion, markdown, title !== existing.title);
+        return;
+      }
+
+      // --- auto-split ---
+      const existingSlugs = new Set(current.map((s) => s.slug));
+      const [first, ...rest] = groups;
+
+      const shrunk: EditorSection = {
+        ...current[index]!,
+        blocks: first!,
+        title:
+          current[index]!.title === DEFAULT_SECTION_TITLE || current[index]!.title === deriveSectionTitle(section.blocks)
+            ? deriveSectionTitle(first!)
+            : current[index]!.title,
+        epoch: (current[index]!.epoch ?? 0) + 1,
+      };
+
+      const created: EditorSection[] = rest.map((group) => {
+        const title = deriveSectionTitle(group);
+        const base =
+          title
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 40) || "section";
+        let slug = base;
+        for (let n = 2; existingSlugs.has(slug); n++) slug = `${base}-${n}`;
+        existingSlugs.add(slug);
+        return {
+          slug,
+          title,
+          activeVersion: "original",
+          versions: [{ slug: "original", label: "Original" }],
+          wireframeSlot: null,
+          blocks: group,
+        };
+      });
+
+      const next = [...current.slice(0, index), shrunk, ...created, ...current.slice(index + 1)];
+      sectionsRef.current = next;
+      setSections(next);
+      // the writer's caret follows the copy into the last new section
+      setFocusSlug(created[created.length - 1]!.slug);
+
+      // structural change: persist everything now, not on a debounce
+      const pending = timers.current.get(section.slug);
+      if (pending) clearTimeout(pending);
+      timers.current.delete(section.slug);
+      void trackSave(saveSectionAction({
+        projectId,
+        pageSlug,
+        sectionSlug: shrunk.slug,
+        versionSlug: shrunk.activeVersion,
+        markdown: serializeBlocks(first!),
+      }));
+      for (const created_ of created) {
+        void trackSave(saveSectionAction({
+          projectId,
+          pageSlug,
+          sectionSlug: created_.slug,
+          versionSlug: "original",
+          markdown: serializeBlocks(created_.blocks),
+        }));
+      }
+      const structural = next.map(({ slug, title, activeVersion, versions, wireframeSlot }) => ({
+        slug,
+        title,
+        activeVersion,
+        versions,
+        wireframeSlot,
+      }));
+      void trackSave(saveStructureAction({ projectId, pageSlug, sections: structural }));
+    },
+    [projectId, pageSlug, scheduleSectionSave, trackSave],
   );
 
   const persistStructure = useCallback(
@@ -246,25 +400,6 @@ export function PageEditor({
     [sections, projectId, pageSlug, persistStructure],
   );
 
-  const addSection = useCallback(() => {
-    const base = "section";
-    let n = sections.length + 1;
-    let slug = `${base}-${n}`;
-    while (sections.some((s) => s.slug === slug)) slug = `${base}-${++n}`;
-
-    const section: EditorSection = {
-      slug,
-      title: "Untitled section",
-      activeVersion: "original",
-      versions: [{ slug: "original", label: "Original" }],
-      wireframeSlot: null,
-      blocks: [],
-    };
-    persistStructure([...sections, section]);
-    // seed the version file so it exists even if the user never types
-    void trackSave(saveSectionAction({ projectId, pageSlug, sectionSlug: slug, versionSlug: "original", markdown: "" }));
-  }, [sections, persistStructure, projectId, pageSlug, trackSave]);
-
   const renameSection = useCallback(
     (slug: string, title: string) => {
       persistStructure(sections.map((s) => (s.slug === slug ? { ...s, title } : s)));
@@ -274,7 +409,9 @@ export function PageEditor({
 
   const deleteSection = useCallback(
     (slug: string) => {
-      persistStructure(sections.filter((s) => s.slug !== slug));
+      const remaining = sections.filter((s) => s.slug !== slug);
+      // the page always keeps somewhere to type
+      persistStructure(remaining.length > 0 ? remaining : [emptySection([])]);
     },
     [sections, persistStructure],
   );
@@ -385,19 +522,12 @@ export function PageEditor({
                     onSwitchVersion={switchVersion}
                     onCreateVersion={createVersion}
                     onAdoptVersion={adoptTeammateVersion}
+                    autoFocus={
+                      focusSlug === section.slug ||
+                      (focusSlug === null && sections.length === 1 && section.blocks.length === 0)
+                    }
                   />
                 ))}
-              </div>
-              <div className="mt-10">
-                <Button variant="secondary" size="sm" onClick={addSection}>
-                  + Add section
-                </Button>
-                {sections.length === 0 && (
-                  <p className="mt-3 text-sm text-ink-tertiary">
-                    Sections group your copy — a hero, a feature list, a call to action — and later map to wireframe
-                    slots.
-                  </p>
-                )}
               </div>
             </div>
           </div>
@@ -407,7 +537,7 @@ export function PageEditor({
           <WireframePane
             preview={preview}
             generating={generating}
-            hasCopy={sections.length > 0}
+            hasCopy={sections.some((s) => s.blocks.length > 0)}
             onGenerate={generate}
             bordered={mode === "split"}
             exportHref={`/projects/${projectId}/pages/${pageSlug}/export`}
@@ -538,6 +668,7 @@ function SectionCard({
   onSwitchVersion,
   onCreateVersion,
   onAdoptVersion,
+  autoFocus,
 }: {
   projectId: string;
   pageSlug: string;
@@ -551,6 +682,7 @@ function SectionCard({
   onSwitchVersion: (sectionSlug: string, versionSlug: string) => void;
   onCreateVersion: (sectionSlug: string, label: string) => void;
   onAdoptVersion: (sectionSlug: string, source: { authorId: string; versionSlug: string; label: string }) => void;
+  autoFocus: boolean;
 }) {
   const handleChange = useCallback(
     (markdown: string) => onMarkdownChange(section, markdown),
@@ -561,6 +693,7 @@ function SectionCard({
     <section className="group/section relative">
       <header className="mb-1 flex items-center gap-2">
         <input
+          key={section.title}
           defaultValue={section.title}
           onBlur={(e) => {
             const title = e.target.value.trim();
@@ -594,11 +727,13 @@ function SectionCard({
       </header>
       <div className="rounded-lg border border-transparent px-4 py-2 transition-colors focus-within:border-border focus-within:bg-surface focus-within:shadow-soft group-hover/section:border-border">
         {/* uncontrolled editor: the key remounts it with fresh blocks when the
-            active version changes (state updates land before the remount) */}
+            active version changes or an auto-split rewrites its content */}
         <SectionEditor
-          key={`${section.slug}:${section.activeVersion}`}
+          key={`${section.slug}:${section.activeVersion}:${section.epoch ?? 0}`}
           initialBlocks={section.blocks}
           onMarkdownChange={handleChange}
+          autoFocus={autoFocus}
+          placeholder={autoFocus && section.blocks.length === 0 ? "Start writing — headings become sections as you go…" : undefined}
         />
       </div>
     </section>
