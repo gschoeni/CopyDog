@@ -20,7 +20,7 @@ export default function LoginPage() {
         <div className="w-full max-w-sm">
           <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
           <p className="mt-2 text-sm leading-relaxed text-ink-secondary">
-            Sign in with your email — we&apos;ll send you a one-time link. No password needed.
+            Sign in with a one-time email link, or use a password — whichever suits you.
           </p>
           <div className="mt-8">
             <LoginForm />
