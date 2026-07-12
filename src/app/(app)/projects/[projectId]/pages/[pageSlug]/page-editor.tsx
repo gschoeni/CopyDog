@@ -18,6 +18,7 @@ import {
   saveSectionAction,
   saveStructureAction,
 } from "./actions";
+import { ChatPanel } from "./chat-panel";
 import { ImportDialog } from "./import-dialog";
 import { PublishControls } from "./publish-controls";
 import { SectionNotes } from "./section-notes";
@@ -66,14 +67,25 @@ export function PageEditor({
   const [generating, setGenerating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [dirty, setDirty] = useState(initialDirty);
+  const [assistantOpen, setAssistantOpen] = useState(false);
 
-  // restore the last view mode per project; deferred a microtask so the
-  // update lands after hydration commit (and before paint — no flash)
+  // restore the last view mode + assistant state per project; deferred a
+  // microtask so the update lands after hydration commit (before paint) —
+  // this also keeps them across the keyed remounts refresh() causes
   useEffect(() => {
     const stored = localStorage.getItem(`copydog:mode:${projectId}`);
-    if (stored === "copy" || stored === "split" || stored === "wireframe") {
-      queueMicrotask(() => setMode(stored));
-    }
+    const assistant = localStorage.getItem(`copydog:assistant:${projectId}`) === "1";
+    queueMicrotask(() => {
+      if (stored === "copy" || stored === "split" || stored === "wireframe") setMode(stored);
+      if (assistant) setAssistantOpen(true);
+    });
+  }, [projectId]);
+
+  const toggleAssistant = useCallback(() => {
+    setAssistantOpen((wasOpen) => {
+      localStorage.setItem(`copydog:assistant:${projectId}`, wasOpen ? "0" : "1");
+      return !wasOpen;
+    });
   }, [projectId]);
 
   const changeMode = useCallback(
@@ -327,6 +339,14 @@ export function PageEditor({
           <Button variant="ghost" size="sm" onClick={() => setImporting(true)}>
             Import…
           </Button>
+          <Button
+            variant={assistantOpen ? "secondary" : "ghost"}
+            size="sm"
+            onClick={toggleAssistant}
+            aria-pressed={assistantOpen}
+          >
+            Assistant
+          </Button>
           <PublishControls projectId={projectId} pageSlug={pageSlug} dirty={dirty} onPublished={() => setDirty(false)} />
           <ModeToggle mode={mode} onChange={changeMode} />
         </div>
@@ -390,6 +410,19 @@ export function PageEditor({
             hasCopy={sections.length > 0}
             onGenerate={generate}
             bordered={mode === "split"}
+          />
+        )}
+
+        {assistantOpen && (
+          <ChatPanel
+            projectId={projectId}
+            pageSlug={pageSlug}
+            onMutated={() => {
+              setDirty(true);
+              // the agent edited the draft server-side — reload the view
+              router.refresh();
+            }}
+            onClose={toggleAssistant}
           />
         )}
       </div>

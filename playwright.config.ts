@@ -35,6 +35,8 @@ export default defineConfig({
         OXEN_NAMESPACE: "e2e",
         // lets the URL-import e2e fetch the stub's fixture page
         ALLOW_LOCAL_IMPORT: "1",
+        // agent e2e runs against the stub's scripted chat completions
+        LLM_BASE_URL: "http://localhost:3232",
       },
     },
   ],

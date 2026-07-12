@@ -14,6 +14,8 @@ const serverEnvSchema = z.object({
   OXEN_API_KEY: z.string().optional(),
   /** Override to point at a local/self-hosted oxen-server. */
   OXEN_BASE_URL: z.string().url().optional(),
+  /** Override the inference endpoint (e2e uses the stub server). */
+  LLM_BASE_URL: z.string().url().optional(),
 });
 
 let cached: z.infer<typeof serverEnvSchema> | undefined;

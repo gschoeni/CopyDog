@@ -242,6 +242,66 @@ export async function syncPageFromMainAction(input: z.infer<typeof syncInput>): 
   return { ok: true };
 }
 
+const chatInput = z.object({
+  projectId: z.uuid(),
+  pageSlug: slugSchema,
+  message: z.string().trim().min(1).max(4000),
+});
+
+export type ChatResult =
+  | { ok: true; reply: string; mutated: boolean }
+  | { ok: false; error: string };
+
+/**
+ * One agent turn: persist the user message, run the tool loop against
+ * their draft, persist and return the reply. `mutated` tells the client
+ * to reload the draft view.
+ */
+export async function chatAction(input: z.infer<typeof chatInput>): Promise<ChatResult> {
+  const { projectId, pageSlug, message } = chatInput.parse(input);
+  const { oxen, view, user } = await requireProjectAccess(projectId);
+
+  const llm = getLlmClient();
+  if (!llm) {
+    return { ok: false, error: "The assistant needs an Oxen.ai inference key (OXEN_API_KEY) configured." };
+  }
+
+  const supabase = await createClient();
+  const { data: historyRows } = await supabase
+    .from("chat_messages")
+    .select("role, content")
+    .match({ project_id: projectId, user_id: user.id, page_slug: pageSlug })
+    .order("created_at", { ascending: true })
+    .limit(30);
+  const history = (historyRows ?? []) as { role: "user" | "assistant"; content: string }[];
+
+  await supabase.from("chat_messages").insert({
+    project_id: projectId,
+    user_id: user.id,
+    page_slug: pageSlug,
+    role: "user",
+    content: message,
+  });
+
+  let turn;
+  try {
+    turn = await (await import("@/lib/agent/run")).runAgentTurn({ oxen, view, pageSlug, llm }, history, message);
+  } catch (err) {
+    console.error("agent turn failed", err);
+    return { ok: false, error: "The assistant hit an error — try again." };
+  }
+
+  await supabase.from("chat_messages").insert({
+    project_id: projectId,
+    user_id: user.id,
+    page_slug: pageSlug,
+    role: "assistant",
+    content: turn.reply,
+  });
+
+  return { ok: true, reply: turn.reply, mutated: turn.mutated };
+}
+
 const importPageInput = z.object({
   projectId: z.uuid(),
   pageSlug: slugSchema,

@@ -5,19 +5,39 @@
  * Server-side only: the API key must never reach the browser.
  */
 
-export type LlmRole = "system" | "user" | "assistant";
+export type LlmRole = "system" | "user" | "assistant" | "tool";
 
 export type LlmContentPart =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string } };
 
+export interface LlmToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
 export interface LlmMessage {
   role: LlmRole;
-  content: string | LlmContentPart[];
+  content: string | LlmContentPart[] | null;
+  /** assistant messages may carry tool calls */
+  tool_calls?: LlmToolCall[];
+  /** tool result messages reference the call they answer */
+  tool_call_id?: string;
+}
+
+export interface LlmTool {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
 }
 
 export interface ChatCompletionResult {
   content: string;
+  toolCalls: LlmToolCall[];
   model: string;
   usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
@@ -65,6 +85,7 @@ export class LlmClient {
   async chat(options: {
     model: string;
     messages: LlmMessage[];
+    tools?: LlmTool[];
     maxTokens?: number;
     temperature?: number;
   }): Promise<ChatCompletionResult> {
@@ -77,6 +98,7 @@ export class LlmClient {
       body: JSON.stringify({
         model: options.model,
         messages: options.messages,
+        tools: options.tools,
         max_tokens: options.maxTokens,
         temperature: options.temperature,
       }),
@@ -87,13 +109,18 @@ export class LlmClient {
     }
     const data = (await res.json()) as {
       model: string;
-      choices: { message: { content: string } }[];
+      choices: { message: { content: string | null; tool_calls?: LlmToolCall[] } }[];
       usage?: ChatCompletionResult["usage"];
     };
-    const content = data.choices[0]?.message.content;
-    if (content === undefined) {
+    const message = data.choices[0]?.message;
+    if (message === undefined) {
       throw new LlmError("LLM response contained no choices", 502, JSON.stringify(data));
     }
-    return { content, model: data.model, usage: data.usage };
+    return {
+      content: message.content ?? "",
+      toolCalls: message.tool_calls ?? [],
+      model: data.model,
+      usage: data.usage,
+    };
   }
 }
