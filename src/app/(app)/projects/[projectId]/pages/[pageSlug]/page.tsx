@@ -45,6 +45,9 @@ export default async function PageEditorRoute({
     <div className="flex min-h-0 flex-1">
       <PagesSidebar projectId={project.id} projectName={project.name} pages={site.pages} activeSlug={pageSlug} />
       <PageEditor
+        // fingerprint key: router.refresh() after an import remounts the
+        // editor with the new server content instead of stale client state
+        key={fingerprint(JSON.stringify(sections) + (wireframe ?? ""))}
         projectId={project.id}
         projectName={project.name}
         pageSlug={pageSlug}
@@ -54,4 +57,12 @@ export default async function PageEditorRoute({
       />
     </div>
   );
+}
+
+function fingerprint(input: string): string {
+  let hash = 5381;
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) + hash + input.charCodeAt(i)) | 0;
+  }
+  return hash.toString(36);
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { SectionEditor } from "@/components/editor/section-editor";
@@ -17,6 +18,7 @@ import {
   saveSectionAction,
   saveStructureAction,
 } from "./actions";
+import { ImportDialog } from "./import-dialog";
 import { SectionNotes } from "./section-notes";
 import { VersionSwitcher } from "./version-switcher";
 
@@ -52,11 +54,13 @@ export function PageEditor({
   initialSections,
   initialWireframe,
 }: PageEditorProps) {
+  const router = useRouter();
   const [sections, setSections] = useState<EditorSection[]>(initialSections);
   const [wireframe, setWireframe] = useState<string | null>(initialWireframe);
   const [mode, setMode] = useState<ViewMode>("copy");
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [generating, setGenerating] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   // restore the last view mode per project; deferred a microtask so the
   // update lands after hydration commit (and before paint — no flash)
@@ -284,8 +288,26 @@ export function PageEditor({
         <p aria-live="polite" className={`hidden shrink-0 text-xs sm:block ${saveState === "error" ? "text-danger" : "text-ink-tertiary"}`}>
           {statusLabel}
         </p>
-        <ModeToggle mode={mode} onChange={changeMode} />
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setImporting(true)}>
+            Import…
+          </Button>
+          <ModeToggle mode={mode} onChange={changeMode} />
+        </div>
       </div>
+
+      {importing && (
+        <ImportDialog
+          projectId={projectId}
+          pageSlug={pageSlug}
+          onClose={() => setImporting(false)}
+          onImported={() => {
+            setImporting(false);
+            // server content changed wholesale — re-render from the source
+            router.refresh();
+          }}
+        />
+      )}
 
       <div className={`min-h-0 flex-1 ${mode === "split" ? "grid grid-cols-2" : "flex"}`}>
         {mode !== "wireframe" && (
