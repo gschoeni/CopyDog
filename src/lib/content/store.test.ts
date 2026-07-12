@@ -57,7 +57,15 @@ describe("content store", () => {
     await writeSectionVersion(oxen, view, "home", "hero", "original", "# Hello\n");
     await writeDoc(oxen, view, "home", {
       version: 1,
-      sections: [{ slug: "hero", title: "Hero", activeVersion: "original", wireframeSlot: null }],
+      sections: [
+        {
+          slug: "hero",
+          title: "Hero",
+          activeVersion: "original",
+          versions: [{ slug: "original", label: "Original" }],
+          wireframeSlot: null,
+        },
+      ],
     });
 
     // staged content is visible in the draft view…

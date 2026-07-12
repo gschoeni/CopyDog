@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/button";
 import type { Block } from "@/lib/copy/blocks";
 import type { DocSection } from "@/lib/content/doc";
 
-import { saveSectionAction, saveStructureAction } from "./actions";
+import { createVersionAction, readVersionAction, saveSectionAction, saveStructureAction } from "./actions";
+import { SectionNotes } from "./section-notes";
+import { VersionSwitcher } from "./version-switcher";
+import { parseSectionMarkdown } from "@/lib/copy/markdown";
 
 export interface EditorSection extends DocSection {
   blocks: Block[];
@@ -80,15 +83,68 @@ export function PageEditor({ projectId, pageSlug, initialSections }: PageEditorP
   const persistStructure = useCallback(
     (next: EditorSection[]) => {
       setSections(next);
-      const structural = next.map(({ slug, title, activeVersion, wireframeSlot }) => ({
+      const structural = next.map(({ slug, title, activeVersion, versions, wireframeSlot }) => ({
         slug,
         title,
         activeVersion,
+        versions,
         wireframeSlot,
       }));
       void trackSave(saveStructureAction({ projectId, pageSlug, sections: structural }));
     },
     [projectId, pageSlug, trackSave],
+  );
+
+  const switchVersion = useCallback(
+    async (sectionSlug: string, versionSlug: string) => {
+      const { markdown } = await readVersionAction({ projectId, pageSlug, sectionSlug, versionSlug });
+      setSections((current) => {
+        const next = current.map((s) =>
+          s.slug === sectionSlug
+            ? { ...s, activeVersion: versionSlug, blocks: parseSectionMarkdown(markdown) }
+            : s,
+        );
+        const structural = next.map(({ slug, title, activeVersion, versions, wireframeSlot }) => ({
+          slug,
+          title,
+          activeVersion,
+          versions,
+          wireframeSlot,
+        }));
+        void trackSave(saveStructureAction({ projectId, pageSlug, sections: structural }));
+        return next;
+      });
+    },
+    [projectId, pageSlug, trackSave],
+  );
+
+  const createVersion = useCallback(
+    async (sectionSlug: string, label: string) => {
+      const section = sections.find((s) => s.slug === sectionSlug);
+      if (!section) return;
+      const { slug, markdown } = await createVersionAction({
+        projectId,
+        pageSlug,
+        sectionSlug,
+        label,
+        copyFrom: section.activeVersion,
+        existingSlugs: section.versions.map((v) => v.slug),
+      });
+      persistStructure(
+        sections.map((s) =>
+          s.slug === sectionSlug
+            ? {
+                ...s,
+                activeVersion: slug,
+                versions: [...s.versions, { slug, label }],
+                // the server copied the source version — render that copy
+                blocks: parseSectionMarkdown(markdown),
+              }
+            : s,
+        ),
+      );
+    },
+    [sections, projectId, pageSlug, persistStructure],
   );
 
   const addSection = useCallback(() => {
@@ -101,6 +157,7 @@ export function PageEditor({ projectId, pageSlug, initialSections }: PageEditorP
       slug,
       title: "Untitled section",
       activeVersion: "original",
+      versions: [{ slug: "original", label: "Original" }],
       wireframeSlot: null,
       blocks: [],
     };
@@ -163,6 +220,8 @@ export function PageEditor({ projectId, pageSlug, initialSections }: PageEditorP
         {sections.map((section, index) => (
           <SectionCard
             key={section.slug}
+            projectId={projectId}
+            pageSlug={pageSlug}
             section={section}
             isFirst={index === 0}
             isLast={index === sections.length - 1}
@@ -170,6 +229,8 @@ export function PageEditor({ projectId, pageSlug, initialSections }: PageEditorP
             onRename={renameSection}
             onDelete={deleteSection}
             onMove={moveSection}
+            onSwitchVersion={switchVersion}
+            onCreateVersion={createVersion}
           />
         ))}
       </div>
@@ -189,6 +250,8 @@ export function PageEditor({ projectId, pageSlug, initialSections }: PageEditorP
 }
 
 function SectionCard({
+  projectId,
+  pageSlug,
   section,
   isFirst,
   isLast,
@@ -196,7 +259,11 @@ function SectionCard({
   onRename,
   onDelete,
   onMove,
+  onSwitchVersion,
+  onCreateVersion,
 }: {
+  projectId: string;
+  pageSlug: string;
   section: EditorSection;
   isFirst: boolean;
   isLast: boolean;
@@ -204,6 +271,8 @@ function SectionCard({
   onRename: (slug: string, title: string) => void;
   onDelete: (slug: string) => void;
   onMove: (slug: string, direction: -1 | 1) => void;
+  onSwitchVersion: (sectionSlug: string, versionSlug: string) => void;
+  onCreateVersion: (sectionSlug: string, label: string) => void;
 }) {
   const handleChange = useCallback(
     (markdown: string) => onMarkdownChange(section, markdown),
@@ -222,6 +291,13 @@ function SectionCard({
           aria-label="Section title"
           className="w-full bg-transparent text-xs font-semibold uppercase tracking-[0.15em] text-ink-tertiary outline-none transition-colors focus:text-ink-secondary"
         />
+        <VersionSwitcher
+          versions={section.versions}
+          activeVersion={section.activeVersion}
+          onSwitch={(slug) => onSwitchVersion(section.slug, slug)}
+          onCreate={(label) => onCreateVersion(section.slug, label)}
+        />
+        <SectionNotes projectId={projectId} pageSlug={pageSlug} sectionSlug={section.slug} />
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/section:opacity-100">
           <IconButton label="Move section up" disabled={isFirst} onClick={() => onMove(section.slug, -1)}>
             ↑
@@ -235,7 +311,12 @@ function SectionCard({
         </div>
       </header>
       <div className="rounded-lg border border-transparent px-4 py-2 transition-colors focus-within:border-border focus-within:bg-surface focus-within:shadow-soft group-hover/section:border-border">
-        <SectionEditor initialBlocks={section.blocks} onMarkdownChange={handleChange} />
+        {/* key remounts the editor when the active version changes */}
+        <SectionEditor
+          key={`${section.slug}:${section.activeVersion}`}
+          initialBlocks={section.blocks}
+          onMarkdownChange={handleChange}
+        />
       </div>
     </section>
   );

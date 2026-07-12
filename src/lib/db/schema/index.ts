@@ -8,3 +8,4 @@
 export * from "./profiles";
 export * from "./projects";
 export * from "./project-members";
+export * from "./comments";
