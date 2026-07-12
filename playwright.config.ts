@@ -27,7 +27,10 @@ export default defineConfig({
     {
       command: "pnpm build && pnpm start --port 3131",
       url: "http://localhost:3131",
-      reuseExistingServer: !process.env.CI,
+      // never reuse a foreign server (e.g. a running `pnpm dev`): tests
+      // against dev mode flake on hydration and pollute your session.
+      // If this errors with "port 3131 is used", stop `pnpm dev` first.
+      reuseExistingServer: false,
       timeout: 180_000,
       env: {
         OXEN_BASE_URL: "http://localhost:3232",
