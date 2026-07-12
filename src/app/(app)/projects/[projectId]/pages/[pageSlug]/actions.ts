@@ -2,8 +2,12 @@
 
 import { z } from "zod";
 
-import { docSectionSchema } from "@/lib/content/doc";
+import { docSectionSchema, type DocSection } from "@/lib/content/doc";
 import { requireProjectAccess } from "@/lib/content/access";
+import { extractSectionsFromHtml, type ExtractedSection } from "@/lib/import/extract";
+import { fetchImportHtml, ImportFetchError } from "@/lib/import/fetch-url";
+import { extractSectionsFromImage, extractSectionsWithLlm } from "@/lib/import/llm-extract";
+import { serializeBlocks } from "@/lib/copy/markdown";
 import {
   readDoc,
   readSectionVersion,
@@ -100,6 +104,99 @@ export async function readVersionAction(input: z.infer<typeof readVersionInput>)
   const { oxen, view } = await requireProjectAccess(projectId);
   const markdown = (await readSectionVersion(oxen, view, pageSlug, sectionSlug, versionSlug)) ?? "";
   return { markdown };
+}
+
+const importPageInput = z.object({
+  projectId: z.uuid(),
+  pageSlug: slugSchema,
+  source: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("url"), url: z.string().max(2000) }),
+    z.object({ kind: z.literal("html"), html: z.string().min(1).max(2_000_000) }),
+    z.object({ kind: z.literal("image"), dataUrl: z.string().startsWith("data:image/").max(12_000_000) }),
+  ]),
+});
+
+export type ImportResult = { ok: true; sections: number } | { ok: false; error: string };
+
+/**
+ * Imports a page from a URL, raw HTML, or a screenshot: replaces the page's
+ * sections with the extracted copy and regenerates the wireframe. LLM does
+ * the extraction when configured (required for images); the deterministic
+ * extractor is the floor for URL/HTML.
+ */
+export async function importPageAction(input: z.infer<typeof importPageInput>): Promise<ImportResult> {
+  const { projectId, pageSlug, source } = importPageInput.parse(input);
+  const { oxen, view } = await requireProjectAccess(projectId);
+  const llm = getLlmClient();
+
+  let extracted: ExtractedSection[];
+  try {
+    if (source.kind === "image") {
+      if (!llm) {
+        return { ok: false, error: "Screenshot import needs an Oxen.ai inference key (OXEN_API_KEY)." };
+      }
+      extracted = await extractSectionsFromImage(llm, source.dataUrl);
+    } else {
+      const html = source.kind === "url" ? await fetchImportHtml(source.url) : source.html;
+      extracted = await extractWithFallback(llm, html);
+    }
+  } catch (err) {
+    if (err instanceof ImportFetchError) return { ok: false, error: err.message };
+    console.error("import failed", err);
+    return { ok: false, error: "Couldn't extract copy from that source." };
+  }
+
+  if (extracted.length === 0) {
+    return { ok: false, error: "No copy found — is that a content page?" };
+  }
+
+  // write section files + doc structure (replaces the page)
+  const sections: DocSection[] = [];
+  const used = new Set<string>();
+  for (const section of extracted) {
+    const base =
+      section.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 40) || "section";
+    let slug = base;
+    for (let n = 2; used.has(slug); n++) slug = `${base}-${n}`;
+    used.add(slug);
+
+    await writeSectionVersion(oxen, view, pageSlug, slug, "original", serializeBlocks(section.blocks));
+    sections.push({
+      slug,
+      title: section.title,
+      activeVersion: "original",
+      versions: [{ slug: "original", label: "Original" }],
+      wireframeSlot: slug,
+    });
+  }
+  await writeDoc(oxen, view, pageSlug, { version: 1, sections });
+
+  // lay it out
+  const html = await generateWireframe(
+    selectGenerator(llm),
+    extracted.map((section, i) => ({ slug: sections[i]!.slug, title: section.title, blocks: section.blocks })),
+  );
+  await writeWireframe(oxen, view, pageSlug, html);
+
+  return { ok: true, sections: sections.length };
+}
+
+async function extractWithFallback(
+  llm: ReturnType<typeof getLlmClient>,
+  html: string,
+): Promise<ExtractedSection[]> {
+  if (llm) {
+    try {
+      return await extractSectionsWithLlm(llm, html);
+    } catch (err) {
+      console.warn("LLM extraction failed; using deterministic extractor", err);
+    }
+  }
+  return extractSectionsFromHtml(html);
 }
 
 const generateWireframeInput = z.object({

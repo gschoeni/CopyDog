@@ -149,3 +149,40 @@ Each phase ends with all checks green and a commit. Work happens on feature bran
 ### Next step
 
 Start Phase 0 on a feature branch.
+
+---
+
+## 2026-07-12 (later) — Build progress: Phases 0–4 complete
+
+Each phase was built on a feature branch and merged to `main` with all checks green
+(`pnpm check` = lint + typecheck + unit tests + build, plus Playwright e2e and
+`supabase db reset`). Review per phase with `git log --first-parent main`.
+
+- **Phase 0 — Foundation** ✅ Next.js 16 + Tailwind 4 scaffold, oklch design tokens
+  with light/dark, typed Oxen HTTP client + in-memory stub, Oxen.ai LLM client,
+  Vitest + Playwright harness, Drizzle + Supabase local. AGENT.md verification
+  checklist filled in. Dev/e2e run on port **3131** (3000 is the local oxen-server).
+- **Phase 1 — Auth & projects** ✅ Magic-link auth (custom token_hash template through
+  Mailpit locally), optional Google OAuth, RLS schema (profiles/projects/members)
+  verified with psql two-user smoke tests, atomic `create_project()`, Oxen repo
+  provisioned + seeded per project.
+- **Phase 2 — Copy editor** ✅ Lexical section editors with custom Eyebrow/Button
+  nodes, deterministic markdown ⇄ blocks round-trip (heavily unit-tested), debounced
+  autosave into the user's Oxen workspace, pages sidebar + add page. e2e runs the
+  full loop against an HTTP-served Oxen stub. **Client validated live** against the
+  local oxen-server 0.50.7 (with get_or_create fallback for older servers).
+- **Phase 3 — Versions & notes** ✅ Alternate versions as sibling files with the
+  version list in doc.json (per-user by construction — see decisions), version
+  switcher UI, notes in Postgres with RLS + resolve flow.
+- **Phase 4 — Wireframe** ✅ Greyscale wf-* design system (swappable module),
+  sanitizer + copy-injection engine (isomorphic; live preview re-renders per
+  keystroke), heuristic generator with LLM designer fallback chain,
+  Copy/Split/Wireframe workbench modes.
+
+**Environment notes:** `.env` now has OXEN_TOKEN/OXEN_NAMESPACE for the **local**
+oxen-server (`.env.local` sets `OXEN_BASE_URL=http://localhost:3000`). `OXEN_API_KEY`
+(Oxen.ai inference) is still a placeholder — LLM features fall back to heuristics
+until it's set.
+
+**Next:** Phase 5 (import pipeline: URL / HTML / image), then publish & proposals,
+chat agent, export & polish.
