@@ -25,3 +25,43 @@ In this file, write working decisions & rationales for future reference.
 **One Oxen repo per project.** Clean permission boundary, clean history, repo name stored on the `projects` row. Pages are directories inside the repo.
 
 **`main`'s `doc.json` names the canonical active version per section.** So "which copy did we choose, and when" is itself versioned content — the decision trail the Why doc asks for. Per-user active pointers (personal previews) live in Postgres because they're queryable app state, not content.
+
+## 2026-07-12 — decisions made while building
+
+**Wireframes are LLM-optional.** Every LLM-powered feature has a deterministic
+floor: rule-based wireframe generation, semantic-HTML import extraction. The LLM
+upgrades quality when `OXEN_API_KEY` is set; nothing breaks when it isn't. This
+also makes e2e deterministic and free.
+
+**Wireframe HTML is sanitized, always.** LLM output and imported HTML pass an
+allowlist sanitizer (structural tags, wf-* classes only, inert links) before
+touching the DOM; copy is escaped at injection. The wireframe renders as
+always-light "paper" in both app themes — it's an artifact, not a UI surface.
+
+**Copy injection is a pure, isomorphic function.** `injectCopy(wireframe,
+sections)` runs server-side and re-runs in the browser on every keystroke, so the
+copy doc and wireframe can never disagree. Slots match by block type in order;
+unfilled slots grey out; extra copy flows to a data-overflow container.
+
+**Proposal merge = squash-apply.** Merging writes the source branch's changed
+files onto main through a temporary workspace, as one commit. No 3-way merge
+machinery; per-author file paths make real conflicts structurally rare. File
+*removals* don't propagate (doc.json controls visibility) — revisit if it bites.
+
+**Cross-user version discovery is a Postgres index written at publish time.**
+Draft-private state stays in files; `section_versions` rows are refreshed from
+doc.json on every publish. Adoption is a file copy from the publisher's branch
+into the adopter's workspace.
+
+**Agent edits are user edits.** The assistant's tools write to the caller's
+draft view through the same store functions as the editor — new versions, never
+overwrites, never main. Conversations are per user+page in Postgres.
+
+**One CSS source of truth for the design system.** `design-system-css.ts` is
+injected as a <style> in the app and inlined into HTML exports, so exported
+pages are pixel-identical standalone documents.
+
+**e2e runs fully offline.** The in-memory Oxen stub is served over HTTP for
+Playwright, including a fixture site for URL import and a scripted
+chat-completions endpoint for the agent loop. Ports: app 3131, stub 3232
+(3000 belongs to the local oxen-server).

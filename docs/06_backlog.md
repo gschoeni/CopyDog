@@ -17,3 +17,20 @@ In this file, write future ideas, links, and things we should explore.
 - Hemingway-style writing feedback in copy mode (readability, passive voice).
 - Eval fixture suite for import quality: a set of reference sites/screenshots with expected section extraction, to regression-test the LLM import pipeline.
 - Workspace cleanup/GC policy for abandoned drafts.
+
+## Added during the v1 build (2026-07-12)
+
+- **Streaming assistant replies** (SSE) — replies currently arrive whole.
+- **True merge / conflict UX** — squash-apply is last-write-wins per file;
+  removals don't propagate to main. Consider Oxen's merge + mergeability APIs.
+- **Realtime presence** — Supabase Realtime pings when teammates publish
+  ("Sarah published 2 new hero versions").
+- **Version rename/delete UI** in the switcher; version history timeline per
+  section (Oxen has the commits already).
+- **Import jobs table + async pipeline** — imports are synchronous server
+  actions today; fine locally, tighter on serverless timeouts.
+- **Block-level wireframe slot re-linking UI** (manual override of the
+  auto-matching).
+- **Workspace GC** — named draft workspaces accumulate per user per project.
+- **Rich text niceties**: links inside paragraphs, keyboard block menu (/),
+  drag-to-reorder sections.
