@@ -186,3 +186,43 @@ until it's set.
 
 **Next:** Phase 5 (import pipeline: URL / HTML / image), then publish & proposals,
 chat agent, export & polish.
+
+---
+
+## 2026-07-12 (evening) — v1 complete: all 8 phases built and green
+
+Final state: **115 unit tests, 15 Playwright e2e tests, lint/typecheck/build clean,
+`supabase db reset` replays 6 migrations cleanly.** Each phase is a `--no-ff` merge
+on `main` (`git log --first-parent main` to review phase by phase).
+
+- **Phase 5 — Import** ✅ URL (SSRF-guarded fetch), pasted HTML, and screenshot
+  import. Deterministic semantic-HTML extractor is the always-available floor;
+  LLM extraction (and vision for screenshots) upgrades it when a key is set.
+  Import replaces the page's sections and regenerates the wireframe.
+- **Phase 6 — Publish & proposals** ✅ The collaboration loop: publish (workspace →
+  draft branch + section_versions index refresh), adopt teammates' published
+  versions from the version switcher, PR-style proposals with live line diffs and
+  squash-apply merge to main, per-page "update from main", invite-by-email
+  (SECURITY DEFINER, no email exposure). e2e covers the full two-user story in two
+  browser sessions.
+- **Phase 7 — Chat agent** ✅ Tool-calling assistant (rewrite_section /
+  add_section / update_wireframe) over the user's private draft, capped agent
+  loop, conversation persisted per user+page. e2e drives the real loop against a
+  scripted chat-completions stub.
+- **Phase 8 — Export & polish** ✅ One-click standalone HTML export (wireframe +
+  active copy + design system inlined, one CSS source of truth for app and
+  export), emoji favicon, docs updated.
+
+### What still needs a human
+
+1. **`OXEN_API_KEY`** in `.env` is a placeholder. Everything degrades gracefully
+   (heuristic wireframes, deterministic import extraction, assistant disabled with
+   a friendly message) — set a real Oxen.ai key to light up LLM wireframe design,
+   LLM import extraction, screenshot import, and the assistant.
+2. **Production Oxen**: dev talks to the local oxen-server; production needs a
+   hub.oxen.ai token + namespace in the deployment env (client already handles
+   both API generations).
+3. **Google OAuth**: implemented but hidden until `NEXT_PUBLIC_AUTH_GOOGLE=1` and
+   provider credentials are configured in Supabase.
+4. **Deploy**: Vercel project + hosted Supabase (apply migrations via CI) — not
+   yet set up.

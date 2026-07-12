@@ -1,5 +1,7 @@
 @import "tailwindcss";
-@import "./wireframe.css";
+/* wireframe design-system styles are injected from
+   src/lib/wireframe/design-system-css.ts in the root layout, so the app
+   and the HTML export share one source of truth */
 
 /* ------------------------------------------------------------------ */
 /* CopyDog design tokens                                               */

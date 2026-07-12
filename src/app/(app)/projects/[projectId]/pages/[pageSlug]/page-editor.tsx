@@ -410,6 +410,7 @@ export function PageEditor({
             hasCopy={sections.length > 0}
             onGenerate={generate}
             bordered={mode === "split"}
+            exportHref={`/projects/${projectId}/pages/${pageSlug}/export`}
           />
         )}
 
@@ -461,18 +462,27 @@ function WireframePane({
   hasCopy,
   onGenerate,
   bordered,
+  exportHref,
 }: {
   preview: string | null;
   generating: boolean;
   hasCopy: boolean;
   onGenerate: () => void;
   bordered: boolean;
+  exportHref: string;
 }) {
   return (
     <div className={`relative min-w-0 flex-1 overflow-y-auto bg-surface-sunken ${bordered ? "border-l border-border" : ""}`}>
       {preview ? (
         <>
-          <div className="pointer-events-none sticky top-0 z-10 flex justify-end p-3">
+          <div className="pointer-events-none sticky top-0 z-10 flex justify-end gap-2 p-3">
+            <a
+              href={exportHref}
+              download
+              className="pointer-events-auto inline-flex h-8 items-center rounded-md px-3 text-[13px] font-medium text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
+            >
+              Export HTML
+            </a>
             <Button
               variant="secondary"
               size="sm"
