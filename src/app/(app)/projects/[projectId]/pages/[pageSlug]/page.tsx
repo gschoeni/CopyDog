@@ -1,7 +1,13 @@
 import { notFound } from "next/navigation";
 
 import { requireProjectAccess } from "@/lib/content/access";
-import { readDoc, readSectionVersion, readSite, readWireframe } from "@/lib/content/store";
+import {
+  hasUnpublishedChanges,
+  readDoc,
+  readSectionVersion,
+  readSite,
+  readWireframe,
+} from "@/lib/content/store";
 import { parseSectionMarkdown } from "@/lib/copy/markdown";
 
 import { PageEditor, type EditorSection } from "./page-editor";
@@ -31,8 +37,9 @@ export default async function PageEditorRoute({
   if (!page) notFound();
 
   const doc = await readDoc(oxen, view, pageSlug);
-  const [wireframe, sections] = await Promise.all([
+  const [wireframe, dirty, sections] = await Promise.all([
     readWireframe(oxen, view, pageSlug),
+    hasUnpublishedChanges(oxen, view),
     Promise.all(
       doc.sections.map(async (section): Promise<EditorSection> => {
         const markdown = await readSectionVersion(oxen, view, pageSlug, section.slug, section.activeVersion);
@@ -54,6 +61,7 @@ export default async function PageEditorRoute({
         pageTitle={page.title}
         initialSections={sections}
         initialWireframe={wireframe}
+        initialDirty={dirty}
       />
     </div>
   );

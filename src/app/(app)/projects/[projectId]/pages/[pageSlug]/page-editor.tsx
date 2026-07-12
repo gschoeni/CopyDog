@@ -19,8 +19,10 @@ import {
   saveStructureAction,
 } from "./actions";
 import { ImportDialog } from "./import-dialog";
+import { PublishControls } from "./publish-controls";
 import { SectionNotes } from "./section-notes";
 import { VersionSwitcher } from "./version-switcher";
+import { adoptVersionAction } from "./actions";
 
 export interface EditorSection extends DocSection {
   blocks: Block[];
@@ -33,6 +35,7 @@ export interface PageEditorProps {
   pageTitle: string;
   initialSections: EditorSection[];
   initialWireframe: string | null;
+  initialDirty: boolean;
 }
 
 type SaveState = "saved" | "saving" | "error";
@@ -53,6 +56,7 @@ export function PageEditor({
   pageTitle,
   initialSections,
   initialWireframe,
+  initialDirty,
 }: PageEditorProps) {
   const router = useRouter();
   const [sections, setSections] = useState<EditorSection[]>(initialSections);
@@ -61,6 +65,7 @@ export function PageEditor({
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [generating, setGenerating] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [dirty, setDirty] = useState(initialDirty);
 
   // restore the last view mode per project; deferred a microtask so the
   // update lands after hydration commit (and before paint — no flash)
@@ -95,6 +100,7 @@ export function PageEditor({
       try {
         await save;
         pendingSaves.current -= 1;
+        setDirty(true);
         settle();
       } catch {
         pendingSaves.current -= 1;
@@ -168,6 +174,35 @@ export function PageEditor({
       });
     },
     [projectId, pageSlug, trackSave],
+  );
+
+  const adoptTeammateVersion = useCallback(
+    async (sectionSlug: string, source: { authorId: string; versionSlug: string; label: string }) => {
+      const section = sections.find((s) => s.slug === sectionSlug);
+      if (!section) return;
+      const { slug, markdown } = await adoptVersionAction({
+        projectId,
+        pageSlug,
+        sectionSlug,
+        versionSlug: source.versionSlug,
+        authorId: source.authorId,
+        label: source.label,
+        existingSlugs: section.versions.map((v) => v.slug),
+      });
+      persistStructure(
+        sections.map((s) =>
+          s.slug === sectionSlug
+            ? {
+                ...s,
+                activeVersion: slug,
+                versions: [...s.versions, { slug, label: source.label }],
+                blocks: parseSectionMarkdown(markdown),
+              }
+            : s,
+        ),
+      );
+    },
+    [sections, projectId, pageSlug, persistStructure],
   );
 
   const createVersion = useCallback(
@@ -292,6 +327,7 @@ export function PageEditor({
           <Button variant="ghost" size="sm" onClick={() => setImporting(true)}>
             Import…
           </Button>
+          <PublishControls projectId={projectId} pageSlug={pageSlug} dirty={dirty} onPublished={() => setDirty(false)} />
           <ModeToggle mode={mode} onChange={changeMode} />
         </div>
       </div>
@@ -328,6 +364,7 @@ export function PageEditor({
                     onMove={moveSection}
                     onSwitchVersion={switchVersion}
                     onCreateVersion={createVersion}
+                    onAdoptVersion={adoptTeammateVersion}
                   />
                 ))}
               </div>
@@ -457,6 +494,7 @@ function SectionCard({
   onMove,
   onSwitchVersion,
   onCreateVersion,
+  onAdoptVersion,
 }: {
   projectId: string;
   pageSlug: string;
@@ -469,6 +507,7 @@ function SectionCard({
   onMove: (slug: string, direction: -1 | 1) => void;
   onSwitchVersion: (sectionSlug: string, versionSlug: string) => void;
   onCreateVersion: (sectionSlug: string, label: string) => void;
+  onAdoptVersion: (sectionSlug: string, source: { authorId: string; versionSlug: string; label: string }) => void;
 }) {
   const handleChange = useCallback(
     (markdown: string) => onMarkdownChange(section, markdown),
@@ -488,10 +527,14 @@ function SectionCard({
           className="w-full bg-transparent text-xs font-semibold uppercase tracking-[0.15em] text-ink-tertiary outline-none transition-colors focus:text-ink-secondary"
         />
         <VersionSwitcher
+          projectId={projectId}
+          pageSlug={pageSlug}
+          sectionSlug={section.slug}
           versions={section.versions}
           activeVersion={section.activeVersion}
           onSwitch={(slug) => onSwitchVersion(section.slug, slug)}
           onCreate={(label) => onCreateVersion(section.slug, label)}
+          onAdopt={(source) => onAdoptVersion(section.slug, source)}
         />
         <SectionNotes projectId={projectId} pageSlug={pageSlug} sectionSlug={section.slug} />
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/section:opacity-100">

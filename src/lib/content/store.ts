@@ -112,3 +112,117 @@ export async function publishDraft(
 ): Promise<void> {
   await oxen.commitWorkspace(view.repo, view.workspaceId, view.branch, options);
 }
+
+/** True when the workspace holds edits that haven't been published yet. */
+export async function hasUnpublishedChanges(oxen: OxenClient, view: DraftView): Promise<boolean> {
+  const changes = await oxen.workspaceChanges(view.repo, view.workspaceId);
+  return changes.added.length + changes.modified.length + changes.removed.length > 0;
+}
+
+/**
+ * Copies a version file from another user's *published* branch into this
+ * user's workspace as a new alternate version. Adoption is just a file
+ * copy — the whole point of files-as-versions.
+ */
+export async function adoptVersion(
+  oxen: OxenClient,
+  view: DraftView,
+  options: { fromBranch: string; pageSlug: string; sectionSlug: string; versionSlug: string; asVersionSlug: string },
+): Promise<string> {
+  const { fromBranch, pageSlug, sectionSlug, versionSlug, asVersionSlug } = options;
+  const markdown = await oxen.readFile(view.repo, fromBranch, sectionVersionPath(pageSlug, sectionSlug, versionSlug));
+  await writeSectionVersion(oxen, view, pageSlug, sectionSlug, asVersionSlug, markdown);
+  return markdown;
+}
+
+/** All file paths under a revision, walked recursively. */
+export async function listFilesAt(oxen: OxenClient, repo: string, revision: string, dir = ""): Promise<string[]> {
+  const listing = await oxen.listDir(repo, revision, dir);
+  const files: string[] = [];
+  for (const entry of listing.entries) {
+    const path = dir ? `${dir}/${entry.filename}` : entry.filename;
+    if (entry.is_dir) {
+      files.push(...(await listFilesAt(oxen, repo, revision, path)));
+    } else {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+export interface BranchComparison {
+  /** path -> { ours, theirs } where either side may be null (added/removed) */
+  changed: Map<string, { source: string | null; target: string | null }>;
+}
+
+/** Content-level comparison of two revisions (small-repo simple walk). */
+export async function compareRevisions(
+  oxen: OxenClient,
+  repo: string,
+  sourceRevision: string,
+  targetRevision: string,
+): Promise<BranchComparison> {
+  const [sourceFiles, targetFiles] = await Promise.all([
+    listFilesAt(oxen, repo, sourceRevision),
+    listFilesAt(oxen, repo, targetRevision),
+  ]);
+  const all = new Set([...sourceFiles, ...targetFiles]);
+  const changed = new Map<string, { source: string | null; target: string | null }>();
+
+  await Promise.all(
+    [...all].map(async (path) => {
+      const [source, target] = await Promise.all([
+        sourceFiles.includes(path) ? oxen.readFile(repo, sourceRevision, path) : Promise.resolve(null),
+        targetFiles.includes(path) ? oxen.readFile(repo, targetRevision, path) : Promise.resolve(null),
+      ]);
+      if (source !== target) changed.set(path, { source, target });
+    }),
+  );
+
+  return { changed };
+}
+
+/**
+ * Applies a source branch's state onto main as one squash commit
+ * ("merge" for proposals). Files that differ are written through a
+ * temporary workspace on main; the workspace is cleaned up afterwards.
+ */
+export async function applyBranchToMain(
+  oxen: OxenClient,
+  repo: string,
+  sourceBranch: string,
+  options: { message: string; author: CommitAuthor },
+): Promise<string> {
+  const comparison = await compareRevisions(oxen, repo, sourceBranch, "main");
+  const workspaceId = `merge-${Math.random().toString(36).slice(2, 10)}`;
+  await oxen.getOrCreateWorkspace(repo, { workspaceId, branchName: "main", name: workspaceId });
+  try {
+    let wrote = 0;
+    for (const [path, { source }] of comparison.changed) {
+      if (source === null) continue; // v1: removals stay invisible via doc.json
+      await oxen.writeWorkspaceFile(repo, workspaceId, path, source);
+      wrote += 1;
+    }
+    if (wrote === 0) {
+      throw new Error("nothing to merge");
+    }
+    const commit = await oxen.commitWorkspace(repo, workspaceId, "main", options);
+    return commit.id;
+  } finally {
+    await oxen.deleteWorkspace(repo, workspaceId).catch(() => {});
+  }
+}
+
+/**
+ * Replaces one page of the user's draft with main's published state
+ * (doc.json, wireframe, and every section file main knows about).
+ * Explicitly destructive for that page's unpublished edits — callers confirm.
+ */
+export async function syncPageFromMain(oxen: OxenClient, view: DraftView, pageSlug: string): Promise<void> {
+  const prefix = `pages/${pageSlug}/`;
+  const files = (await listFilesAt(oxen, view.repo, "main", `pages/${pageSlug}`)).filter((p) => p.startsWith(prefix));
+  for (const path of files) {
+    const content = await oxen.readFile(view.repo, "main", path);
+    await oxen.writeWorkspaceFile(view.repo, view.workspaceId, path, content);
+  }
+}
