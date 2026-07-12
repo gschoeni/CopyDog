@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 
 export default function Home() {
@@ -25,6 +27,12 @@ export default function Home() {
         <p className="mt-6 max-w-md text-balance text-lg leading-relaxed text-ink-secondary">
           A shared home for website copy and greyscale wireframes — so the dance between them never loses a step.
         </p>
+        <Link
+          href="/projects"
+          className="mt-10 inline-flex h-11 items-center rounded-md bg-accent px-6 text-sm font-medium text-accent-fg transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          Open CopyDog
+        </Link>
       </main>
     </div>
   );

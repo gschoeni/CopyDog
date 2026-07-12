@@ -4,7 +4,7 @@
   "private": true,
   "description": "The collaborative copy editor and wireframe tool",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3131",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -26,6 +26,7 @@
     "postgres": "^3.4.9",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "server-only": "^0.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
