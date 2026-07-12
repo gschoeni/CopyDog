@@ -110,6 +110,9 @@ After every change, run these in order:
 
 TODO: Fill this in
 
+### Environment Variables
+
+If you need to test with any environment variables, you can find them in the .env file.
 
 ## Relevant Documentation
 
