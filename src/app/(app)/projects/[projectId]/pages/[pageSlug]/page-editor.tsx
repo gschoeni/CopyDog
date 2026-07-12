@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { SectionEditor } from "@/components/editor/section-editor";
 import { Button } from "@/components/ui/button";
+import { ImportIcon, SparklesIcon } from "@/components/ui/icons";
 import type { Block } from "@/lib/copy/blocks";
 import type { DocSection } from "@/lib/content/doc";
 import { parseSectionMarkdown, serializeBlocks } from "@/lib/copy/markdown";
@@ -473,16 +474,19 @@ export function PageEditor({
           {statusLabel}
         </p>
         <div className="flex shrink-0 items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setImporting(true)}>
-            Import…
+          {/* ellipsis: signals a dialog, and keeps this distinct from the dialog's Import submit */}
+          <Button variant="ghost" size="icon" onClick={() => setImporting(true)} aria-label="Import…" title="Import…">
+            <ImportIcon />
           </Button>
           <Button
             variant={assistantOpen ? "secondary" : "ghost"}
-            size="sm"
+            size="icon"
             onClick={toggleAssistant}
             aria-pressed={assistantOpen}
+            aria-label="Assistant"
+            title="Assistant"
           >
-            Assistant
+            <SparklesIcon />
           </Button>
           <PublishControls projectId={projectId} pageSlug={pageSlug} dirty={dirty} onPublished={() => setDirty(false)} />
           <ModeToggle mode={mode} onChange={changeMode} />

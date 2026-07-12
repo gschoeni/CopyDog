@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ProposeIcon, PublishIcon, SyncIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 
 import { proposeAction, publishAction, syncPageFromMainAction } from "./actions";
@@ -75,15 +76,28 @@ export function PublishControls({
 
   return (
     <>
-      <Button variant="ghost" size="sm" onClick={() => setDialog("sync")} title="Replace this page in your draft with the team's published copy">
-        Update from main
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setDialog("sync")}
+        aria-label="Update from main"
+        title="Update from main"
+      >
+        <SyncIcon />
       </Button>
-      <Button variant="secondary" size="sm" onClick={() => setDialog("publish")} className="relative">
-        Publish
+      <Button
+        variant="secondary"
+        size="icon"
+        onClick={() => setDialog("publish")}
+        className="relative"
+        aria-label="Publish"
+        title="Publish"
+      >
+        <PublishIcon />
         {dirty && <span aria-label="Unpublished changes" className="absolute -right-1 -top-1 size-2 rounded-full bg-accent" />}
       </Button>
-      <Button variant="secondary" size="sm" onClick={() => setDialog("propose")}>
-        Propose
+      <Button variant="secondary" size="icon" onClick={() => setDialog("propose")} aria-label="Propose" title="Propose">
+        <ProposeIcon />
       </Button>
 
       {dialog && (

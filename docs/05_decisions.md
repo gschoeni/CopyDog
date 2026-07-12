@@ -65,3 +65,10 @@ pages are pixel-identical standalone documents.
 Playwright, including a fixture site for URL import and a scripted
 chat-completions endpoint for the agent loop. Ports: app 3131, stub 3232
 (3000 belongs to the local oxen-server).
+
+**Toolbar actions are icons, not text.** Founder call (2026-07-12): editor
+chrome (Import, Assistant, Update from main, Publish, Propose) renders as
+icon-only buttons for a clean, minimal look. Icons are hand-rolled stroke SVGs
+in `src/components/ui/icons.tsx` — no icon library dependency — used via
+`<Button size="icon">`, always with `aria-label` + `title` naming the action.
+Dialogs and forms keep text labels, where prose context does the explaining.
