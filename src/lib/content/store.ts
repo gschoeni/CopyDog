@@ -3,7 +3,14 @@ import { OxenError } from "@/lib/oxen/client";
 import type { CommitAuthor } from "@/lib/oxen/types";
 
 import { parseDocFile, serializeDocFile, type DocFile } from "./doc";
-import { SITE_FILE_PATH, pageDocPath, parseSiteFile, sectionVersionPath, type SiteFile } from "./site";
+import {
+  SITE_FILE_PATH,
+  pageDocPath,
+  pageWireframePath,
+  parseSiteFile,
+  sectionVersionPath,
+  type SiteFile,
+} from "./site";
 
 /**
  * A user's *draft view* of a project: their named workspace pinned to their
@@ -76,6 +83,25 @@ export async function writeSectionVersion(
     sectionVersionPath(pageSlug, sectionSlug, versionSlug),
     markdown,
   );
+}
+
+/** Returns the page's wireframe HTML, or null if none has been created yet. */
+export async function readWireframe(oxen: OxenClient, view: DraftView, pageSlug: string): Promise<string | null> {
+  try {
+    return await oxen.readWorkspaceFile(view.repo, view.workspaceId, pageWireframePath(pageSlug));
+  } catch (err) {
+    if (err instanceof OxenError && err.status === 404) return null;
+    throw err;
+  }
+}
+
+export async function writeWireframe(
+  oxen: OxenClient,
+  view: DraftView,
+  pageSlug: string,
+  html: string,
+): Promise<void> {
+  await oxen.writeWorkspaceFile(view.repo, view.workspaceId, pageWireframePath(pageSlug), html);
 }
 
 /** Publishes everything staged in the draft workspace to the user's draft branch. */

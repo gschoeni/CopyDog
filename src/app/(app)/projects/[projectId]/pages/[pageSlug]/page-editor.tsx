@@ -1,16 +1,24 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { SectionEditor } from "@/components/editor/section-editor";
 import { Button } from "@/components/ui/button";
 import type { Block } from "@/lib/copy/blocks";
 import type { DocSection } from "@/lib/content/doc";
+import { parseSectionMarkdown } from "@/lib/copy/markdown";
+import { injectCopy } from "@/lib/wireframe/inject";
 
-import { createVersionAction, readVersionAction, saveSectionAction, saveStructureAction } from "./actions";
+import {
+  createVersionAction,
+  generateWireframeAction,
+  readVersionAction,
+  saveSectionAction,
+  saveStructureAction,
+} from "./actions";
 import { SectionNotes } from "./section-notes";
 import { VersionSwitcher } from "./version-switcher";
-import { parseSectionMarkdown } from "@/lib/copy/markdown";
 
 export interface EditorSection extends DocSection {
   blocks: Block[];
@@ -18,17 +26,54 @@ export interface EditorSection extends DocSection {
 
 export interface PageEditorProps {
   projectId: string;
+  projectName: string;
   pageSlug: string;
+  pageTitle: string;
   initialSections: EditorSection[];
+  initialWireframe: string | null;
 }
 
 type SaveState = "saved" | "saving" | "error";
+type ViewMode = "copy" | "split" | "wireframe";
 
 const AUTOSAVE_DELAY_MS = 800;
 
-export function PageEditor({ projectId, pageSlug, initialSections }: PageEditorProps) {
+/**
+ * The workbench: one surface that toggles between the copy document, the
+ * greyscale wireframe, and a side-by-side of both. The wireframe pane is a
+ * pure projection — `injectCopy(wireframe, sections)` re-runs on every
+ * keystroke, so the two views can never disagree.
+ */
+export function PageEditor({
+  projectId,
+  projectName,
+  pageSlug,
+  pageTitle,
+  initialSections,
+  initialWireframe,
+}: PageEditorProps) {
   const [sections, setSections] = useState<EditorSection[]>(initialSections);
+  const [wireframe, setWireframe] = useState<string | null>(initialWireframe);
+  const [mode, setMode] = useState<ViewMode>("copy");
   const [saveState, setSaveState] = useState<SaveState>("saved");
+  const [generating, setGenerating] = useState(false);
+
+  // restore the last view mode per project; deferred a microtask so the
+  // update lands after hydration commit (and before paint — no flash)
+  useEffect(() => {
+    const stored = localStorage.getItem(`copydog:mode:${projectId}`);
+    if (stored === "copy" || stored === "split" || stored === "wireframe") {
+      queueMicrotask(() => setMode(stored));
+    }
+  }, [projectId]);
+
+  const changeMode = useCallback(
+    (next: ViewMode) => {
+      setMode(next);
+      localStorage.setItem(`copydog:mode:${projectId}`, next);
+    },
+    [projectId],
+  );
 
   const pendingSaves = useRef(0);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -58,6 +103,11 @@ export function PageEditor({ projectId, pageSlug, initialSections }: PageEditorP
   /** Debounced per section, so a burst of typing is one workspace write. */
   const handleMarkdownChange = useCallback(
     (section: EditorSection, markdown: string) => {
+      // live preview: the wireframe projection updates immediately
+      setSections((current) =>
+        current.map((s) => (s.slug === section.slug ? { ...s, blocks: parseSectionMarkdown(markdown) } : s)),
+      );
+
       const existing = timers.current.get(section.slug);
       if (existing) clearTimeout(existing);
       setSaveState("saving");
@@ -100,9 +150,7 @@ export function PageEditor({ projectId, pageSlug, initialSections }: PageEditorP
       const { markdown } = await readVersionAction({ projectId, pageSlug, sectionSlug, versionSlug });
       setSections((current) => {
         const next = current.map((s) =>
-          s.slug === sectionSlug
-            ? { ...s, activeVersion: versionSlug, blocks: parseSectionMarkdown(markdown) }
-            : s,
+          s.slug === sectionSlug ? { ...s, activeVersion: versionSlug, blocks: parseSectionMarkdown(markdown) } : s,
         );
         const structural = next.map(({ slug, title, activeVersion, versions, wireframeSlot }) => ({
           slug,
@@ -163,9 +211,7 @@ export function PageEditor({ projectId, pageSlug, initialSections }: PageEditorP
     };
     persistStructure([...sections, section]);
     // seed the version file so it exists even if the user never types
-    void trackSave(
-      saveSectionAction({ projectId, pageSlug, sectionSlug: slug, versionSlug: "original", markdown: "" }),
-    );
+    void trackSave(saveSectionAction({ projectId, pageSlug, sectionSlug: slug, versionSlug: "original", markdown: "" }));
   }, [sections, persistStructure, projectId, pageSlug, trackSave]);
 
   const renameSection = useCallback(
@@ -195,56 +241,184 @@ export function PageEditor({ projectId, pageSlug, initialSections }: PageEditorP
     [sections, persistStructure],
   );
 
+  const generate = useCallback(async () => {
+    setGenerating(true);
+    try {
+      const { html } = await generateWireframeAction({ projectId, pageSlug });
+      setWireframe(html);
+      if (mode === "copy") changeMode("split");
+    } finally {
+      setGenerating(false);
+    }
+  }, [projectId, pageSlug, mode, changeMode]);
+
   // flush pending timers on unmount so the last keystrokes still save
   useEffect(() => {
     const activeTimers = timers.current;
     return () => activeTimers.forEach((t) => clearTimeout(t));
   }, []);
 
-  const statusLabel = useMemo(() => {
-    if (saveState === "saving") return "Saving…";
-    if (saveState === "error") return "Couldn't save — retrying on next edit";
-    return "Saved to your draft";
-  }, [saveState]);
+  /** The live projection: wireframe + current copy, recomputed on each edit. */
+  const preview = useMemo(
+    () => (wireframe ? injectCopy(wireframe, sections) : null),
+    [wireframe, sections],
+  );
+
+  const statusLabel =
+    saveState === "saving" ? "Saving…" : saveState === "error" ? "Couldn't save — retrying on next edit" : "Saved to your draft";
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-6 pb-32 pt-10">
-      <p
-        aria-live="polite"
-        className={`mb-8 text-xs ${saveState === "error" ? "text-danger" : "text-ink-tertiary"}`}
-      >
-        {statusLabel}
-      </p>
-
-      <div className="space-y-10">
-        {sections.map((section, index) => (
-          <SectionCard
-            key={section.slug}
-            projectId={projectId}
-            pageSlug={pageSlug}
-            section={section}
-            isFirst={index === 0}
-            isLast={index === sections.length - 1}
-            onMarkdownChange={handleMarkdownChange}
-            onRename={renameSection}
-            onDelete={deleteSection}
-            onMove={moveSection}
-            onSwitchVersion={switchVersion}
-            onCreateVersion={createVersion}
-          />
-        ))}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-2.5">
+        <nav className="min-w-0 truncate text-xs text-ink-tertiary">
+          <Link href="/projects" className="hover:text-ink">
+            Projects
+          </Link>
+          <span className="mx-1.5">/</span>
+          <Link href={`/projects/${projectId}`} className="hover:text-ink">
+            {projectName}
+          </Link>
+          <span className="mx-1.5">/</span>
+          <span className="text-ink-secondary">{pageTitle}</span>
+        </nav>
+        <p aria-live="polite" className={`hidden shrink-0 text-xs sm:block ${saveState === "error" ? "text-danger" : "text-ink-tertiary"}`}>
+          {statusLabel}
+        </p>
+        <ModeToggle mode={mode} onChange={changeMode} />
       </div>
 
-      <div className="mt-10">
-        <Button variant="secondary" size="sm" onClick={addSection}>
-          + Add section
-        </Button>
-        {sections.length === 0 && (
-          <p className="mt-3 text-sm text-ink-tertiary">
-            Sections group your copy — a hero, a feature list, a call to action — and later map to wireframe slots.
-          </p>
+      <div className={`min-h-0 flex-1 ${mode === "split" ? "grid grid-cols-2" : "flex"}`}>
+        {mode !== "wireframe" && (
+          <div className="min-w-0 flex-1 overflow-y-auto">
+            <div className={`mx-auto w-full px-6 pb-32 pt-8 ${mode === "split" ? "max-w-xl" : "max-w-2xl"}`}>
+              <div className="space-y-10">
+                {sections.map((section, index) => (
+                  <SectionCard
+                    key={section.slug}
+                    projectId={projectId}
+                    pageSlug={pageSlug}
+                    section={section}
+                    isFirst={index === 0}
+                    isLast={index === sections.length - 1}
+                    onMarkdownChange={handleMarkdownChange}
+                    onRename={renameSection}
+                    onDelete={deleteSection}
+                    onMove={moveSection}
+                    onSwitchVersion={switchVersion}
+                    onCreateVersion={createVersion}
+                  />
+                ))}
+              </div>
+              <div className="mt-10">
+                <Button variant="secondary" size="sm" onClick={addSection}>
+                  + Add section
+                </Button>
+                {sections.length === 0 && (
+                  <p className="mt-3 text-sm text-ink-tertiary">
+                    Sections group your copy — a hero, a feature list, a call to action — and later map to wireframe
+                    slots.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {mode !== "copy" && (
+          <WireframePane
+            preview={preview}
+            generating={generating}
+            hasCopy={sections.length > 0}
+            onGenerate={generate}
+            bordered={mode === "split"}
+          />
         )}
       </div>
+    </div>
+  );
+}
+
+function ModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewMode) => void }) {
+  const options: { value: ViewMode; label: string }[] = [
+    { value: "copy", label: "Copy" },
+    { value: "split", label: "Split" },
+    { value: "wireframe", label: "Wireframe" },
+  ];
+  return (
+    <div role="tablist" aria-label="View mode" className="flex shrink-0 rounded-lg border border-border bg-surface-sunken p-0.5">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          role="tab"
+          aria-selected={mode === option.value}
+          onClick={() => onChange(option.value)}
+          className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+            mode === option.value ? "bg-surface text-ink shadow-soft" : "text-ink-tertiary hover:text-ink-secondary"
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function WireframePane({
+  preview,
+  generating,
+  hasCopy,
+  onGenerate,
+  bordered,
+}: {
+  preview: string | null;
+  generating: boolean;
+  hasCopy: boolean;
+  onGenerate: () => void;
+  bordered: boolean;
+}) {
+  return (
+    <div className={`relative min-w-0 flex-1 overflow-y-auto bg-surface-sunken ${bordered ? "border-l border-border" : ""}`}>
+      {preview ? (
+        <>
+          <div className="pointer-events-none sticky top-0 z-10 flex justify-end p-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={onGenerate}
+              disabled={generating}
+              className="pointer-events-auto"
+            >
+              {generating ? "Designing…" : "Regenerate layout"}
+            </Button>
+          </div>
+          <div className="px-6 pb-16">
+            <div
+              className="wf-root mx-auto max-w-5xl overflow-hidden rounded-lg border border-border shadow-soft"
+              // sanitized at generation; copy is escaped during injection
+              dangerouslySetInnerHTML={{ __html: preview }}
+            />
+          </div>
+        </>
+      ) : (
+        <div className="flex h-full min-h-64 items-center justify-center p-10">
+          <div className="max-w-sm text-center">
+            <div className="wf-root mx-auto mb-5 w-40 rounded-md border border-border p-3" aria-hidden>
+              <div className="wf-empty mb-2 w-2/3" style={{ minHeight: "0.8em" }} />
+              <div className="wf-empty mb-2" style={{ minHeight: "0.5em" }} />
+              <div className="wf-empty w-1/2" style={{ minHeight: "0.5em" }} />
+            </div>
+            <h2 className="text-sm font-semibold">No wireframe yet</h2>
+            <p className="mt-1.5 text-sm leading-relaxed text-ink-secondary">
+              {hasCopy
+                ? "Turn your copy into a greyscale layout. Every section becomes a designed block you can keep editing."
+                : "Write some copy first — then CopyDog can lay it out as a wireframe."}
+            </p>
+            <Button className="mt-5" onClick={onGenerate} disabled={generating || !hasCopy}>
+              {generating ? "Designing…" : "Generate wireframe from copy"}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -311,7 +485,8 @@ function SectionCard({
         </div>
       </header>
       <div className="rounded-lg border border-transparent px-4 py-2 transition-colors focus-within:border-border focus-within:bg-surface focus-within:shadow-soft group-hover/section:border-border">
-        {/* key remounts the editor when the active version changes */}
+        {/* uncontrolled editor: the key remounts it with fresh blocks when the
+            active version changes (state updates land before the remount) */}
         <SectionEditor
           key={`${section.slug}:${section.activeVersion}`}
           initialBlocks={section.blocks}

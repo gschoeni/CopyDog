@@ -4,8 +4,19 @@ import { z } from "zod";
 
 import { docSectionSchema } from "@/lib/content/doc";
 import { requireProjectAccess } from "@/lib/content/access";
-import { readSectionVersion, readSite, writeDoc, writeSectionVersion } from "@/lib/content/store";
+import {
+  readDoc,
+  readSectionVersion,
+  readSite,
+  writeDoc,
+  writeSectionVersion,
+  writeWireframe,
+} from "@/lib/content/store";
 import { SITE_FILE_PATH, serializeSiteFile } from "@/lib/content/site";
+import { parseSectionMarkdown } from "@/lib/copy/markdown";
+import { getLlmClient } from "@/lib/llm";
+import { generateWireframe, selectGenerator } from "@/lib/wireframe/generate";
+import type { SectionForLayout } from "@/lib/wireframe/heuristic";
 
 /**
  * Editor autosave actions. All writes land in the calling user's Oxen
@@ -89,6 +100,45 @@ export async function readVersionAction(input: z.infer<typeof readVersionInput>)
   const { oxen, view } = await requireProjectAccess(projectId);
   const markdown = (await readSectionVersion(oxen, view, pageSlug, sectionSlug, versionSlug)) ?? "";
   return { markdown };
+}
+
+const generateWireframeInput = z.object({
+  projectId: z.uuid(),
+  pageSlug: slugSchema,
+});
+
+/**
+ * Generates (or regenerates) the page's wireframe from its active copy and
+ * stages it in the caller's workspace. LLM-designed when a key is
+ * configured; rule-based otherwise. Returns the wireframe HTML.
+ */
+export async function generateWireframeAction(
+  input: z.infer<typeof generateWireframeInput>,
+): Promise<{ html: string }> {
+  const { projectId, pageSlug } = generateWireframeInput.parse(input);
+  const { oxen, view } = await requireProjectAccess(projectId);
+
+  const doc = await readDoc(oxen, view, pageSlug);
+  const sections: SectionForLayout[] = await Promise.all(
+    doc.sections.map(async (section) => ({
+      slug: section.slug,
+      title: section.title,
+      blocks: parseSectionMarkdown(
+        (await readSectionVersion(oxen, view, pageSlug, section.slug, section.activeVersion)) ?? "",
+      ),
+    })),
+  );
+
+  const html = await generateWireframe(selectGenerator(getLlmClient()), sections);
+  await writeWireframe(oxen, view, pageSlug, html);
+
+  // sections are now bound to their slots (slot id == section slug)
+  await writeDoc(oxen, view, pageSlug, {
+    version: 1,
+    sections: doc.sections.map((s) => ({ ...s, wireframeSlot: s.slug })),
+  });
+
+  return { html };
 }
 
 const addPageInput = z.object({
