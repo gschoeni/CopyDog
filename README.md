@@ -28,6 +28,53 @@ The Notion-style markdown editor has sections that contain copy and a type such 
 
 The LLM agent can be prompted to update the layout of the wireframe. The prompt can either be text, an image, a sitemap, or a url that we crawl. This gives the user flexibility in how the import wireframes, then start iterating on the layout and copy at the same time.
 
+## Running the App Locally (Development)
+
+CopyDog is a Next.js app backed by two services: Supabase (Postgres + auth, run locally in Docker) and an Oxen server (the versioned content store). You need all three running for the app to work.
+
+**Prerequisites:** Node.js with [pnpm](https://pnpm.io), Docker, and the [Supabase CLI](https://supabase.com/docs/guides/cli).
+
+1. **Install dependencies**
+
+   ```sh
+   pnpm install
+   ```
+
+2. **Start the local Supabase stack** (Postgres, Auth, Studio in Docker)
+
+   ```sh
+   supabase start
+   ```
+
+   `supabase status` prints the local URL and keys. Put them in `.env.local` (gitignored — these are the well-known local-dev keys, not secrets):
+
+   ```sh
+   NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<anon key from `supabase status`>
+   SUPABASE_SERVICE_ROLE_KEY=<service_role key from `supabase status`>
+   DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+   ```
+
+3. **Apply database migrations**
+
+   ```sh
+   pnpm db:reset
+   ```
+
+   This rebuilds the local database and replays every migration from scratch. If it fails, a migration is broken — fix that before going further.
+
+4. **Point at an Oxen server.** The app reads `OXEN_TOKEN` and `OXEN_NAMESPACE` from `.env` (see `src/lib/env.ts` for the full set of server-side variables). By default that targets [OxenHub](https://docs.oxen.ai); for fully local development, run a local `oxen-server` (conventionally on port 3000) and set `OXEN_BASE_URL=http://localhost:3000` in `.env.local`.
+
+5. **Start the dev server**
+
+   ```sh
+   pnpm dev
+   ```
+
+   The app runs at **http://localhost:3131** (port 3131 is intentional — 3000 is usually taken by the local `oxen-server`).
+
+Before committing, run `pnpm check` (lint, typecheck, unit tests, build). See [AGENT.md](AGENT.md) for the full testing and verification workflow.
+
 ## Agents & Code Contributions
 
 Refer to [AGENT.md](AGENT.md) for how to contribute or write code for this project.
