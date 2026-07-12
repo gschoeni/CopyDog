@@ -5,4 +5,6 @@
  * same file as the table they protect.
  */
 
-export {};
+export * from "./profiles";
+export * from "./projects";
+export * from "./project-members";

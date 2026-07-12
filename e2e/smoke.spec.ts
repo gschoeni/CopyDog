@@ -3,7 +3,8 @@ import { expect, test } from "@playwright/test";
 test("home page renders the brand and value proposition", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("Write the words.");
-  await expect(page.getByText("CopyDog")).toBeVisible();
+  await expect(page.locator("header").getByText("CopyDog")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open CopyDog" })).toBeVisible();
 });
 
 test("theme toggle flips and persists across reloads", async ({ page }) => {
