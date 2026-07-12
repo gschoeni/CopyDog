@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { gotoEmailLink } from "./support/auth";
+
 const MAILPIT_API = "http://127.0.0.1:54324/api/v1";
 
 async function latestEmailHtml(recipient: string): Promise<string | null> {
@@ -89,7 +91,7 @@ test("forgot password: reset via email, set a new one, sign in with it", async (
   const match = html!.match(/href="([^"]*\/auth\/confirm[^"]*)"/);
   expect(match, "recovery email should contain an /auth/confirm link").not.toBeNull();
 
-  await page.goto(match![1]!.replace(/&amp;/g, "&"));
+  await gotoEmailLink(page, match![1]!);
   await expect(page).toHaveURL(/\/account\/password/, { timeout: 15_000 });
   await page.getByLabel("New password", { exact: true }).fill("new-password-456");
   await page.getByLabel("Confirm new password").fill("new-password-456");

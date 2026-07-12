@@ -21,7 +21,6 @@ test("create project, write copy, autosave persists across reload", async ({ pag
   await expect(page).toHaveURL(/\/pages\/home$/);
 
   // add a section and write copy using markdown shortcuts
-  await page.getByRole("button", { name: "+ Add section" }).click();
   const editor = page.getByRole("textbox", { name: "Section copy" });
   await editor.click();
   await page.keyboard.type("# Copy that ships itself");

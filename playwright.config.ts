@@ -4,7 +4,10 @@ import { defineConfig, devices } from "@playwright/test";
  * E2E runs the real app (production build) against:
  *  - local Supabase (`supabase start` must be running)
  *  - an in-process Oxen stub served over HTTP on :3232
- * Ports: app on 3131 (3000 is often a local oxen-server).
+ *
+ * Ports: tests own 3132 so they coexist with a running `pnpm dev` on 3131
+ * (and the local oxen-server on 3000). Email links point at site_url
+ * (3131); the test helpers rewrite them to the test origin.
  */
 export default defineConfig({
   testDir: "./e2e",
@@ -13,7 +16,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
   use: {
-    baseURL: "http://localhost:3131",
+    baseURL: "http://localhost:3132",
     trace: "on-first-retry",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
@@ -25,11 +28,9 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: "pnpm build && pnpm start --port 3131",
-      url: "http://localhost:3131",
-      // never reuse a foreign server (e.g. a running `pnpm dev`): tests
-      // against dev mode flake on hydration and pollute your session.
-      // If this errors with "port 3131 is used", stop `pnpm dev` first.
+      command: "pnpm build && pnpm start --port 3132",
+      url: "http://localhost:3132",
+      // never reuse a foreign server: tests must run the production build
       reuseExistingServer: false,
       timeout: 180_000,
       env: {

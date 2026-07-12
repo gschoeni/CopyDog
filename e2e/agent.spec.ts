@@ -14,8 +14,6 @@ test("assistant rewrites a section through a tool call", async ({ page }) => {
   await page.getByRole("button", { name: "Create project" }).click();
   await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/, { timeout: 20_000 });
   await page.getByRole("link", { name: /Home/ }).click();
-
-  await page.getByRole("button", { name: "+ Add section" }).click();
   await page.getByRole("textbox", { name: "Section copy" }).click();
   await page.keyboard.type("# Human headline");
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });

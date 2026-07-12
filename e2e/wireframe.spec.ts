@@ -12,7 +12,6 @@ test("generate wireframe from copy, live-update it, persists across reload", asy
   await page.getByRole("link", { name: /Home/ }).click();
 
   // write hero copy
-  await page.getByRole("button", { name: "+ Add section" }).click();
   await page.getByRole("textbox", { name: "Section copy" }).click();
   await page.keyboard.type("# Copy meets layout");
   await page.keyboard.press("Enter");
