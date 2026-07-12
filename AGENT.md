@@ -91,6 +91,7 @@ Your job is to repeatedly attempt the task until it passes objective checks.
 
 ### Rules
 
+- Always make changes in a branch, so that we can code review against the `main` branch when they are done.
 - Do not assume success; rely only on test/build output.
 - Persist state in files, not conversation memory.
 - Prefer small, incremental changes.
