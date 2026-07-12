@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ */
+/* CopyDog design tokens                                               */
+/*                                                                     */
+/* Semantic tokens only — components never reference raw hex values.  */
+/* Light is the default; dark overrides live under [data-theme].      */
+/* A warm, near-monochrome palette: the product is about greyscale    */
+/* wireframes, so the chrome stays quiet and one amber accent carries */
+/* all interactive emphasis.                                          */
+/* ------------------------------------------------------------------ */
+
+:root {
+  /* canvas & surfaces */
+  --color-bg: oklch(0.985 0.002 85);          /* warm near-white   */
+  --color-surface: oklch(1 0 0);              /* cards, panels     */
+  --color-surface-sunken: oklch(0.965 0.003 85);
+  --color-surface-hover: oklch(0.955 0.004 85);
+
+  /* ink */
+  --color-ink: oklch(0.22 0.01 60);           /* primary text      */
+  --color-ink-secondary: oklch(0.51 0.012 60);
+  --color-ink-tertiary: oklch(0.68 0.01 60);
+  --color-ink-inverse: oklch(0.985 0.002 85);
+
+  /* lines */
+  --color-border: oklch(0.915 0.005 85);
+  --color-border-strong: oklch(0.85 0.007 85);
+
+  /* accent — amber, used sparingly */
+  --color-accent: oklch(0.62 0.17 45);
+  --color-accent-hover: oklch(0.56 0.17 45);
+  --color-accent-soft: oklch(0.95 0.03 60);
+  --color-accent-fg: oklch(1 0 0);
+
+  /* feedback */
+  --color-danger: oklch(0.55 0.19 27);
+  --color-success: oklch(0.55 0.13 155);
+
+  /* elevation */
+  --shadow-soft: 0 1px 2px oklch(0.2 0.01 60 / 0.05), 0 4px 16px oklch(0.2 0.01 60 / 0.06);
+  --shadow-raised: 0 2px 4px oklch(0.2 0.01 60 / 0.06), 0 12px 32px oklch(0.2 0.01 60 / 0.1);
+
+  /* shape & motion */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 1rem;
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+[data-theme="dark"] {
+  --color-bg: oklch(0.185 0.005 60);          /* warm near-black   */
+  --color-surface: oklch(0.225 0.005 60);
+  --color-surface-sunken: oklch(0.16 0.005 60);
+  --color-surface-hover: oklch(0.26 0.006 60);
+
+  --color-ink: oklch(0.94 0.004 85);
+  --color-ink-secondary: oklch(0.72 0.008 70);
+  --color-ink-tertiary: oklch(0.55 0.008 70);
+  --color-ink-inverse: oklch(0.185 0.005 60);
+
+  --color-border: oklch(0.29 0.006 60);
+  --color-border-strong: oklch(0.36 0.007 60);
+
+  --color-accent: oklch(0.72 0.15 55);
+  --color-accent-hover: oklch(0.78 0.14 55);
+  --color-accent-soft: oklch(0.28 0.04 55);
+  --color-accent-fg: oklch(0.15 0.01 60);
+
+  --color-danger: oklch(0.68 0.17 27);
+  --color-success: oklch(0.7 0.12 155);
+
+  --shadow-soft: 0 1px 2px oklch(0 0 0 / 0.3), 0 4px 16px oklch(0 0 0 / 0.35);
+  --shadow-raised: 0 2px 4px oklch(0 0 0 / 0.35), 0 12px 32px oklch(0 0 0 / 0.5);
+}
+
+/* Map tokens into Tailwind utilities (bg-bg, text-ink, border-border…) */
+@theme inline {
+  --color-*: initial;
+  --color-bg: var(--color-bg);
+  --color-surface: var(--color-surface);
+  --color-surface-sunken: var(--color-surface-sunken);
+  --color-surface-hover: var(--color-surface-hover);
+  --color-ink: var(--color-ink);
+  --color-ink-secondary: var(--color-ink-secondary);
+  --color-ink-tertiary: var(--color-ink-tertiary);
+  --color-ink-inverse: var(--color-ink-inverse);
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+  --color-accent: var(--color-accent);
+  --color-accent-hover: var(--color-accent-hover);
+  --color-accent-soft: var(--color-accent-soft);
+  --color-accent-fg: var(--color-accent-fg);
+  --color-danger: var(--color-danger);
+  --color-success: var(--color-success);
+
+  --shadow-soft: var(--shadow-soft);
+  --shadow-raised: var(--shadow-raised);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-accent-soft);
+}

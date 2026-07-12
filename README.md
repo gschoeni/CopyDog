@@ -45,3 +45,7 @@ You are a seasoned designer who has worked at Apple, Notion, and Figma in the pa
 
 Explore the documentation, ask me questions, and lets get going.
 ```
+
+```
+Start building the application and make sure the code is clean, modular, and idiomatic. The design should be minimal, beautiful, aesthetically pleasing, and intuitive application like a product that would win the Apple Design Award for app of the year for innovation and ingenuity.
+```

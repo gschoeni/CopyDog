@@ -1,1 +1,26 @@
+# env
 .env
+.env*.local
+
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# testing
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# misc
+.DS_Store
+*.pem
+*.tsbuildinfo
+
+# supabase local
+supabase/.temp/
+supabase/.branches/

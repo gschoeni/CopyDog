@@ -103,13 +103,22 @@ Your job is to repeatedly attempt the task until it passes objective checks.
 
 We built the codebase to have a really good testing framework from the start, so it is easy for LLM agents to verify the code changes they make.
 
-TODO: Fill in how to run automated tests
+- `pnpm test` — Vitest unit/integration tests (`src/**/*.test.{ts,tsx}`). Node environment by default; component tests opt into jsdom with a `// @vitest-environment jsdom` pragma. Oxen interactions are tested against the in-memory stub in `src/lib/oxen/stub.ts` — no network, no running server.
+- `pnpm test:e2e` — Playwright end-to-end tests in `e2e/`. Builds and serves the app itself on port **3131** (3000 is usually taken by a local `oxen-server`).
+- `pnpm test:watch` — Vitest in watch mode while iterating.
+
+Database: `supabase start` runs the full local stack in Docker (Postgres on `127.0.0.1:54322`, credentials `postgres`/`postgres`). `pnpm db:generate` diffs `src/lib/db/schema/` into `supabase/migrations/`; `pnpm db:reset` replays every migration from scratch — treat a reset failure as a broken migration.
 
 ### Verification checklist
 
 After every change, run these in order:
 
-TODO: Fill this in
+1. `pnpm lint`
+2. `pnpm typecheck`
+3. `pnpm test`
+4. `pnpm build`
+
+(`pnpm check` runs all four.) If the change touches the database schema: `pnpm db:generate` then `pnpm db:reset`. If it touches user-facing flows: `pnpm test:e2e`.
 
 ### Environment Variables
 
