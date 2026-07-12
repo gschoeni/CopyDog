@@ -182,7 +182,8 @@ export class OxenStub {
   }
 
   private async routeWorkspaces(req: Request, repo: StubRepo, rest: string[]): Promise<Response> {
-    if (rest[0] === "get_or_create" && req.method === "PUT") {
+    // modern servers: PUT /workspaces/get_or_create; older: PUT /workspaces
+    if ((rest[0] === "get_or_create" || rest.length === 0) && req.method === "PUT") {
       const body = (await req.json()) as { workspace_id: string; branch_name: string; name?: string };
       let ws = repo.workspaces.get(body.workspace_id);
       if (!ws) {

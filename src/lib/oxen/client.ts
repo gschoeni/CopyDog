@@ -113,23 +113,34 @@ export class OxenClient {
   /**
    * Idempotently gets or creates a named workspace pinned to a branch.
    * Named workspaces persist across commits and fast-forward to the new head.
+   *
+   * Newer servers expose `PUT /workspaces/get_or_create`; older ones
+   * (<= 0.50.x, e.g. a local oxen-server) use `PUT /workspaces` — fall back
+   * on 404 so both work.
    */
   async getOrCreateWorkspace(
     repo: string,
     options: { workspaceId: string; branchName: string; name?: string },
   ): Promise<OxenWorkspace> {
-    const data = await this.request<{ workspace: OxenWorkspace }>(
-      "PUT",
-      `${this.repoPath(repo)}/workspaces/get_or_create`,
-      {
-        json: {
-          workspace_id: options.workspaceId,
-          branch_name: options.branchName,
-          name: options.name,
-        },
-      },
-    );
-    return data.workspace;
+    const json = {
+      workspace_id: options.workspaceId,
+      branch_name: options.branchName,
+      name: options.name,
+    };
+    try {
+      const data = await this.request<{ workspace: OxenWorkspace }>(
+        "PUT",
+        `${this.repoPath(repo)}/workspaces/get_or_create`,
+        { json },
+      );
+      return data.workspace;
+    } catch (err) {
+      if (!(err instanceof OxenError) || err.status !== 404) throw err;
+      const data = await this.request<{ workspace: OxenWorkspace }>("PUT", `${this.repoPath(repo)}/workspaces`, {
+        json,
+      });
+      return data.workspace;
+    }
   }
 
   async deleteWorkspace(repo: string, workspaceId: string): Promise<void> {
