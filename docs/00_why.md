@@ -1,6 +1,6 @@
 # Why CopyDog Exists
 
-We exist to support the creative process, and improve the pathway from copywriting to website design, then back again. There has always been tension between "Which comes first? The copy or the wireframe?". Rather than forcing things to be linear, choosing one before the other, we are building an app that allows a natural back and forth between the two worlds. It allows easy collaboration between copy writers, designers, and their clients. The copy is able to evolve as the website evolves. Saving every version along the way, to understand the decisions that were made along the way. 
+We exist to support the creative process, and improve the pathway from copywriting to website design, then back again. There has always been tension between "Which comes first? The copy or the wireframe?". Rather than forcing things to be linear, choosing one before the other, we are building an app that allows a natural back and forth between the two worlds. It allows easy collaboration between copywriters, designers, and their clients. The copy is able to evolve as the website evolves. Saving every version along the way, to understand the decisions that were made along the way. 
 
 In the old world, you may start in a google doc, then jump into Figma for a wireframe. But then the client wants to make copy edits after seeing it visually, but the best way to do this is leave comments in figma. OR, they go back and update the google doc. Now you've lost the ability to see what changed (or stayed the same) needing to translate it back to your wireframe. 
 
