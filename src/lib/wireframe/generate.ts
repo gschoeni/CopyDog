@@ -39,13 +39,18 @@ export class HeuristicGenerator implements WireframeGenerator {
 }
 
 export class LlmGenerator implements WireframeGenerator {
-  constructor(private readonly llm: LlmClient) {}
+  constructor(
+    private readonly llm: LlmClient,
+    /** optional layout direction, e.g. from the chat agent */
+    private readonly instruction?: string,
+  ) {}
 
   async generate(sections: SectionForLayout[]): Promise<string> {
     const copySummary = sections
       .map((s) => `### Section slug: ${s.slug} (${s.title})\n${serializeBlocks(s.blocks) || "(no copy yet)"}`)
       .join("\n\n");
 
+    const direction = this.instruction ? `\n\nLayout direction from the designer: ${this.instruction}` : "";
     const result = await this.llm.chat({
       model: LLM_MODELS.wireframe,
       maxTokens: 4000,
@@ -53,7 +58,7 @@ export class LlmGenerator implements WireframeGenerator {
         { role: "system", content: DESIGN_SYSTEM_SPEC },
         {
           role: "user",
-          content: `Design a wireframe for a page with this copy. Return the HTML fragment only.\n\n${copySummary}`,
+          content: `Design a wireframe for a page with this copy. Return the HTML fragment only.${direction}\n\n${copySummary}`,
         },
       ],
     });

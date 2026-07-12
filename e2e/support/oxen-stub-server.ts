@@ -41,6 +41,44 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // Scripted chat-completions endpoint so agent e2e runs offline: the first
+  // call in a conversation rewrites the first section; the follow-up call
+  // (after tool results) replies with text.
+  if (req.url === "/chat/completions" && req.method === "POST") {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(chunk as Buffer);
+    const body = JSON.parse(Buffer.concat(chunks).toString()) as {
+      messages: { role: string; content?: unknown }[];
+    };
+    const hadToolResult = body.messages.some((m) => m.role === "tool");
+    const context = JSON.stringify(body.messages);
+    const slugMatch = context.match(/slug: ([a-z0-9-]+)/);
+
+    const message = hadToolResult
+      ? { content: "Done — I rewrote it with a stronger promise. (stub)" }
+      : {
+          content: null,
+          tool_calls: [
+            {
+              id: "call_stub_1",
+              type: "function",
+              function: {
+                name: "rewrite_section",
+                arguments: JSON.stringify({
+                  sectionSlug: slugMatch?.[1] ?? "hero",
+                  label: "Agent take",
+                  markdown: "# Rewritten by the assistant\n\nStub copy that proves the loop.\n",
+                }),
+              },
+            },
+          ],
+        };
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ model: "stub-model", choices: [{ message }] }));
+    return;
+  }
+
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
   const body = Buffer.concat(chunks);
