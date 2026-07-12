@@ -124,3 +124,92 @@ body {
 ::selection {
   background: var(--color-accent-soft);
 }
+
+/* ------------------------------------------------------------------ */
+/* Copy editor typography — the document should read like a finished   */
+/* page, not a form.                                                   */
+/* ------------------------------------------------------------------ */
+
+.copy-editor {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--color-ink);
+}
+
+.copy-editor .editor-h1 {
+  font-size: 2.25rem;
+  line-height: 1.15;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  margin: 0.5em 0 0.35em;
+}
+
+.copy-editor .editor-h2 {
+  font-size: 1.75rem;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  margin: 0.6em 0 0.35em;
+}
+
+.copy-editor .editor-h3 {
+  font-size: 1.375rem;
+  line-height: 1.3;
+  font-weight: 600;
+  margin: 0.6em 0 0.3em;
+}
+
+.copy-editor .editor-h4,
+.copy-editor .editor-h5,
+.copy-editor .editor-h6 {
+  font-size: 1.0625rem;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 0.6em 0 0.25em;
+}
+
+.copy-editor .editor-p {
+  margin: 0.35em 0;
+  color: var(--color-ink-secondary);
+}
+
+.copy-editor .editor-ul {
+  margin: 0.35em 0;
+  padding-left: 1.4em;
+  list-style: disc;
+  color: var(--color-ink-secondary);
+}
+
+.copy-editor .editor-li {
+  margin: 0.15em 0;
+}
+
+.copy-editor .editor-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  margin: 0.8em 0 0.2em;
+}
+
+.copy-editor .editor-button {
+  display: inline-block;
+  margin: 0.6em 0;
+  padding: 0.45em 1.1em;
+  border-radius: var(--radius-md);
+  background: var(--color-ink);
+  color: var(--color-ink-inverse);
+  font-size: 0.9375rem;
+  font-weight: 550;
+  line-height: 1.4;
+}
+
+.copy-editor .editor-code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: 0.3em;
+  padding: 0.1em 0.35em;
+}

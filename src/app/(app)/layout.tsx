@@ -38,7 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">{children}</main>
+      <main className="flex min-h-0 flex-1 flex-col">{children}</main>
     </div>
   );
 }

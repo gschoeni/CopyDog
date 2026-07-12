@@ -22,7 +22,7 @@ export default async function ProjectsPage() {
   const projects = (data ?? []) as ProjectRow[];
 
   return (
-    <div>
+    <div className="mx-auto w-full max-w-6xl px-6 py-10">
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
