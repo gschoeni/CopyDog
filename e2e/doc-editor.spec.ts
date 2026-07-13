@@ -68,9 +68,9 @@ test("section rail: ⊕ inserts a new section below and focuses it", async ({ pa
   await setupTwoSections(page, `Rail ${Date.now()}`);
   const sections = page.locator("[data-section-slug]");
 
-  // hover the hero section → its chrome strip (with ⊕) appears
+  // hover the hero section → its left-rail controls appear
   await page.getByText("Hero body line.").hover();
-  const addButton = page.locator("[data-section-header]").first().getByRole("button", { name: "Add section below" });
+  const addButton = page.locator("[data-section-rail]").first().getByRole("button", { name: "Add section below" });
   await addButton.click();
 
   // a fresh section appears between hero and features, ready to type
@@ -87,8 +87,8 @@ test("sections reorder by dragging their header grip", async ({ page }) => {
 
   // chrome is invisible until you hover the section — hover its copy first
   await page.getByText("Feature body line.").hover();
-  const secondHeader = page.locator("[data-section-header]").nth(1);
-  const grip = secondHeader.getByRole("button", { name: "Drag to reorder section" });
+  const secondRail = page.locator("[data-section-rail]").nth(1);
+  const grip = secondRail.getByRole("button", { name: "Drag to reorder section" });
   await expect(grip).toBeVisible();
   const gripBox = (await grip.boundingBox())!;
   const firstBox = (await sections.first().boundingBox())!;
