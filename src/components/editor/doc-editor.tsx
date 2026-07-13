@@ -61,6 +61,8 @@ export interface DocEditorHandle {
   groupSelection: () => string | null;
   /** Remove a section and its content from the document. */
   removeSection: (slug: string) => void;
+  /** Move a section one step up (-1) or down (+1). */
+  moveSection: (slug: string, direction: -1 | 1) => void;
 }
 
 export interface SectionRect {
@@ -194,6 +196,16 @@ function DocEditorInner({
             .getChildren()
             .find((n) => $isSectionNode(n) && n.getSlug() === slug);
           section?.remove();
+        });
+      },
+      moveSection: (slug, direction) => {
+        editor.update(() => {
+          const sections = $getRoot().getChildren().filter($isSectionNode);
+          const index = sections.findIndex((n) => n.getSlug() === slug);
+          const target = sections[index + direction];
+          if (index === -1 || !target) return;
+          if (direction === -1) target.insertBefore(sections[index]!);
+          else target.insertAfter(sections[index]!);
         });
       },
     }),

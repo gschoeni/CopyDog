@@ -101,6 +101,24 @@ test("sections reorder by dragging their header grip", async ({ page }) => {
   await expect(sections.first()).toContainText("Features");
   await expect(sections.nth(1)).toContainText("Hero title");
 
+  // the ↑/↓ arrows in the strip also reorder: push Features back down
+  await page.getByText("Feature body line.").hover();
+  await page
+    .locator("[data-section-header]")
+    .first()
+    .getByRole("button", { name: "Move section down" })
+    .click();
+  await expect(sections.first()).toContainText("Hero title");
+  await expect(sections.nth(1)).toContainText("Features");
+  // and back up, so the persisted order matches the drag result
+  await page.getByText("Feature body line.").hover();
+  await page
+    .locator("[data-section-header]")
+    .nth(1)
+    .getByRole("button", { name: "Move section up" })
+    .click();
+  await expect(sections.first()).toContainText("Features");
+
   // order persists
   await page.waitForTimeout(1000);
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
