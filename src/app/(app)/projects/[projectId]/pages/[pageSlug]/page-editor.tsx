@@ -375,6 +375,10 @@ export function PageEditor({
     docRef.current?.removeSection(slug);
   }, []);
 
+  const moveSection = useCallback((slug: string, direction: -1 | 1) => {
+    docRef.current?.moveSection(slug, direction);
+  }, []);
+
   const generate = useCallback(async () => {
     setGenerating(true);
     try {
@@ -403,6 +407,8 @@ export function PageEditor({
     (slug: string) => {
       const meta = metaRef.current.get(slug);
       if (!meta) return null;
+      const index = sections.findIndex((s) => s.slug === slug);
+      const count = sections.length;
       return (
         <div className="flex items-center gap-2">
           <input
@@ -428,6 +434,26 @@ export function PageEditor({
           <SectionNotes projectId={projectId} pageSlug={pageSlug} sectionSlug={slug} />
           <button
             type="button"
+            aria-label="Move section up"
+            title="Move section up"
+            disabled={index <= 0}
+            onClick={() => moveSection(slug, -1)}
+            className="flex size-6 shrink-0 items-center justify-center rounded text-xs text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            aria-label="Move section down"
+            title="Move section down"
+            disabled={index === -1 || index >= count - 1}
+            onClick={() => moveSection(slug, 1)}
+            className="flex size-6 shrink-0 items-center justify-center rounded text-xs text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
+          >
+            ↓
+          </button>
+          <button
+            type="button"
             aria-label="Delete section"
             title="Delete section (copy included)"
             onClick={() => deleteSection(slug)}
@@ -438,7 +464,7 @@ export function PageEditor({
         </div>
       );
     },
-    [projectId, pageSlug, renameSection, switchVersion, createVersion, adoptTeammateVersion, deleteSection],
+    [projectId, pageSlug, renameSection, switchVersion, createVersion, adoptTeammateVersion, deleteSection, moveSection, sections],
   );
 
   return (
