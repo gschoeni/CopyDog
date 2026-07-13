@@ -208,24 +208,25 @@ body {
   line-height: 1.4;
 }
 
-/* the continuous document: sections are containers inside one editor */
+/* the continuous document: sections are containers inside one editor.
+   No chrome by default — it should feel like an empty text editor; the
+   section header strip fades in on hover, floating in the gap above. */
 
 .doc-editor {
-  /* left padding hosts the block rail (⊕ / ⠿) */
+  /* left padding hosts the block rail (⊕ / ⠿); top padding gives the
+     first section's hover chrome room inside the scroll area */
   padding-left: 3.5rem;
+  padding-top: 2.5rem;
 }
 
 .doc-editor .doc-section {
   position: relative;
-  /* headroom for the section header overlay (title · version · notes) */
-  padding-top: 2.4rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid transparent;
+  padding: 0.15rem 0;
 }
 
 .doc-editor .doc-section:not(:last-child) {
-  border-bottom-color: var(--color-border);
-  margin-bottom: 1.25rem;
+  /* the inter-section gap is where the hover chrome lives */
+  margin-bottom: 2.75rem;
 }
 
 .copy-editor .editor-code {

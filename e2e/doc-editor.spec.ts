@@ -64,34 +64,20 @@ test("selection spans sections and the toolbar groups it into a new section", as
   await expect(page.locator("[data-section-slug]").nth(1)).toContainText("Feature body line.");
 });
 
-test("rail: hover shows ⊕/⠿, + inserts a block, drag moves a block across sections", async ({ page }) => {
+test("section rail: ⊕ inserts a new section below and focuses it", async ({ page }) => {
   await setupTwoSections(page, `Rail ${Date.now()}`);
   const sections = page.locator("[data-section-slug]");
 
-  // hover the hero body → rail appears
+  // hover the hero section → its chrome strip (with ⊕) appears
   await page.getByText("Hero body line.").hover();
-  await expect(page.getByRole("button", { name: "Add block below" })).toBeVisible();
+  const addButton = page.locator("[data-section-header]").first().getByRole("button", { name: "Add section below" });
+  await addButton.click();
 
-  // + inserts an empty paragraph below and focuses it
-  await page.getByRole("button", { name: "Add block below" }).click();
-  await page.keyboard.type("Inserted line.");
-  await expect(sections.first()).toContainText("Inserted line.");
-
-  // drag "Feature body line." from section 2 into section 1 (below hero body)
-  await page.getByText("Feature body line.").hover();
-  const grip = page.getByRole("button", { name: "Drag to move block" });
-  await expect(grip).toBeVisible();
-  const gripBox = (await grip.boundingBox())!;
-  const target = (await page.getByText("Inserted line.").boundingBox())!;
-
-  await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(target.x + 10, target.y + 2, { steps: 10 });
-  await expect(page.locator("[data-drop-indicator]")).toBeVisible();
-  await page.mouse.up();
-
-  await expect(sections.first()).toContainText("Feature body line.");
-  await expect(sections.nth(1)).not.toContainText("Feature body line.");
+  // a fresh section appears between hero and features, ready to type
+  await expect(sections).toHaveCount(3, { timeout: 10_000 });
+  await page.keyboard.type("Middle section copy.");
+  await expect(sections.nth(1)).toContainText("Middle section copy.");
+  await expect(sections.nth(2)).toContainText("Features");
 });
 
 test("sections reorder by dragging their header grip", async ({ page }) => {
@@ -99,9 +85,9 @@ test("sections reorder by dragging their header grip", async ({ page }) => {
   const sections = page.locator("[data-section-slug]");
   await expect(sections.first()).toContainText("Hero title");
 
-  // reveal the second section's header grip and drag it above the first
+  // chrome is invisible until you hover the section — hover its copy first
+  await page.getByText("Feature body line.").hover();
   const secondHeader = page.locator("[data-section-header]").nth(1);
-  await secondHeader.hover();
   const grip = secondHeader.getByRole("button", { name: "Drag to reorder section" });
   await expect(grip).toBeVisible();
   const gripBox = (await grip.boundingBox())!;

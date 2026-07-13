@@ -22,7 +22,15 @@ import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HeadingNode } from "@lexical/rich-text";
-import { $getNodeByKey, $getRoot, $getSelection, $isRangeSelection, type EditorState, type LexicalEditor } from "lexical";
+import {
+  $createParagraphNode,
+  $getNodeByKey,
+  $getRoot,
+  $getSelection,
+  $isRangeSelection,
+  type EditorState,
+  type LexicalEditor,
+} from "lexical";
 
 import type { Block } from "@/lib/copy/blocks";
 
@@ -37,8 +45,7 @@ import {
 } from "./doc-structure";
 import { ButtonNode } from "./nodes/button-node";
 import { EyebrowNode } from "./nodes/eyebrow-node";
-import { SectionNode, $isSectionNode } from "./nodes/section-node";
-import { BlockRailPlugin } from "./plugins/block-rail";
+import { $createSectionNode, $isSectionNode, SectionNode } from "./nodes/section-node";
 import { SelectionToolbarPlugin } from "./plugins/selection-toolbar";
 
 /**
@@ -120,6 +127,33 @@ function DocEditorInner({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [sectionRects, setSectionRects] = useState<SectionRect[]>([]);
   const [sectionDropLine, setSectionDropLine] = useState<number | null>(null);
+  const [hoveredSlug, setHoveredSlug] = useState<string | null>(null);
+
+  // reveal a section's chrome while the pointer is over it (or the gap
+  // above it, where the chrome strip floats)
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    const CHROME_ZONE = 40;
+    const onMove = (event: MouseEvent) => {
+      const y = event.clientY - wrapper.getBoundingClientRect().top;
+      let found: string | null = null;
+      for (const rect of sectionRects) {
+        if (y >= rect.top - CHROME_ZONE && y < rect.top + rect.height) {
+          found = rect.slug;
+          break;
+        }
+      }
+      setHoveredSlug((prev) => (prev === found ? prev : found));
+    };
+    const onLeave = () => setHoveredSlug(null);
+    wrapper.addEventListener("mousemove", onMove);
+    wrapper.addEventListener("mouseleave", onLeave);
+    return () => {
+      wrapper.removeEventListener("mousemove", onMove);
+      wrapper.removeEventListener("mouseleave", onLeave);
+    };
+  }, [sectionRects]);
 
   useEffect(() => registerSectionTransforms(editor, makeSlug), [editor, makeSlug]);
   useEffect(() => registerMarkdownShortcuts(editor, [HEADING, UNORDERED_LIST]), [editor]);
@@ -203,7 +237,7 @@ function DocEditorInner({
       <RichTextPlugin
         contentEditable={<ContentEditable className="outline-none" aria-label="Page copy" />}
         placeholder={
-          <p className="pointer-events-none absolute left-0 top-14 text-ink-tertiary">
+          <p className="pointer-events-none absolute left-14 top-[2.6rem] text-ink-tertiary">
             Start writing — headings become sections as you go…
           </p>
         }
@@ -212,7 +246,6 @@ function DocEditorInner({
       <HistoryPlugin />
       <ListPlugin />
       <OnChangePlugin onChange={handleChange} ignoreSelectionChange />
-      <BlockRailPlugin wrapperRef={wrapperRef} />
       <SelectionToolbarPlugin
         onGroup={() => {
           let slug: string | null = null;
@@ -225,27 +258,55 @@ function DocEditorInner({
         }}
       />
 
-      {/* section headers, aligned into each section's reserved headroom */}
+      {/* section chrome: invisible until hovered, floating in the gap above
+          each section — nothing reserves space, nothing can overlap copy */}
       <div aria-hidden={false} className="pointer-events-none absolute inset-0">
-        {sectionRects.map((rect) => (
-          <div
-            key={rect.slug}
-            className="group/secrow pointer-events-auto absolute left-0 right-0 flex items-start"
-            style={{ top: rect.top }}
-            data-section-header={rect.slug}
-          >
-            <div className="flex w-14 shrink-0 justify-end pr-2">
-              <SectionGrip
-                slug={rect.slug}
-                editor={editor}
-                sectionRects={sectionRects}
-                wrapperRef={wrapperRef}
-                onDropLine={setSectionDropLine}
+        {sectionRects.map((rect) => {
+          const active = hoveredSlug === rect.slug;
+          return (
+            <div key={rect.slug}>
+              {/* extent rule: shows what belongs to the section */}
+              <div
+                aria-hidden
+                className={`absolute w-0.5 rounded-full bg-accent/35 transition-opacity duration-150 ${
+                  active ? "opacity-100" : "opacity-0"
+                }`}
+                style={{ top: rect.top + 4, height: Math.max(rect.height - 8, 12), left: 44 }}
               />
+              <div
+                // always hit-testable; visibility is CSS-only (compositor-
+                // synchronous) so clicks can never race a React commit
+                className={`pointer-events-auto absolute left-9 right-0 flex items-center transition-opacity duration-150 focus-within:opacity-100 hover:opacity-100 ${
+                  active ? "opacity-100" : "opacity-0"
+                }`}
+                style={{ top: rect.top - 34 }}
+                data-section-header={rect.slug}
+              >
+                <div className="flex min-w-0 flex-1 items-center gap-1 rounded-lg border border-border/70 bg-bg/90 py-0.5 pl-1 pr-2 shadow-soft backdrop-blur-sm">
+                  <SectionGrip
+                    slug={rect.slug}
+                    editor={editor}
+                    sectionRects={sectionRects}
+                    wrapperRef={wrapperRef}
+                    onDropLine={setSectionDropLine}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Add section below"
+                    title="Add a section below"
+                    onClick={() => insertSectionAfter(editor, rect.slug, makeSlug)}
+                    className="flex size-6 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+                  >
+                    <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                      <path d="M8 3v10M3 8h10" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                  <div className="min-w-0 flex-1">{renderSectionHeader(rect.slug)}</div>
+                </div>
+              </div>
             </div>
-            <div className="min-w-0 flex-1">{renderSectionHeader(rect.slug)}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {sectionDropLine !== null && (
@@ -330,7 +391,7 @@ function SectionGrip({
       aria-label="Drag to reorder section"
       title="Drag to reorder section"
       onPointerDown={startDrag}
-      className="ml-2 mt-0.5 flex size-6 shrink-0 cursor-grab items-center justify-center rounded text-ink-tertiary opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink group-hover/secrow:opacity-100"
+      className="flex size-6 shrink-0 cursor-grab items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
     >
       <svg viewBox="0 0 16 16" className="size-4" fill="currentColor" aria-hidden>
         <circle cx="5.5" cy="3.5" r="1.2" />
@@ -342,6 +403,22 @@ function SectionGrip({
       </svg>
     </button>
   );
+}
+
+/** Inserts a fresh empty section below the given one and focuses it. */
+function insertSectionAfter(editor: LexicalEditor, slug: string, makeSlug: () => string): void {
+  editor.update(() => {
+    const section = $getRoot()
+      .getChildren()
+      .find((n) => $isSectionNode(n) && n.getSlug() === slug);
+    if (!section) return;
+    const next = $createSectionNode(makeSlug());
+    const paragraph = $createParagraphNode();
+    next.append(paragraph);
+    section.insertAfter(next);
+    paragraph.select();
+  });
+  editor.focus();
 }
 
 /** Finds the SectionNode key for a slug (used by drag/drop of sections). */
