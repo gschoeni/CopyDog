@@ -222,6 +222,9 @@ body {
 .doc-editor .doc-section {
   position: relative;
   padding: 0.15rem 0;
+  /* TOC navigation lands sections below the sticky app header with room
+     for the hover chrome strip */
+  scroll-margin-top: 7.5rem;
 }
 
 /* sections hug their copy: the first/last blocks' own margins don't add

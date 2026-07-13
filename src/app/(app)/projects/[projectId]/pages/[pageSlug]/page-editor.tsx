@@ -27,6 +27,7 @@ import { ChatPanel } from "./chat-panel";
 import { ImportDialog } from "./import-dialog";
 import { PublishControls } from "./publish-controls";
 import { SectionNotes } from "./section-notes";
+import { SectionToc } from "./section-toc";
 import { VersionSwitcher } from "./version-switcher";
 
 export interface EditorSection extends DocSection {
@@ -379,6 +380,15 @@ export function PageEditor({
     docRef.current?.moveSection(slug, direction);
   }, []);
 
+  const copyPaneRef = useRef<HTMLDivElement>(null);
+
+  const scrollToSection = useCallback((slug: string) => {
+    const el = copyPaneRef.current?.querySelector(`[data-section-slug="${CSS.escape(slug)}"]`);
+    // scroll-margin-top on .doc-section handles the header/chrome offset,
+    // and the browser picks the right scrolling ancestor
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
   const generate = useCallback(async () => {
     setGenerating(true);
     try {
@@ -520,16 +530,21 @@ export function PageEditor({
       <div className={`min-h-0 flex-1 ${mode === "split" ? "grid grid-cols-2" : "flex"}`}>
         {/* hidden, not unmounted: the editor keeps its live state across
             mode switches (unmounting would resurrect page-load content) */}
-        <div className={`min-w-0 flex-1 overflow-y-auto ${mode === "wireframe" ? "hidden" : ""}`}>
-          <div className={`mx-auto w-full px-6 pb-32 pt-8 ${mode === "split" ? "max-w-xl" : "max-w-3xl"}`}>
-            <DocEditor
-              ref={docRef}
-              initialSections={initialSnapshot}
-              makeSlug={makeSlug}
-              onSnapshotChange={handleSnapshotChange}
-              renderSectionHeader={renderSectionHeader}
-              autoFocus={initialSections.every((s) => s.blocks.length === 0)}
-            />
+        <div ref={copyPaneRef} className={`min-w-0 flex-1 overflow-y-auto ${mode === "wireframe" ? "hidden" : ""}`}>
+          <div className="flex min-h-full">
+            <SectionToc sections={sections} compact={mode === "split"} onNavigate={scrollToSection} />
+            <div className="min-w-0 flex-1">
+              <div className={`mx-auto w-full px-6 pb-32 pt-8 ${mode === "split" ? "max-w-xl" : "max-w-3xl"}`}>
+                <DocEditor
+                  ref={docRef}
+                  initialSections={initialSnapshot}
+                  makeSlug={makeSlug}
+                  onSnapshotChange={handleSnapshotChange}
+                  renderSectionHeader={renderSectionHeader}
+                  autoFocus={initialSections.every((s) => s.blocks.length === 0)}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
