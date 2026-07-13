@@ -404,7 +404,7 @@ export function PageEditor({
       const meta = metaRef.current.get(slug);
       if (!meta) return null;
       return (
-        <div className="group/header flex items-center gap-2 pr-1">
+        <div className="flex items-center gap-2">
           <input
             key={meta.title}
             defaultValue={meta.title}
@@ -413,7 +413,7 @@ export function PageEditor({
               if (title) renameSection(slug, title);
             }}
             aria-label="Section title"
-            className="w-full min-w-0 bg-transparent text-xs font-semibold uppercase tracking-[0.15em] text-ink-tertiary outline-none transition-colors focus:text-ink-secondary"
+            className="w-full min-w-0 bg-transparent text-[11px] font-semibold uppercase tracking-[0.15em] text-ink-tertiary outline-none transition-colors focus:text-ink-secondary"
           />
           <VersionSwitcher
             projectId={projectId}
@@ -431,7 +431,7 @@ export function PageEditor({
             aria-label="Delete section"
             title="Delete section (copy included)"
             onClick={() => deleteSection(slug)}
-            className="flex size-6 shrink-0 items-center justify-center rounded text-xs text-ink-tertiary opacity-0 transition-opacity hover:bg-surface-hover hover:text-danger group-hover/header:opacity-100"
+            className="flex size-6 shrink-0 items-center justify-center rounded text-xs text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-danger"
           >
             ✕
           </button>

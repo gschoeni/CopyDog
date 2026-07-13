@@ -17,7 +17,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-10 border-b border-border bg-bg/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
+        <div className="flex h-14 items-center justify-between px-6">
           <Link href="/projects" className="flex items-baseline gap-2 text-[15px] font-semibold tracking-tight">
             CopyDog
             <span aria-hidden className="text-ink-tertiary">
