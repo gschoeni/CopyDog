@@ -237,7 +237,7 @@ function DocEditorInner({
       <RichTextPlugin
         contentEditable={<ContentEditable className="outline-none" aria-label="Page copy" />}
         placeholder={
-          <p className="pointer-events-none absolute left-14 top-[2.6rem] text-ink-tertiary">
+          <p className="pointer-events-none absolute left-16 top-[2.6rem] text-ink-tertiary">
             Start writing — headings become sections as you go…
           </p>
         }
@@ -263,6 +263,11 @@ function DocEditorInner({
       <div aria-hidden={false} className="pointer-events-none absolute inset-0">
         {sectionRects.map((rect) => {
           const active = hoveredSlug === rect.slug;
+          // always hit-testable; visibility is CSS-only (compositor-
+          // synchronous) so clicks can never race a React commit
+          const reveal = `pointer-events-auto transition-opacity duration-150 focus-within:opacity-100 hover:opacity-100 ${
+            active ? "opacity-100" : "opacity-0"
+          }`;
           return (
             <div key={rect.slug}>
               {/* extent rule: shows what belongs to the section */}
@@ -271,36 +276,40 @@ function DocEditorInner({
                 className={`absolute w-0.5 rounded-full bg-accent/35 transition-opacity duration-150 ${
                   active ? "opacity-100" : "opacity-0"
                 }`}
-                style={{ top: rect.top + 4, height: Math.max(rect.height - 8, 12), left: 44 }}
+                style={{ top: rect.top + 4, height: Math.max(rect.height - 8, 12), left: 56 }}
               />
+              {/* left-rail controls: ⊕ add below · ⠿ drag, beside the copy */}
               <div
-                // always hit-testable; visibility is CSS-only (compositor-
-                // synchronous) so clicks can never race a React commit
-                className={`pointer-events-auto absolute left-9 right-0 flex items-center transition-opacity duration-150 focus-within:opacity-100 hover:opacity-100 ${
-                  active ? "opacity-100" : "opacity-0"
-                }`}
+                className={`absolute flex items-center ${reveal}`}
+                style={{ top: rect.top - 1, left: 2 }}
+                data-section-rail={rect.slug}
+              >
+                <button
+                  type="button"
+                  aria-label="Add section below"
+                  title="Add a section below"
+                  onClick={() => insertSectionAfter(editor, rect.slug, makeSlug)}
+                  className="flex size-6 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+                >
+                  <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                    <path d="M8 3v10M3 8h10" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <SectionGrip
+                  slug={rect.slug}
+                  editor={editor}
+                  sectionRects={sectionRects}
+                  wrapperRef={wrapperRef}
+                  onDropLine={setSectionDropLine}
+                />
+              </div>
+              {/* header strip: title · version · notes · delete */}
+              <div
+                className={`absolute left-14 right-0 flex items-center ${reveal}`}
                 style={{ top: rect.top - 34 }}
                 data-section-header={rect.slug}
               >
-                <div className="flex min-w-0 flex-1 items-center gap-1 rounded-lg border border-border/70 bg-bg/90 py-0.5 pl-1 pr-2 shadow-soft backdrop-blur-sm">
-                  <SectionGrip
-                    slug={rect.slug}
-                    editor={editor}
-                    sectionRects={sectionRects}
-                    wrapperRef={wrapperRef}
-                    onDropLine={setSectionDropLine}
-                  />
-                  <button
-                    type="button"
-                    aria-label="Add section below"
-                    title="Add a section below"
-                    onClick={() => insertSectionAfter(editor, rect.slug, makeSlug)}
-                    className="flex size-6 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
-                  >
-                    <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-                      <path d="M8 3v10M3 8h10" strokeLinecap="round" />
-                    </svg>
-                  </button>
+                <div className="flex min-w-0 flex-1 items-center gap-1 rounded-lg border border-border/70 bg-bg/90 px-2 py-0.5 shadow-soft backdrop-blur-sm">
                   <div className="min-w-0 flex-1">{renderSectionHeader(rect.slug)}</div>
                 </div>
               </div>

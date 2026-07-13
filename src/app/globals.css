@@ -213,9 +213,9 @@ body {
    section header strip fades in on hover, floating in the gap above. */
 
 .doc-editor {
-  /* left padding hosts the block rail (⊕ / ⠿); top padding gives the
-     first section's hover chrome room inside the scroll area */
-  padding-left: 3.5rem;
+  /* left padding hosts the section rail (⊕ ⠿ · extent bar); top padding
+     gives the first section's hover chrome room inside the scroll area */
+  padding-left: 4rem;
   padding-top: 2.5rem;
 }
 
