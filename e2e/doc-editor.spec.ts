@@ -64,6 +64,30 @@ test("selection spans sections and the toolbar groups it into a new section", as
   await expect(page.locator("[data-section-slug]").nth(1)).toContainText("Feature body line.");
 });
 
+test("turn-into: highlighted text changes block type from the toolbar", async ({ page }) => {
+  await setupTwoSections(page, `TurnInto ${Date.now()}`);
+
+  // select the hero body paragraph
+  await page.getByText("Hero body line.").click({ clickCount: 3 });
+  const toolbar = page.getByRole("toolbar", { name: "Selection tools" });
+  await expect(toolbar).toBeVisible();
+
+  // open the turn-into menu and pick Heading 2
+  await toolbar.getByRole("button", { name: "Turn into" }).click();
+  await page.getByRole("option", { name: "Heading 2" }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Page copy" }).getByRole("heading", { level: 2, name: "Hero body line." }),
+  ).toBeVisible();
+
+  // and to a bulleted list
+  await page.getByText("Hero body line.").click({ clickCount: 3 });
+  await toolbar.getByRole("button", { name: "Turn into" }).click();
+  await page.getByRole("option", { name: "Bulleted list" }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Page copy" }).getByRole("listitem").filter({ hasText: "Hero body line." }),
+  ).toBeVisible();
+});
+
 test("section rail: ⊕ inserts a new section below and focuses it", async ({ page }) => {
   await setupTwoSections(page, `Rail ${Date.now()}`);
   const sections = page.locator("[data-section-slug]");
