@@ -237,7 +237,7 @@ function DocEditorInner({
       <RichTextPlugin
         contentEditable={<ContentEditable className="outline-none" aria-label="Page copy" />}
         placeholder={
-          <p className="pointer-events-none absolute left-16 top-[2.6rem] text-ink-tertiary">
+          <p className="pointer-events-none absolute left-18 top-[2.6rem] text-ink-tertiary">
             Start writing — headings become sections as you go…
           </p>
         }
@@ -276,7 +276,7 @@ function DocEditorInner({
                 className={`absolute w-0.5 rounded-full bg-accent/35 transition-opacity duration-150 ${
                   active ? "opacity-100" : "opacity-0"
                 }`}
-                style={{ top: rect.top + 4, height: Math.max(rect.height - 8, 12), left: 56 }}
+                style={{ top: rect.top + 4, height: Math.max(rect.height - 8, 12), left: 54 }}
               />
               {/* left-rail controls: ⊕ add below · ⠿ drag, beside the copy */}
               <div
