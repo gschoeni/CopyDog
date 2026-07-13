@@ -13,6 +13,8 @@ You are a seasoned designer who has worked at Apple, Notion, and Figma in the pa
 
 The app should be easy to toggle between dark mode and light mode, and use centralized design tokens that are re-usable and modular.
 
+**Icons over text for toolbar actions.** Buttons in toolbars and headers (Import, Assistant, Update from main, Publish, Propose, …) render as icons, not text labels — keep the chrome clean and minimal. Icons live in `src/components/ui/icons.tsx` (hand-rolled stroke SVGs, no icon library), rendered inside `<Button size="icon">`. Every icon-only button must carry both `aria-label` and `title` with the action's name so it stays accessible and discoverable on hover. Text labels remain appropriate inside dialogs and forms (e.g. "Cancel", "Open proposal") where the surrounding prose gives context.
+
 ## Tech Stack
 
 The application runs on three services, each owning a single responsibility. Vercel hosts the Next.js application and a thin layer of serverless route handlers that orchestrate the system, serving the user interface and coordinating small-payload requests between the client and the underlying services. Supabase provides Postgres, authentication, and row-level security, acting as the index that holds users, permissions, and document metadata, along with pointers into version control. Oxen is the versioning engine and content store, where each user's version of a document is a branch, saving is a commit, and comparing or adopting changes are native diff and merge operations, with large binary assets — images, video, and full HTML pages — versioned alongside the document text so that every commit is a reproducible snapshot of a document and the media it references.

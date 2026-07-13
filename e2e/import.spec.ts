@@ -19,7 +19,7 @@ test("import from a URL replaces the page with extracted sections + wireframe", 
   await page.getByRole("button", { name: "Import", exact: true }).click();
 
   // copy landed as sections
-  const editor = page.getByRole("textbox", { name: "Section copy" }).first();
+  const editor = page.getByRole("textbox", { name: "Page copy" }).first();
   await expect(editor).toContainText("Imported headline", { timeout: 20_000 });
   await expect(editor).toContainText("This copy came from a real HTTP fetch");
   await expect(page.getByLabel("Section title").first()).toHaveValue("Imported headline");
@@ -44,7 +44,7 @@ test("import from pasted HTML", async ({ page }) => {
   );
   await page.getByRole("button", { name: "Import", exact: true }).click();
 
-  await expect(page.getByRole("textbox", { name: "Section copy" }).first()).toContainText("Pasted page", {
+  await expect(page.getByRole("textbox", { name: "Page copy" }).first()).toContainText("Pasted page", {
     timeout: 20_000,
   });
   await expect(page.getByLabel("Section title").nth(1)).toHaveValue("Second section");

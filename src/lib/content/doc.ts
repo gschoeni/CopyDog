@@ -30,6 +30,8 @@ export const docSectionSchema = z.object({
   versions: z.array(sectionVersionRefSchema).default([]),
   /** id of the wireframe slot this section fills; null until linked */
   wireframeSlot: z.string().nullable(),
+  /** grouped-by-hand sections are pinned: auto-sectioning leaves them alone */
+  pinned: z.boolean().default(false),
 });
 
 export const docFileSchema = z.object({

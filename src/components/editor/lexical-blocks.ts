@@ -28,7 +28,14 @@ import { $createEyebrowNode, $isEyebrowNode } from "./nodes/eyebrow-node";
 export function $populateFromBlocks(blocks: Block[]): void {
   const root = $getRoot();
   root.clear();
+  $appendBlocksToElement(root, blocks);
+  if (root.getChildrenSize() === 0) {
+    root.append($createParagraphNode());
+  }
+}
 
+/** Builds Lexical nodes for blocks and appends them to any container. */
+export function $appendBlocksToElement(element: ElementNode, blocks: Block[]): void {
   for (const block of blocks) {
     switch (block.type) {
       case "h1":
@@ -39,19 +46,19 @@ export function $populateFromBlocks(blocks: Block[]): void {
       case "h6": {
         const heading = $createHeadingNode(block.type);
         appendInline(heading, block.text);
-        root.append(heading);
+        element.append(heading);
         break;
       }
       case "eyebrow": {
         const eyebrow = $createEyebrowNode();
         appendInline(eyebrow, block.text);
-        root.append(eyebrow);
+        element.append(eyebrow);
         break;
       }
       case "button": {
         const button = $createButtonNode(block.url);
         appendInline(button, block.label);
-        root.append(button);
+        element.append(button);
         break;
       }
       case "bullets": {
@@ -61,27 +68,28 @@ export function $populateFromBlocks(blocks: Block[]): void {
           appendInline(listItem, item);
           list.append(listItem);
         }
-        root.append(list);
+        element.append(list);
         break;
       }
       case "p": {
         const paragraph = $createParagraphNode();
         appendInline(paragraph, block.text);
-        root.append(paragraph);
+        element.append(paragraph);
         break;
       }
     }
   }
-
-  if (root.getChildrenSize() === 0) {
-    root.append($createParagraphNode());
-  }
 }
 
 export function $extractBlocks(): Block[] {
+  return $blocksFromElement($getRoot());
+}
+
+/** Reads a container's children back into the canonical block model. */
+export function $blocksFromElement(container: ElementNode): Block[] {
   const blocks: Block[] = [];
 
-  for (const node of $getRoot().getChildren()) {
+  for (const node of container.getChildren()) {
     if ($isHeadingNode(node)) {
       const tag = node.getTag() as HeadingLevel;
       if (headingLevels.includes(tag)) {

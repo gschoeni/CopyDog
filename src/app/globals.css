@@ -208,6 +208,26 @@ body {
   line-height: 1.4;
 }
 
+/* the continuous document: sections are containers inside one editor */
+
+.doc-editor {
+  /* left padding hosts the block rail (⊕ / ⠿) */
+  padding-left: 3.5rem;
+}
+
+.doc-editor .doc-section {
+  position: relative;
+  /* headroom for the section header overlay (title · version · notes) */
+  padding-top: 2.4rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid transparent;
+}
+
+.doc-editor .doc-section:not(:last-child) {
+  border-bottom-color: var(--color-border);
+  margin-bottom: 1.25rem;
+}
+
 .copy-editor .editor-code {
   font-family: var(--font-mono);
   font-size: 0.875em;

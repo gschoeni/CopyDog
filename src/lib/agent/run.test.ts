@@ -44,6 +44,7 @@ describe("runAgentTurn", () => {
           activeVersion: "original",
           versions: [{ slug: "original", label: "Original" }],
           wireframeSlot: null,
+          pinned: false,
         },
       ],
     });

@@ -16,18 +16,20 @@ describe("doc file", () => {
             { slug: "punchy", label: "Punchy" },
           ],
           wireframeSlot: "hero-slot",
+          pinned: false,
         },
       ],
     };
     expect(parseDocFile(serializeDocFile(doc))).toEqual(doc);
   });
 
-  it("backfills a versions list for docs written before versioning", () => {
+  it("backfills versions and pinned for docs written before those fields", () => {
     const legacy = JSON.stringify({
       version: 1,
       sections: [{ slug: "hero", title: "Hero", activeVersion: "original", wireframeSlot: null }],
     });
     const doc = parseDocFile(legacy);
     expect(doc.sections[0]!.versions).toEqual([{ slug: "original", label: "Original" }]);
+    expect(doc.sections[0]!.pinned).toBe(false);
   });
 });

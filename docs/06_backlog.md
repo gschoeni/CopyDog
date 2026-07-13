@@ -32,5 +32,6 @@ In this file, write future ideas, links, and things we should explore.
 - **Block-level wireframe slot re-linking UI** (manual override of the
   auto-matching).
 - **Workspace GC** — named draft workspaces accumulate per user per project.
-- **Rich text niceties**: links inside paragraphs, keyboard block menu (/),
-  drag-to-reorder sections.
+- **Rich text niceties**: links inside paragraphs, keyboard block menu (/).
+- **Block multi-select** (click handles with shift, like Notion) on top of the
+  text-selection grouping that exists now.

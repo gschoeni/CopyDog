@@ -31,7 +31,7 @@ test("two users: invite → publish → propose → merge → sync → adopt", a
 
   // Alice writes hero copy and an alternate version
   await alice.page.getByRole("link", { name: /Home/ }).click();
-  await alice.page.getByRole("textbox", { name: "Section copy" }).click();
+  await alice.page.getByRole("textbox", { name: "Page copy" }).click();
   await alice.page.keyboard.type("# Alice's headline");
   const title = alice.page.getByLabel("Section title");
   await title.fill("Hero");
@@ -43,7 +43,7 @@ test("two users: invite → publish → propose → merge → sync → adopt", a
   await alice.page.getByLabel("New version name").fill("Bold take");
   await alice.page.keyboard.press("Enter");
   await expect(alice.page.getByRole("button", { name: /Bold take/ })).toBeVisible();
-  const aliceEditor = alice.page.getByRole("textbox", { name: "Section copy" });
+  const aliceEditor = alice.page.getByRole("textbox", { name: "Page copy" });
   await aliceEditor.getByText("Alice's headline").click({ clickCount: 3 });
   await alice.page.keyboard.type("The bold alternative");
   await expect(alice.page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
@@ -68,7 +68,7 @@ test("two users: invite → publish → propose → merge → sync → adopt", a
   await bob.page.goto(`${projectUrl}/pages/home`);
   await bob.page.getByRole("button", { name: "Update from main" }).click();
   await bob.page.getByRole("button", { name: "Replace my page" }).click();
-  await expect(bob.page.getByRole("textbox", { name: "Section copy" })).toContainText("The bold alternative", {
+  await expect(bob.page.getByRole("textbox", { name: "Page copy" })).toContainText("The bold alternative", {
     timeout: 20_000,
   });
 
@@ -77,7 +77,7 @@ test("two users: invite → publish → propose → merge → sync → adopt", a
   const adoptItem = bob.page.getByRole("menuitem", { name: /Original —/ });
   await expect(adoptItem).toBeVisible({ timeout: 10_000 });
   await adoptItem.click();
-  await expect(bob.page.getByRole("textbox", { name: "Section copy" })).toContainText("Alice's headline", {
+  await expect(bob.page.getByRole("textbox", { name: "Page copy" })).toContainText("Alice's headline", {
     timeout: 20_000,
   });
 
