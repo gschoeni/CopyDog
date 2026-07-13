@@ -529,8 +529,9 @@ export function PageEditor({
 
       <div className={`min-h-0 flex-1 ${mode === "split" ? "grid grid-cols-2" : "flex"}`}>
         {/* hidden, not unmounted: the editor keeps its live state across
-            mode switches (unmounting would resurrect page-load content) */}
-        <div ref={copyPaneRef} className={`min-w-0 flex-1 overflow-y-auto ${mode === "wireframe" ? "hidden" : ""}`}>
+            mode switches (unmounting would resurrect page-load content).
+            No overflow here — the window scrolls, so sticky binds to it. */}
+        <div ref={copyPaneRef} className={`min-w-0 flex-1 ${mode === "wireframe" ? "hidden" : ""}`}>
           <div className="flex min-h-full">
             <SectionToc sections={sections} compact={mode === "split"} onNavigate={scrollToSection} />
             <div className="min-w-0 flex-1">
@@ -545,6 +546,8 @@ export function PageEditor({
                 />
               </div>
             </div>
+            {/* balances the TOC so the copy column stays centered in the pane */}
+            <div aria-hidden className={`hidden shrink-0 md:block ${mode === "split" ? "w-11" : "w-52"}`} />
           </div>
         </div>
 
