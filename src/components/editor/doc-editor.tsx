@@ -131,27 +131,58 @@ function DocEditorInner({
   const [sectionDropLine, setSectionDropLine] = useState<number | null>(null);
   const [hoveredSlug, setHoveredSlug] = useState<string | null>(null);
 
-  // reveal a section's chrome while the pointer is over it (or the gap
-  // above it, where the chrome strip floats)
+  // Chrome reveals only from the rail (left gutter) or the strip band (the
+  // gap above a section) — hovering the text itself stays clean. Once
+  // revealed, a grace period keeps it up so the pointer can cross the text
+  // to reach the header without it fading away underneath.
+  const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
-    const CHROME_ZONE = 40;
+    const STRIP_BAND = 40; // px above the section where the header floats
+    const RAIL_WIDTH = 68; // px: ⊕ ⠿ + extent bar gutter
+    const FADE_GRACE_MS = 1200;
+
+    const scheduleFade = () => {
+      if (fadeTimer.current) return;
+      fadeTimer.current = setTimeout(() => {
+        fadeTimer.current = null;
+        setHoveredSlug(null);
+      }, FADE_GRACE_MS);
+    };
+    const cancelFade = () => {
+      if (fadeTimer.current) {
+        clearTimeout(fadeTimer.current);
+        fadeTimer.current = null;
+      }
+    };
+
     const onMove = (event: MouseEvent) => {
-      const y = event.clientY - wrapper.getBoundingClientRect().top;
+      const bounds = wrapper.getBoundingClientRect();
+      const x = event.clientX - bounds.left;
+      const y = event.clientY - bounds.top;
       let found: string | null = null;
       for (const rect of sectionRects) {
-        if (y >= rect.top - CHROME_ZONE && y < rect.top + rect.height) {
+        const inStripBand = y >= rect.top - STRIP_BAND && y < rect.top;
+        const inRail = x <= RAIL_WIDTH && y >= rect.top - STRIP_BAND && y < rect.top + rect.height;
+        if (inStripBand || inRail) {
           found = rect.slug;
           break;
         }
       }
-      setHoveredSlug((prev) => (prev === found ? prev : found));
+      if (found) {
+        cancelFade();
+        setHoveredSlug((prev) => (prev === found ? prev : found));
+      } else {
+        scheduleFade();
+      }
     };
-    const onLeave = () => setHoveredSlug(null);
+    const onLeave = () => scheduleFade();
+
     wrapper.addEventListener("mousemove", onMove);
     wrapper.addEventListener("mouseleave", onLeave);
     return () => {
+      cancelFade();
       wrapper.removeEventListener("mousemove", onMove);
       wrapper.removeEventListener("mouseleave", onLeave);
     };
