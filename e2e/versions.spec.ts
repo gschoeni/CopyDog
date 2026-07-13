@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { openSectionChrome } from "./support/chrome";
 import { signIn } from "./support/auth";
 
 async function createProjectAndOpenHome(page: import("@playwright/test").Page, name: string) {
@@ -19,7 +20,8 @@ test("alternate versions: create, edit independently, toggle back", async ({ pag
   await page.keyboard.type("Original headline idea");
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
 
-  // branch a new version from current copy
+  // branch a new version from current copy (the handle opens the header)
+  await openSectionChrome(page);
   await page.getByRole("button", { name: /Original/ }).click();
   await page.getByRole("menuitem", { name: "New version from current" }).click();
   await page.getByLabel("New version name").fill("Punchy");
@@ -35,11 +37,13 @@ test("alternate versions: create, edit independently, toggle back", async ({ pag
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
 
   // toggle back to Original — the old copy is untouched
+  await openSectionChrome(page);
   await page.getByRole("button", { name: /Punchy/ }).click();
   await page.getByRole("menuitemradio", { name: "Original" }).click();
   await expect(editor).toContainText("Original headline idea");
 
   // and forward again
+  await openSectionChrome(page);
   await page.getByRole("button", { name: /Original · 2/ }).click();
   await page.getByRole("menuitemradio", { name: "Punchy" }).click();
   await expect(editor).toContainText("Punchy alternative!");
@@ -54,6 +58,7 @@ test("notes: add, see count, resolve", async ({ page }) => {
   await createProjectAndOpenHome(page, `Notes ${Date.now()}`);
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
 
+  await openSectionChrome(page);
   await page.getByRole("button", { name: /^Notes/ }).click();
   await page.getByLabel("Add a note").fill("Client wants this friendlier");
   await page.getByRole("button", { name: "Add", exact: true }).click();

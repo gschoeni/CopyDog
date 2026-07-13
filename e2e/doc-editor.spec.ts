@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { openSectionChrome } from "./support/chrome";
 import { signIn } from "./support/auth";
 
 /**
@@ -112,7 +113,7 @@ test("sections reorder by dragging their header grip", async ({ page }) => {
   // chrome is invisible until you hover the section — hover its copy first
   await page.getByText("Feature body line.").hover();
   const secondRail = page.locator("[data-section-rail]").nth(1);
-  const grip = secondRail.getByRole("button", { name: "Drag to reorder section" });
+  const grip = secondRail.getByRole("button", { name: "Section options" });
   await expect(grip).toBeVisible();
   const gripBox = (await grip.boundingBox())!;
   const firstBox = (await sections.first().boundingBox())!;
@@ -126,7 +127,9 @@ test("sections reorder by dragging their header grip", async ({ page }) => {
   await expect(sections.nth(1)).toContainText("Hero title");
 
   // the ↑/↓ arrows in the strip also reorder: push Features back down
-  await page.getByText("Feature body line.").hover();
+  // (rail positions settle on a rAF after the reorder)
+  await page.waitForTimeout(150);
+  await openSectionChrome(page, 0);
   await page
     .locator("[data-section-header]")
     .first()
@@ -135,7 +138,8 @@ test("sections reorder by dragging their header grip", async ({ page }) => {
   await expect(sections.first()).toContainText("Hero title");
   await expect(sections.nth(1)).toContainText("Features");
   // and back up, so the persisted order matches the drag result
-  await page.getByText("Feature body line.").hover();
+  await page.waitForTimeout(150);
+  await openSectionChrome(page, 1);
   await page
     .locator("[data-section-header]")
     .nth(1)
