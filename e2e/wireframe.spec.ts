@@ -12,7 +12,7 @@ test("generate wireframe from copy, live-update it, persists across reload", asy
   await page.getByRole("link", { name: /Home/ }).click();
 
   // write hero copy
-  await page.getByRole("textbox", { name: "Section copy" }).click();
+  await page.getByRole("textbox", { name: "Page copy" }).click();
   await page.keyboard.type("# Copy meets layout");
   await page.keyboard.press("Enter");
   await page.keyboard.type("The wireframe is a view over your words.");
@@ -30,7 +30,7 @@ test("generate wireframe from copy, live-update it, persists across reload", asy
 
   // side-by-side: editing copy updates the wireframe live
   await page.getByRole("tab", { name: "Split" }).click();
-  const editor = page.getByRole("textbox", { name: "Section copy" });
+  const editor = page.getByRole("textbox", { name: "Page copy" });
   // triple-click selects the heading line; typing replaces it
   await editor.getByText("Copy meets layout").click({ clickCount: 3 });
   await page.keyboard.type("Copy meets layout today");

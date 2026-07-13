@@ -64,6 +64,7 @@ describe("content store", () => {
           activeVersion: "original",
           versions: [{ slug: "original", label: "Original" }],
           wireframeSlot: null,
+          pinned: false,
         },
       ],
     });

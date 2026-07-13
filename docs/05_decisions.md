@@ -72,3 +72,26 @@ icon-only buttons for a clean, minimal look. Icons are hand-rolled stroke SVGs
 in `src/components/ui/icons.tsx` — no icon library dependency — used via
 `<Button size="icon">`, always with `aria-label` + `title` naming the action.
 Dialogs and forms keep text labels, where prose context does the explaining.
+
+## 2026-07-12 — the continuous document editor
+
+**One Lexical editor per page; sections are shadow-root containers.** Cross-
+section selection, grouping, and block dragging all need one editing surface,
+so SectionNodes hold each section's blocks inside a single editor. Declaring
+them shadow roots makes section children behave as top-level blocks (markdown
+shortcuts, turn-into, selection ops) without forking Lexical internals.
+Section chrome (title · version · notes · grip) renders as overlays aligned to
+the live DOM, in headroom each section reserves.
+
+**Grouped sections are pinned.** Auto-sectioning would instantly re-split a
+deliberately grouped section (body + heading), so grouping pins the section
+and the split transform skips pinned ones. Pinned is persisted in doc.json.
+
+**Editor state is the structural source of truth while editing.** The page
+component reconciles editor snapshots: new sections get metadata + files,
+removed ones are dropped, titles derive from first headings until manually
+renamed. The editor hides (never unmounts) across view-mode switches so its
+live state survives.
+
+**Drags are pointer-based, not HTML5 DnD.** Smoother control over indicators,
+and actually drivable by tests.

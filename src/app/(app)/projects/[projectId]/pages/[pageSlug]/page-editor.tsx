@@ -4,16 +4,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { SectionEditor } from "@/components/editor/section-editor";
+import { DocEditor, type DocEditorHandle } from "@/components/editor/doc-editor";
+import type { SectionSnapshot } from "@/components/editor/doc-structure";
 import { Button } from "@/components/ui/button";
 import { ImportIcon, SparklesIcon } from "@/components/ui/icons";
 import type { Block } from "@/lib/copy/blocks";
 import type { DocSection } from "@/lib/content/doc";
 import { parseSectionMarkdown, serializeBlocks } from "@/lib/copy/markdown";
-import { DEFAULT_SECTION_TITLE, deriveSectionTitle, splitIntoSections } from "@/lib/copy/sections";
+import { DEFAULT_SECTION_TITLE, deriveSectionTitle } from "@/lib/copy/sections";
+import { shortId } from "@/lib/slug";
 import { injectCopy } from "@/lib/wireframe/inject";
 
 import {
+  adoptVersionAction,
   createVersionAction,
   generateWireframeAction,
   readVersionAction,
@@ -25,30 +28,9 @@ import { ImportDialog } from "./import-dialog";
 import { PublishControls } from "./publish-controls";
 import { SectionNotes } from "./section-notes";
 import { VersionSwitcher } from "./version-switcher";
-import { adoptVersionAction } from "./actions";
 
 export interface EditorSection extends DocSection {
   blocks: Block[];
-  /**
-   * Client-only remount counter: bumped when a section's content changes
-   * outside its own editor (auto-splits), so the uncontrolled editor
-   * re-reads its blocks.
-   */
-  epoch?: number;
-}
-
-function emptySection(existing: EditorSection[]): EditorSection {
-  let n = existing.length + 1;
-  let slug = `section-${n}`;
-  while (existing.some((s) => s.slug === slug)) slug = `section-${++n}`;
-  return {
-    slug,
-    title: DEFAULT_SECTION_TITLE,
-    activeVersion: "original",
-    versions: [{ slug: "original", label: "Original" }],
-    wireframeSlot: null,
-    blocks: [],
-  };
 }
 
 export interface PageEditorProps {
@@ -64,13 +46,21 @@ export interface PageEditorProps {
 type SaveState = "saved" | "saving" | "error";
 type ViewMode = "copy" | "split" | "wireframe";
 
+interface SectionMeta {
+  title: string;
+  activeVersion: string;
+  versions: DocSection["versions"];
+  wireframeSlot: string | null;
+  pinned: boolean;
+}
+
 const AUTOSAVE_DELAY_MS = 800;
 
 /**
- * The workbench: one surface that toggles between the copy document, the
- * greyscale wireframe, and a side-by-side of both. The wireframe pane is a
- * pure projection — `injectCopy(wireframe, sections)` re-runs on every
- * keystroke, so the two views can never disagree.
+ * The workbench. The copy pane is ONE continuous document (DocEditor):
+ * selection spans sections, blocks drag anywhere, sections group and
+ * reorder. This component owns section *metadata* (titles, versions, notes
+ * anchors) and turns editor snapshots into Oxen workspace saves.
  */
 export function PageEditor({
   projectId,
@@ -82,11 +72,40 @@ export function PageEditor({
   initialDirty,
 }: PageEditorProps) {
   const router = useRouter();
-  // a page is never empty: like a fresh doc, there's always somewhere to type
-  const [sections, setSections] = useState<EditorSection[]>(() =>
-    initialSections.length > 0 ? initialSections : [emptySection([])],
+  const docRef = useRef<DocEditorHandle>(null);
+
+  // ---- section metadata (doc.json fields), keyed by slug -----------------
+  const metaRef = useRef<Map<string, SectionMeta>>(
+    new Map(
+      initialSections.map((s) => [
+        s.slug,
+        {
+          title: s.title,
+          activeVersion: s.activeVersion,
+          versions: s.versions,
+          wireframeSlot: s.wireframeSlot,
+          pinned: s.pinned,
+        },
+      ]),
+    ),
   );
-  const [focusSlug, setFocusSlug] = useState<string | null>(null);
+  const usedSlugs = useRef(new Set(initialSections.map((s) => s.slug)));
+  const makeSlug = useCallback(() => {
+    let slug = `sec-${shortId(4)}`;
+    while (usedSlugs.current.has(slug)) slug = `sec-${shortId(4)}`;
+    usedSlugs.current.add(slug);
+    return slug;
+  }, []);
+
+  const initialSnapshot = useMemo<SectionSnapshot[]>(
+    () => initialSections.map((s) => ({ slug: s.slug, blocks: s.blocks, pinned: s.pinned })),
+    [initialSections],
+  );
+
+  // combined view (meta + live blocks) for the wireframe preview & headers
+  const [sections, setSections] = useState<EditorSection[]>(initialSections);
+  const lastSnapshot = useRef<SectionSnapshot[]>(initialSnapshot);
+
   const [wireframe, setWireframe] = useState<string | null>(initialWireframe);
   const [mode, setMode] = useState<ViewMode>("copy");
   const [saveState, setSaveState] = useState<SaveState>("saved");
@@ -95,9 +114,7 @@ export function PageEditor({
   const [dirty, setDirty] = useState(initialDirty);
   const [assistantOpen, setAssistantOpen] = useState(false);
 
-  // restore the last view mode + assistant state per project; deferred a
-  // microtask so the update lands after hydration commit (before paint) —
-  // this also keeps them across the keyed remounts refresh() causes
+  // restore per-project view mode + assistant state after hydration commit
   useEffect(() => {
     const stored = localStorage.getItem(`copydog:mode:${projectId}`);
     const assistant = localStorage.getItem(`copydog:assistant:${projectId}`) === "1";
@@ -122,13 +139,16 @@ export function PageEditor({
     [projectId],
   );
 
+  // ---- save machinery ------------------------------------------------------
   const pendingSaves = useRef(0);
-  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const contentTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const structureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // "saved" only when no in-flight requests AND no pending debounce timers —
-  // otherwise a reload between debounce and save silently loses keystrokes
+  // "saved" only when nothing is in flight AND nothing is debouncing
   const settle = useCallback(() => {
-    if (pendingSaves.current === 0 && timers.current.size === 0) setSaveState("saved");
+    if (pendingSaves.current === 0 && contentTimers.current.size === 0 && structureTimer.current === null) {
+      setSaveState("saved");
+    }
   }, []);
 
   const trackSave = useCallback(
@@ -148,287 +168,212 @@ export function PageEditor({
     [settle],
   );
 
-  // synchronous view of sections for handlers that need to compute
-  // next-state + side effects together (auto-splitting)
-  const sectionsRef = useRef(sections);
-  useEffect(() => {
-    sectionsRef.current = sections;
-  }, [sections]);
-
-  // a brand-new page seeds its first section server-side, once
-  const seededEmptyPage = useRef(false);
-  useEffect(() => {
-    if (initialSections.length > 0 || seededEmptyPage.current) return;
-    seededEmptyPage.current = true;
-    const seeded = sectionsRef.current;
-    const structural = seeded.map(({ slug, title, activeVersion, versions, wireframeSlot }) => ({
-      slug,
-      title,
-      activeVersion,
-      versions,
-      wireframeSlot,
-    }));
-    void trackSave(saveStructureAction({ projectId, pageSlug, sections: structural }));
-    void trackSave(
-      saveSectionAction({ projectId, pageSlug, sectionSlug: seeded[0]!.slug, versionSlug: "original", markdown: "" }),
-    );
-  }, [initialSections.length, projectId, pageSlug, trackSave]);
-
-  // sections whose structure (e.g. auto-title) changed since the last
-  // structural save — sticky, so a later content-only keystroke on the same
-  // section can't clobber the pending flag before the debounce fires
-  const structuralDirty = useRef(new Set<string>());
-
-  const scheduleSectionSave = useCallback(
-    (sectionSlug: string, versionSlug: string, markdown: string, structuralToo: boolean) => {
-      if (structuralToo) structuralDirty.current.add(sectionSlug);
-      const existing = timers.current.get(sectionSlug);
+  const scheduleContentSave = useCallback(
+    (slug: string, blocks: Block[]) => {
+      const existing = contentTimers.current.get(slug);
       if (existing) clearTimeout(existing);
       setSaveState("saving");
-      timers.current.set(
-        sectionSlug,
+      contentTimers.current.set(
+        slug,
         setTimeout(() => {
-          timers.current.delete(sectionSlug);
-          void trackSave(saveSectionAction({ projectId, pageSlug, sectionSlug, versionSlug, markdown }));
-          if (structuralDirty.current.delete(sectionSlug)) {
-            const structural = sectionsRef.current.map(({ slug, title, activeVersion, versions, wireframeSlot }) => ({
-              slug,
-              title,
-              activeVersion,
-              versions,
-              wireframeSlot,
-            }));
-            void trackSave(saveStructureAction({ projectId, pageSlug, sections: structural }));
+          contentTimers.current.delete(slug);
+          const meta = metaRef.current.get(slug);
+          if (!meta) {
+            settle();
+            return;
           }
+          void trackSave(
+            saveSectionAction({
+              projectId,
+              pageSlug,
+              sectionSlug: slug,
+              versionSlug: meta.activeVersion,
+              markdown: serializeBlocks(blocks),
+            }),
+          );
         }, AUTOSAVE_DELAY_MS),
       );
     },
-    [projectId, pageSlug, trackSave],
+    [projectId, pageSlug, trackSave, settle],
   );
+
+  const scheduleStructureSave = useCallback(() => {
+    if (structureTimer.current) clearTimeout(structureTimer.current);
+    setSaveState("saving");
+    structureTimer.current = setTimeout(() => {
+      structureTimer.current = null;
+      const structural = lastSnapshot.current
+        .filter((s) => metaRef.current.has(s.slug))
+        .map((s) => {
+          const meta = metaRef.current.get(s.slug)!;
+          return {
+            slug: s.slug,
+            title: meta.title,
+            activeVersion: meta.activeVersion,
+            versions: meta.versions,
+            wireframeSlot: meta.wireframeSlot,
+            pinned: meta.pinned,
+          };
+        });
+      void trackSave(saveStructureAction({ projectId, pageSlug, sections: structural }));
+    }, AUTOSAVE_DELAY_MS);
+  }, [projectId, pageSlug, trackSave]);
+
+  /** Rebuild the combined section view (meta + blocks) for preview/headers. */
+  const rebuildSections = useCallback(() => {
+    setSections(
+      lastSnapshot.current
+        .filter((s) => metaRef.current.has(s.slug))
+        .map((s) => {
+          const meta = metaRef.current.get(s.slug)!;
+          return { slug: s.slug, blocks: s.blocks, ...meta };
+        }),
+    );
+  }, []);
 
   /**
-   * Every keystroke lands here. One group → normal debounced autosave with
-   * live title derivation. Multiple groups → the document just grew a new
-   * section under the writer's cursor: split it out, keep typing.
+   * The editor speaks; we reconcile. New sections get metadata and files,
+   * removed ones are dropped, edited ones autosave, and titles follow their
+   * first heading until renamed by hand.
    */
-  const handleMarkdownChange = useCallback(
-    (section: EditorSection, markdown: string) => {
-      const blocks = parseSectionMarkdown(markdown);
-      const groups = splitIntoSections(blocks);
-      const current = sectionsRef.current;
-      const index = current.findIndex((s) => s.slug === section.slug);
-      if (index === -1) return;
+  const handleSnapshotChange = useCallback(
+    (snapshot: SectionSnapshot[]) => {
+      const previous = lastSnapshot.current;
+      const previousBySlug = new Map(previous.map((s) => [s.slug, s]));
+      const currentSlugs = new Set(snapshot.map((s) => s.slug));
+      let structural = false;
 
-      if (groups.length === 1) {
-        // auto-title: sections named by their first heading until renamed by hand
-        const existing = current[index]!;
-        const derived = deriveSectionTitle(blocks);
-        const shouldRename =
-          existing.title === DEFAULT_SECTION_TITLE || existing.title === deriveSectionTitle(existing.blocks);
-        const title = shouldRename ? derived : existing.title;
-
-        const next = current.map((s, i) => (i === index ? { ...s, blocks, title } : s));
-        sectionsRef.current = next;
-        setSections(next);
-        scheduleSectionSave(section.slug, section.activeVersion, markdown, title !== existing.title);
-        return;
+      for (const old of previous) {
+        if (!currentSlugs.has(old.slug)) {
+          metaRef.current.delete(old.slug);
+          const timer = contentTimers.current.get(old.slug);
+          if (timer) {
+            clearTimeout(timer);
+            contentTimers.current.delete(old.slug);
+          }
+          structural = true;
+        }
       }
 
-      // --- auto-split ---
-      const existingSlugs = new Set(current.map((s) => s.slug));
-      const [first, ...rest] = groups;
+      for (const section of snapshot) {
+        const prev = previousBySlug.get(section.slug);
+        const meta = metaRef.current.get(section.slug);
 
-      const shrunk: EditorSection = {
-        ...current[index]!,
-        blocks: first!,
-        title:
-          current[index]!.title === DEFAULT_SECTION_TITLE || current[index]!.title === deriveSectionTitle(section.blocks)
-            ? deriveSectionTitle(first!)
-            : current[index]!.title,
-        epoch: (current[index]!.epoch ?? 0) + 1,
-      };
+        if (!meta) {
+          // born in the editor (auto-split, grouping, +)
+          metaRef.current.set(section.slug, {
+            title: deriveSectionTitle(section.blocks),
+            activeVersion: "original",
+            versions: [{ slug: "original", label: "Original" }],
+            wireframeSlot: null,
+            pinned: section.pinned ?? false,
+          });
+          usedSlugs.current.add(section.slug);
+          scheduleContentSave(section.slug, section.blocks);
+          structural = true;
+          continue;
+        }
 
-      const created: EditorSection[] = rest.map((group) => {
-        const title = deriveSectionTitle(group);
-        const base =
-          title
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-+|-+$/g, "")
-            .slice(0, 40) || "section";
-        let slug = base;
-        for (let n = 2; existingSlugs.has(slug); n++) slug = `${base}-${n}`;
-        existingSlugs.add(slug);
-        return {
-          slug,
-          title,
-          activeVersion: "original",
-          versions: [{ slug: "original", label: "Original" }],
-          wireframeSlot: null,
-          blocks: group,
-        };
-      });
+        if (meta.pinned !== (section.pinned ?? false)) {
+          meta.pinned = section.pinned ?? false;
+          structural = true;
+        }
 
-      const next = [...current.slice(0, index), shrunk, ...created, ...current.slice(index + 1)];
-      sectionsRef.current = next;
-      setSections(next);
-      // the writer's caret follows the copy into the last new section
-      setFocusSlug(created[created.length - 1]!.slug);
-
-      // structural change: persist everything now, not on a debounce
-      const pending = timers.current.get(section.slug);
-      if (pending) clearTimeout(pending);
-      timers.current.delete(section.slug);
-      void trackSave(saveSectionAction({
-        projectId,
-        pageSlug,
-        sectionSlug: shrunk.slug,
-        versionSlug: shrunk.activeVersion,
-        markdown: serializeBlocks(first!),
-      }));
-      for (const created_ of created) {
-        void trackSave(saveSectionAction({
-          projectId,
-          pageSlug,
-          sectionSlug: created_.slug,
-          versionSlug: "original",
-          markdown: serializeBlocks(created_.blocks),
-        }));
+        if (prev && !blocksEqual(prev.blocks, section.blocks)) {
+          scheduleContentSave(section.slug, section.blocks);
+          // auto-title until manually renamed
+          const prevDerived = deriveSectionTitle(prev.blocks);
+          if (meta.title === DEFAULT_SECTION_TITLE || meta.title === prevDerived) {
+            const derived = deriveSectionTitle(section.blocks);
+            if (derived !== meta.title) {
+              meta.title = derived;
+              structural = true;
+            }
+          }
+        }
       }
-      const structural = next.map(({ slug, title, activeVersion, versions, wireframeSlot }) => ({
-        slug,
-        title,
-        activeVersion,
-        versions,
-        wireframeSlot,
-      }));
-      void trackSave(saveStructureAction({ projectId, pageSlug, sections: structural }));
+
+      if (!structural) {
+        structural = previous.length !== snapshot.length || previous.some((s, i) => s.slug !== snapshot[i]!.slug);
+      }
+
+      lastSnapshot.current = snapshot;
+      rebuildSections();
+      if (structural) scheduleStructureSave();
     },
-    [projectId, pageSlug, scheduleSectionSave, trackSave],
+    [rebuildSections, scheduleContentSave, scheduleStructureSave],
   );
 
-  const persistStructure = useCallback(
-    (next: EditorSection[]) => {
-      setSections(next);
-      const structural = next.map(({ slug, title, activeVersion, versions, wireframeSlot }) => ({
-        slug,
-        title,
-        activeVersion,
-        versions,
-        wireframeSlot,
-      }));
-      void trackSave(saveStructureAction({ projectId, pageSlug, sections: structural }));
-    },
-    [projectId, pageSlug, trackSave],
-  );
-
+  // ---- section operations (invoked from header chrome) ---------------------
   const switchVersion = useCallback(
-    async (sectionSlug: string, versionSlug: string) => {
-      const { markdown } = await readVersionAction({ projectId, pageSlug, sectionSlug, versionSlug });
-      setSections((current) => {
-        const next = current.map((s) =>
-          s.slug === sectionSlug ? { ...s, activeVersion: versionSlug, blocks: parseSectionMarkdown(markdown) } : s,
-        );
-        const structural = next.map(({ slug, title, activeVersion, versions, wireframeSlot }) => ({
-          slug,
-          title,
-          activeVersion,
-          versions,
-          wireframeSlot,
-        }));
-        void trackSave(saveStructureAction({ projectId, pageSlug, sections: structural }));
-        return next;
-      });
+    async (slug: string, versionSlug: string) => {
+      const meta = metaRef.current.get(slug);
+      if (!meta) return;
+      const { markdown } = await readVersionAction({ projectId, pageSlug, sectionSlug: slug, versionSlug });
+      meta.activeVersion = versionSlug;
+      docRef.current?.replaceSectionBlocks(slug, parseSectionMarkdown(markdown));
+      scheduleStructureSave();
     },
-    [projectId, pageSlug, trackSave],
-  );
-
-  const adoptTeammateVersion = useCallback(
-    async (sectionSlug: string, source: { authorId: string; versionSlug: string; label: string }) => {
-      const section = sections.find((s) => s.slug === sectionSlug);
-      if (!section) return;
-      const { slug, markdown } = await adoptVersionAction({
-        projectId,
-        pageSlug,
-        sectionSlug,
-        versionSlug: source.versionSlug,
-        authorId: source.authorId,
-        label: source.label,
-        existingSlugs: section.versions.map((v) => v.slug),
-      });
-      persistStructure(
-        sections.map((s) =>
-          s.slug === sectionSlug
-            ? {
-                ...s,
-                activeVersion: slug,
-                versions: [...s.versions, { slug, label: source.label }],
-                blocks: parseSectionMarkdown(markdown),
-              }
-            : s,
-        ),
-      );
-    },
-    [sections, projectId, pageSlug, persistStructure],
+    [projectId, pageSlug, scheduleStructureSave],
   );
 
   const createVersion = useCallback(
-    async (sectionSlug: string, label: string) => {
-      const section = sections.find((s) => s.slug === sectionSlug);
-      if (!section) return;
-      const { slug, markdown } = await createVersionAction({
+    async (slug: string, label: string) => {
+      const meta = metaRef.current.get(slug);
+      if (!meta) return;
+      const { slug: versionSlug, markdown } = await createVersionAction({
         projectId,
         pageSlug,
-        sectionSlug,
+        sectionSlug: slug,
         label,
-        copyFrom: section.activeVersion,
-        existingSlugs: section.versions.map((v) => v.slug),
+        copyFrom: meta.activeVersion,
+        existingSlugs: meta.versions.map((v) => v.slug),
       });
-      persistStructure(
-        sections.map((s) =>
-          s.slug === sectionSlug
-            ? {
-                ...s,
-                activeVersion: slug,
-                versions: [...s.versions, { slug, label }],
-                // the server copied the source version — render that copy
-                blocks: parseSectionMarkdown(markdown),
-              }
-            : s,
-        ),
-      );
+      meta.versions = [...meta.versions, { slug: versionSlug, label }];
+      meta.activeVersion = versionSlug;
+      docRef.current?.replaceSectionBlocks(slug, parseSectionMarkdown(markdown));
+      scheduleStructureSave();
+      rebuildSections();
     },
-    [sections, projectId, pageSlug, persistStructure],
+    [projectId, pageSlug, scheduleStructureSave, rebuildSections],
+  );
+
+  const adoptTeammateVersion = useCallback(
+    async (slug: string, source: { authorId: string; versionSlug: string; label: string }) => {
+      const meta = metaRef.current.get(slug);
+      if (!meta) return;
+      const { slug: versionSlug, markdown } = await adoptVersionAction({
+        projectId,
+        pageSlug,
+        sectionSlug: slug,
+        versionSlug: source.versionSlug,
+        authorId: source.authorId,
+        label: source.label,
+        existingSlugs: meta.versions.map((v) => v.slug),
+      });
+      meta.versions = [...meta.versions, { slug: versionSlug, label: source.label }];
+      meta.activeVersion = versionSlug;
+      docRef.current?.replaceSectionBlocks(slug, parseSectionMarkdown(markdown));
+      scheduleStructureSave();
+      rebuildSections();
+    },
+    [projectId, pageSlug, scheduleStructureSave, rebuildSections],
   );
 
   const renameSection = useCallback(
     (slug: string, title: string) => {
-      persistStructure(sections.map((s) => (s.slug === slug ? { ...s, title } : s)));
+      const meta = metaRef.current.get(slug);
+      if (!meta || meta.title === title) return;
+      meta.title = title;
+      scheduleStructureSave();
+      rebuildSections();
     },
-    [sections, persistStructure],
+    [scheduleStructureSave, rebuildSections],
   );
 
-  const deleteSection = useCallback(
-    (slug: string) => {
-      const remaining = sections.filter((s) => s.slug !== slug);
-      // the page always keeps somewhere to type
-      persistStructure(remaining.length > 0 ? remaining : [emptySection([])]);
-    },
-    [sections, persistStructure],
-  );
-
-  const moveSection = useCallback(
-    (slug: string, direction: -1 | 1) => {
-      const index = sections.findIndex((s) => s.slug === slug);
-      const target = index + direction;
-      if (index === -1 || target < 0 || target >= sections.length) return;
-      const next = [...sections];
-      const [moved] = next.splice(index, 1);
-      next.splice(target, 0, moved!);
-      persistStructure(next);
-    },
-    [sections, persistStructure],
-  );
+  const deleteSection = useCallback((slug: string) => {
+    docRef.current?.removeSection(slug);
+  }, []);
 
   const generate = useCallback(async () => {
     setGenerating(true);
@@ -441,20 +386,60 @@ export function PageEditor({
     }
   }, [projectId, pageSlug, mode, changeMode]);
 
-  // flush pending timers on unmount so the last keystrokes still save
   useEffect(() => {
-    const activeTimers = timers.current;
-    return () => activeTimers.forEach((t) => clearTimeout(t));
+    const timers = contentTimers.current;
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+      if (structureTimer.current) clearTimeout(structureTimer.current);
+    };
   }, []);
 
-  /** The live projection: wireframe + current copy, recomputed on each edit. */
-  const preview = useMemo(
-    () => (wireframe ? injectCopy(wireframe, sections) : null),
-    [wireframe, sections],
-  );
+  const preview = useMemo(() => (wireframe ? injectCopy(wireframe, sections) : null), [wireframe, sections]);
 
   const statusLabel =
     saveState === "saving" ? "Saving…" : saveState === "error" ? "Couldn't save — retrying on next edit" : "Saved to your draft";
+
+  const renderSectionHeader = useCallback(
+    (slug: string) => {
+      const meta = metaRef.current.get(slug);
+      if (!meta) return null;
+      return (
+        <div className="group/header flex items-center gap-2 pr-1">
+          <input
+            key={meta.title}
+            defaultValue={meta.title}
+            onBlur={(e) => {
+              const title = e.target.value.trim();
+              if (title) renameSection(slug, title);
+            }}
+            aria-label="Section title"
+            className="w-full min-w-0 bg-transparent text-xs font-semibold uppercase tracking-[0.15em] text-ink-tertiary outline-none transition-colors focus:text-ink-secondary"
+          />
+          <VersionSwitcher
+            projectId={projectId}
+            pageSlug={pageSlug}
+            sectionSlug={slug}
+            versions={meta.versions}
+            activeVersion={meta.activeVersion}
+            onSwitch={(v) => void switchVersion(slug, v)}
+            onCreate={(label) => void createVersion(slug, label)}
+            onAdopt={(source) => void adoptTeammateVersion(slug, source)}
+          />
+          <SectionNotes projectId={projectId} pageSlug={pageSlug} sectionSlug={slug} />
+          <button
+            type="button"
+            aria-label="Delete section"
+            title="Delete section (copy included)"
+            onClick={() => deleteSection(slug)}
+            className="flex size-6 shrink-0 items-center justify-center rounded text-xs text-ink-tertiary opacity-0 transition-opacity hover:bg-surface-hover hover:text-danger group-hover/header:opacity-100"
+          >
+            ✕
+          </button>
+        </div>
+      );
+    },
+    [projectId, pageSlug, renameSection, switchVersion, createVersion, adoptTeammateVersion, deleteSection],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -507,35 +492,20 @@ export function PageEditor({
       )}
 
       <div className={`min-h-0 flex-1 ${mode === "split" ? "grid grid-cols-2" : "flex"}`}>
-        {mode !== "wireframe" && (
-          <div className="min-w-0 flex-1 overflow-y-auto">
-            <div className={`mx-auto w-full px-6 pb-32 pt-8 ${mode === "split" ? "max-w-xl" : "max-w-2xl"}`}>
-              <div className="space-y-10">
-                {sections.map((section, index) => (
-                  <SectionCard
-                    key={section.slug}
-                    projectId={projectId}
-                    pageSlug={pageSlug}
-                    section={section}
-                    isFirst={index === 0}
-                    isLast={index === sections.length - 1}
-                    onMarkdownChange={handleMarkdownChange}
-                    onRename={renameSection}
-                    onDelete={deleteSection}
-                    onMove={moveSection}
-                    onSwitchVersion={switchVersion}
-                    onCreateVersion={createVersion}
-                    onAdoptVersion={adoptTeammateVersion}
-                    autoFocus={
-                      focusSlug === section.slug ||
-                      (focusSlug === null && sections.length === 1 && section.blocks.length === 0)
-                    }
-                  />
-                ))}
-              </div>
-            </div>
+        {/* hidden, not unmounted: the editor keeps its live state across
+            mode switches (unmounting would resurrect page-load content) */}
+        <div className={`min-w-0 flex-1 overflow-y-auto ${mode === "wireframe" ? "hidden" : ""}`}>
+          <div className={`mx-auto w-full px-6 pb-32 pt-8 ${mode === "split" ? "max-w-xl" : "max-w-3xl"}`}>
+            <DocEditor
+              ref={docRef}
+              initialSections={initialSnapshot}
+              makeSlug={makeSlug}
+              onSnapshotChange={handleSnapshotChange}
+              renderSectionHeader={renderSectionHeader}
+              autoFocus={initialSections.every((s) => s.blocks.length === 0)}
+            />
           </div>
-        )}
+        </div>
 
         {mode !== "copy" && (
           <WireframePane
@@ -563,6 +533,10 @@ export function PageEditor({
       </div>
     </div>
   );
+}
+
+function blocksEqual(a: Block[], b: Block[]): boolean {
+  return a.length === b.length && JSON.stringify(a) === JSON.stringify(b);
 }
 
 function ModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewMode) => void }) {
@@ -617,13 +591,7 @@ function WireframePane({
             >
               Export HTML
             </a>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={onGenerate}
-              disabled={generating}
-              className="pointer-events-auto"
-            >
+            <Button variant="secondary" size="sm" onClick={onGenerate} disabled={generating} className="pointer-events-auto">
               {generating ? "Designing…" : "Regenerate layout"}
             </Button>
           </div>
@@ -656,115 +624,5 @@ function WireframePane({
         </div>
       )}
     </div>
-  );
-}
-
-function SectionCard({
-  projectId,
-  pageSlug,
-  section,
-  isFirst,
-  isLast,
-  onMarkdownChange,
-  onRename,
-  onDelete,
-  onMove,
-  onSwitchVersion,
-  onCreateVersion,
-  onAdoptVersion,
-  autoFocus,
-}: {
-  projectId: string;
-  pageSlug: string;
-  section: EditorSection;
-  isFirst: boolean;
-  isLast: boolean;
-  onMarkdownChange: (section: EditorSection, markdown: string) => void;
-  onRename: (slug: string, title: string) => void;
-  onDelete: (slug: string) => void;
-  onMove: (slug: string, direction: -1 | 1) => void;
-  onSwitchVersion: (sectionSlug: string, versionSlug: string) => void;
-  onCreateVersion: (sectionSlug: string, label: string) => void;
-  onAdoptVersion: (sectionSlug: string, source: { authorId: string; versionSlug: string; label: string }) => void;
-  autoFocus: boolean;
-}) {
-  const handleChange = useCallback(
-    (markdown: string) => onMarkdownChange(section, markdown),
-    [onMarkdownChange, section],
-  );
-
-  return (
-    <section className="group/section relative">
-      <header className="mb-1 flex items-center gap-2">
-        <input
-          key={section.title}
-          defaultValue={section.title}
-          onBlur={(e) => {
-            const title = e.target.value.trim();
-            if (title && title !== section.title) onRename(section.slug, title);
-          }}
-          aria-label="Section title"
-          className="w-full bg-transparent text-xs font-semibold uppercase tracking-[0.15em] text-ink-tertiary outline-none transition-colors focus:text-ink-secondary"
-        />
-        <VersionSwitcher
-          projectId={projectId}
-          pageSlug={pageSlug}
-          sectionSlug={section.slug}
-          versions={section.versions}
-          activeVersion={section.activeVersion}
-          onSwitch={(slug) => onSwitchVersion(section.slug, slug)}
-          onCreate={(label) => onCreateVersion(section.slug, label)}
-          onAdopt={(source) => onAdoptVersion(section.slug, source)}
-        />
-        <SectionNotes projectId={projectId} pageSlug={pageSlug} sectionSlug={section.slug} />
-        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/section:opacity-100">
-          <IconButton label="Move section up" disabled={isFirst} onClick={() => onMove(section.slug, -1)}>
-            ↑
-          </IconButton>
-          <IconButton label="Move section down" disabled={isLast} onClick={() => onMove(section.slug, 1)}>
-            ↓
-          </IconButton>
-          <IconButton label="Delete section" onClick={() => onDelete(section.slug)}>
-            ✕
-          </IconButton>
-        </div>
-      </header>
-      <div className="rounded-lg border border-transparent px-4 py-2 transition-colors focus-within:border-border focus-within:bg-surface focus-within:shadow-soft group-hover/section:border-border">
-        {/* uncontrolled editor: the key remounts it with fresh blocks when the
-            active version changes or an auto-split rewrites its content */}
-        <SectionEditor
-          key={`${section.slug}:${section.activeVersion}:${section.epoch ?? 0}`}
-          initialBlocks={section.blocks}
-          onMarkdownChange={handleChange}
-          autoFocus={autoFocus}
-          placeholder={autoFocus && section.blocks.length === 0 ? "Start writing — headings become sections as you go…" : undefined}
-        />
-      </div>
-    </section>
-  );
-}
-
-function IconButton({
-  label,
-  disabled,
-  onClick,
-  children,
-}: {
-  label: string;
-  disabled?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
-      className="flex size-7 items-center justify-center rounded-md text-xs text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink disabled:opacity-30"
-    >
-      {children}
-    </button>
   );
 }

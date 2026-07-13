@@ -367,6 +367,7 @@ export async function importPageAction(input: z.infer<typeof importPageInput>): 
       activeVersion: "original",
       versions: [{ slug: "original", label: "Original" }],
       wireframeSlot: slug,
+      pinned: false,
     });
   }
   await writeDoc(oxen, view, pageSlug, { version: 1, sections });

@@ -15,7 +15,7 @@ test("alternate versions: create, edit independently, toggle back", async ({ pag
   await createProjectAndOpenHome(page, `Versions ${Date.now()}`);
 
   // one section with some original copy
-  await page.getByRole("textbox", { name: "Section copy" }).click();
+  await page.getByRole("textbox", { name: "Page copy" }).click();
   await page.keyboard.type("Original headline idea");
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
 
@@ -27,7 +27,7 @@ test("alternate versions: create, edit independently, toggle back", async ({ pag
 
   // new version starts as a copy; make it diverge
   await expect(page.getByRole("button", { name: /Punchy/ })).toBeVisible();
-  const editor = page.getByRole("textbox", { name: "Section copy" });
+  const editor = page.getByRole("textbox", { name: "Page copy" });
   await expect(editor).toContainText("Original headline idea");
   await editor.click();
   await page.keyboard.press(process.platform === "darwin" ? "Meta+a" : "Control+a");
@@ -46,7 +46,7 @@ test("alternate versions: create, edit independently, toggle back", async ({ pag
 
   // survives reload with the chosen version active
   await page.reload();
-  await expect(page.getByRole("textbox", { name: "Section copy" })).toContainText("Punchy alternative!");
+  await expect(page.getByRole("textbox", { name: "Page copy" })).toContainText("Punchy alternative!");
 });
 
 test("notes: add, see count, resolve", async ({ page }) => {

@@ -14,7 +14,7 @@ test("assistant rewrites a section through a tool call", async ({ page }) => {
   await page.getByRole("button", { name: "Create project" }).click();
   await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/, { timeout: 20_000 });
   await page.getByRole("link", { name: /Home/ }).click();
-  await page.getByRole("textbox", { name: "Section copy" }).click();
+  await page.getByRole("textbox", { name: "Page copy" }).click();
   await page.keyboard.type("# Human headline");
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
 
@@ -25,7 +25,7 @@ test("assistant rewrites a section through a tool call", async ({ page }) => {
 
   // scripted reply arrives and the editor reloads with the agent's version
   await expect(page.getByText("I rewrote it with a stronger promise")).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("textbox", { name: "Section copy" })).toContainText("Rewritten by the assistant", {
+  await expect(page.getByRole("textbox", { name: "Page copy" })).toContainText("Rewritten by the assistant", {
     timeout: 20_000,
   });
   await expect(page.getByRole("button", { name: /Agent take/ })).toBeVisible();

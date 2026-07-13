@@ -137,6 +137,7 @@ async function addSection(args: z.infer<typeof addArgs>, ctx: ToolContext): Prom
     activeVersion: "original",
     versions: [{ slug: "original", label: "Original" }],
     wireframeSlot: null,
+    pinned: false,
   });
   await writeDoc(ctx.oxen, ctx.view, ctx.pageSlug, doc);
 
