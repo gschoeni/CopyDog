@@ -224,6 +224,16 @@ body {
   padding: 0.15rem 0;
 }
 
+/* sections hug their copy: the first/last blocks' own margins don't add
+   dead space above or below the section (and its extent bar) */
+.doc-editor .doc-section > :first-child {
+  margin-top: 0;
+}
+
+.doc-editor .doc-section > :last-child {
+  margin-bottom: 0;
+}
+
 .doc-editor .doc-section:not(:last-child) {
   /* the inter-section gap is where the hover chrome lives */
   margin-bottom: 2.75rem;
