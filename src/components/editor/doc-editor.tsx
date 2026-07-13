@@ -141,7 +141,7 @@ function DocEditorInner({
     if (!wrapper) return;
     const STRIP_BAND = 40; // px above the section where the header floats
     const RAIL_WIDTH = 68; // px: ⊕ ⠿ + extent bar gutter
-    const FADE_GRACE_MS = 1200;
+    const FADE_GRACE_MS = 700;
 
     const scheduleFade = () => {
       if (fadeTimer.current) return;
