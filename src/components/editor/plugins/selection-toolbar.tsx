@@ -141,18 +141,7 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
         <span className="italic">i</span>
       </MarkButton>
       <div className="mx-0.5 h-4 w-px bg-border" aria-hidden />
-      <select
-        value={state.blockType}
-        onChange={(e) => applyBlockType(e.target.value as BlockType)}
-        aria-label="Turn into"
-        className="h-7 rounded-md border border-border bg-surface px-1.5 text-xs text-ink-secondary focus:outline-2 focus:outline-accent"
-      >
-        {(Object.keys(BLOCK_TYPE_LABELS) as BlockType[]).map((type) => (
-          <option key={type} value={type}>
-            {BLOCK_TYPE_LABELS[type]}
-          </option>
-        ))}
-      </select>
+      <TurnIntoMenu blockType={state.blockType} onApply={applyBlockType} />
       {state.blockCount > 1 && (
         <>
           <div className="mx-0.5 h-4 w-px bg-border" aria-hidden />
@@ -165,6 +154,60 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
             Group into section
           </button>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Turn-into as a custom dropdown: a native <select> can't open under the
+ * toolbar's mousedown-preventDefault (which is what preserves the text
+ * selection), and taking focus would drop the selection anyway. This menu
+ * never takes focus — the selection survives, the conversion applies.
+ */
+function TurnIntoMenu({ blockType, onApply }: { blockType: BlockType; onApply: (type: BlockType) => void }) {
+  const [open, setOpen] = useState(false);
+
+  // the toolbar unmounts whenever the selection changes, so `open` state
+  // cleans itself up naturally
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        aria-label="Turn into"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-7 items-center gap-1 rounded-md px-2 text-xs text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
+      >
+        {BLOCK_TYPE_LABELS[blockType]}
+        <svg viewBox="0 0 16 16" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+          <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-label="Block types"
+          className="absolute left-0 top-8 z-30 w-40 rounded-lg border border-border bg-surface p-1 shadow-raised"
+        >
+          {(Object.keys(BLOCK_TYPE_LABELS) as BlockType[]).map((type) => (
+            <button
+              key={type}
+              type="button"
+              role="option"
+              aria-selected={type === blockType}
+              onClick={() => {
+                setOpen(false);
+                if (type !== blockType) onApply(type);
+              }}
+              className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
+            >
+              {BLOCK_TYPE_LABELS[type]}
+              {type === blockType && <span className="text-accent">✓</span>}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
