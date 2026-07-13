@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { openSectionChrome } from "./support/chrome";
 import { signIn } from "./support/auth";
 
 /**
@@ -28,9 +29,11 @@ test("assistant rewrites a section through a tool call", async ({ page }) => {
   await expect(page.getByRole("textbox", { name: "Page copy" })).toContainText("Rewritten by the assistant", {
     timeout: 20_000,
   });
+  await openSectionChrome(page);
   await expect(page.getByRole("button", { name: /Agent take/ })).toBeVisible();
 
   // the human's original is preserved as a version
+  await openSectionChrome(page);
   await page.getByRole("button", { name: /Agent take/ }).click();
   await expect(page.getByRole("menuitemradio", { name: "Original" })).toBeVisible();
 

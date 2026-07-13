@@ -130,6 +130,27 @@ function DocEditorInner({
   const [sectionRects, setSectionRects] = useState<SectionRect[]>([]);
   const [sectionDropLine, setSectionDropLine] = useState<number | null>(null);
   const [hoveredSlug, setHoveredSlug] = useState<string | null>(null);
+  // the header strip opens deliberately (handle click / drag) and closes on
+  // any click outside it — hovering never shows it
+  const [openHeaderSlug, setOpenHeaderSlug] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (openHeaderSlug === null) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("[data-section-header]") || target?.closest("[data-section-rail]")) return;
+      setOpenHeaderSlug(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenHeaderSlug(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [openHeaderSlug]);
 
   // Chrome reveals only from the rail (left gutter) or the strip band (the
   // gap above a section) — hovering the text itself stays clean. Once
@@ -344,11 +365,15 @@ function DocEditorInner({
                   sectionRects={sectionRects}
                   wrapperRef={wrapperRef}
                   onDropLine={setSectionDropLine}
+                  onOpen={() => setOpenHeaderSlug(rect.slug)}
                 />
               </div>
-              {/* header strip: title · version · notes · delete */}
+              {/* header strip: title · version · notes · delete — opens only
+                  from the handle, dismisses on any outside click */}
               <div
-                className={`absolute left-14 right-0 flex items-center ${reveal}`}
+                className={`absolute left-14 right-0 flex items-center transition-opacity duration-150 ${
+                  openHeaderSlug === rect.slug ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+                }`}
                 style={{ top: rect.top - 34 }}
                 data-section-header={rect.slug}
               >
@@ -383,17 +408,25 @@ function SectionGrip({
   sectionRects,
   wrapperRef,
   onDropLine,
+  onOpen,
 }: {
   slug: string;
   editor: LexicalEditor;
   sectionRects: SectionRect[];
   wrapperRef: React.RefObject<HTMLDivElement | null>;
   onDropLine: (top: number | null) => void;
+  onOpen: () => void;
 }) {
   const startDrag = (event: React.PointerEvent) => {
     event.preventDefault();
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
+
+    // pressing the handle reveals the section header; moving past the
+    // threshold turns the press into a drag
+    onOpen();
+    const startY = event.clientY;
+    let dragging = false;
 
     const gapFor = (clientY: number): { beforeSlug: string | null; top: number } | null => {
       const wrapperTop = wrapper.getBoundingClientRect().top;
@@ -417,13 +450,17 @@ function SectionGrip({
       return best;
     };
 
-    const onMove = (e: PointerEvent) => onDropLine(gapFor(e.clientY)?.top ?? null);
+    const onMove = (e: PointerEvent) => {
+      if (!dragging && Math.abs(e.clientY - startY) > 4) dragging = true;
+      if (dragging) onDropLine(gapFor(e.clientY)?.top ?? null);
+    };
     const finish = (e: PointerEvent | KeyboardEvent, commit: boolean) => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
       document.removeEventListener("keydown", onKey);
       onDropLine(null);
-      if (!commit || !("clientY" in e)) return;
+      // a plain click (no drag) just opens the header — no reorder
+      if (!dragging || !commit || !("clientY" in e)) return;
       const gap = gapFor(e.clientY);
       if (!gap || gap.beforeSlug === slug) return;
       moveSectionBySlug(editor, slug, gap.beforeSlug);
@@ -440,8 +477,8 @@ function SectionGrip({
   return (
     <button
       type="button"
-      aria-label="Drag to reorder section"
-      title="Drag to reorder section"
+      aria-label="Section options"
+      title="Click for section options · drag to reorder"
       onPointerDown={startDrag}
       className="flex size-6 shrink-0 cursor-grab items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
     >

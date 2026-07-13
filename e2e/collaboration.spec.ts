@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
+import { openSectionChrome } from "./support/chrome";
 import { signIn } from "./support/auth";
 
 /**
@@ -38,10 +39,12 @@ test("two users: invite → publish → propose → merge → sync → adopt", a
   await title.blur();
   await expect(alice.page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
 
+  await openSectionChrome(alice.page);
   await alice.page.getByRole("button", { name: /Original/ }).click();
   await alice.page.getByRole("menuitem", { name: "New version from current" }).click();
   await alice.page.getByLabel("New version name").fill("Bold take");
   await alice.page.keyboard.press("Enter");
+  await openSectionChrome(alice.page);
   await expect(alice.page.getByRole("button", { name: /Bold take/ })).toBeVisible();
   const aliceEditor = alice.page.getByRole("textbox", { name: "Page copy" });
   await aliceEditor.getByText("Alice's headline").click({ clickCount: 3 });
@@ -73,6 +76,7 @@ test("two users: invite → publish → propose → merge → sync → adopt", a
   });
 
   // Bob adopts Alice's other published version from the switcher
+  await openSectionChrome(bob.page);
   await bob.page.getByRole("button", { name: /Bold take/ }).click();
   const adoptItem = bob.page.getByRole("menuitem", { name: /Original —/ });
   await expect(adoptItem).toBeVisible({ timeout: 10_000 });
