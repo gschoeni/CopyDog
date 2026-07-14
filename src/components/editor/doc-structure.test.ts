@@ -169,6 +169,48 @@ describe("doc structure", () => {
     ]);
   });
 
+  it("grouping a section's head slice keeps document order (new section goes before)", async () => {
+    const { editor, makeSlug } = makeEditor();
+    await update(editor, () => $buildDocFromContent([{ kind: "section", slug: "hero", elements: hero }]));
+
+    await update(editor, () => {
+      const heroSection = $getRoot().getChildren()[0]! as SectionNode;
+      const eyebrow = heroSection.getChildren()[0]!;
+      $groupElementsIntoSection($touchedElementNodes([eyebrow]), makeSlug);
+    });
+
+    expect(editor.read($snapshotContent)).toEqual([
+      { kind: "section", slug: "new-1", elements: [{ type: "eyebrow", text: "NEW" }] },
+      {
+        kind: "section",
+        slug: "hero",
+        elements: [
+          { type: "h1", text: "Big claim" },
+          { type: "p", text: "Support copy." },
+        ],
+      },
+    ]);
+  });
+
+  it("grouping a section's middle slice splits the tail off to keep the order", async () => {
+    const { editor, makeSlug } = makeEditor();
+    await update(editor, () => $buildDocFromContent([{ kind: "section", slug: "hero", elements: hero }]));
+
+    await update(editor, () => {
+      const heroSection = $getRoot().getChildren()[0]! as SectionNode;
+      const h1 = heroSection.getChildren()[1]!;
+      $groupElementsIntoSection($touchedElementNodes([h1]), makeSlug);
+    });
+
+    // eyebrow · h1 · p must still read in that order: hero keeps the head,
+    // the grouped copy gets new-1, the trailing copy gets its own section
+    expect(editor.read($snapshotContent)).toEqual([
+      { kind: "section", slug: "hero", elements: [{ type: "eyebrow", text: "NEW" }] },
+      { kind: "section", slug: "new-1", elements: [{ type: "h1", text: "Big claim" }] },
+      { kind: "section", slug: "new-2", elements: [{ type: "p", text: "Support copy." }] },
+    ]);
+  });
+
   it("Shift+Enter starts a section below the caret — from a section or loose copy", async () => {
     const { editor, makeSlug } = makeEditor();
     registerShiftEnterNewSection(editor, makeSlug);

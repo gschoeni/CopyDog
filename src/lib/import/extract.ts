@@ -15,7 +15,7 @@ export interface ExtractedSection {
 }
 
 const MAX_SECTIONS = 12;
-const MAX_BLOCKS_PER_SECTION = 40;
+const MAX_ELEMENTS_PER_SECTION = 40;
 const SKIP_TAGS = new Set(["script", "style", "noscript", "svg", "iframe", "template", "form", "select", "option"]);
 const CTA_CLASS_RE = /\b(btn|button|cta)\b/i;
 
@@ -34,7 +34,7 @@ export function extractSectionsFromHtml(html: string): ExtractedSection[] {
 
   const sections: ExtractedSection[] = [];
   for (const container of containers.slice(0, MAX_SECTIONS)) {
-    const elements = extractBlocks(container).slice(0, MAX_BLOCKS_PER_SECTION);
+    const elements = extractElements(container).slice(0, MAX_ELEMENTS_PER_SECTION);
     if (elements.length === 0) continue;
     const heading = elements.find((b) => "text" in b && b.type.startsWith("h"));
     const title = heading && "text" in heading ? clip(heading.text, 40) : `Section ${sections.length + 1}`;
@@ -82,7 +82,7 @@ function flattenCopyElements(node: ParsedElement, out: ParsedElement[] = []): Pa
   return out;
 }
 
-function extractBlocks(container: ParsedElement): Element[] {
+function extractElements(container: ParsedElement): Element[] {
   const elements: Element[] = [];
   for (const el of flattenCopyElements(container)) {
     const tag = el.rawTagName!.toLowerCase();
@@ -150,7 +150,9 @@ function inlineMarkdownOf(node: ParsedNode, isRoot = true): string {
 }
 
 function escapeInline(text: string): string {
-  return text.replace(/([*`\\])/g, "\\$1");
+  // `[` included: imported prose that looks like [text](url) must not
+  // round-trip into a live link
+  return text.replace(/([*`[\\])/g, "\\$1");
 }
 
 function stripSkipped(root: ParsedElement): void {

@@ -124,7 +124,12 @@ export function $insertSectionAfterSlug(slug: string, makeSlug: () => string): b
 /** Appends a fresh empty section at the document's end; caret moves into it. */
 export function $appendNewSection(makeSlug: () => string): void {
   const root = $getRoot();
-  const last = root.getLastChild();
+  // skip trailing empty loose lines: empty runs are dropped from snapshots,
+  // so a section appended after them would shift up on reload
+  let last = root.getLastChild();
+  while (last && !$isSectionNode(last) && last.getTextContent().trim() === "") {
+    last = last.getPreviousSibling();
+  }
   if (last) {
     $insertSectionAfterNode(last, makeSlug);
     return;
@@ -219,16 +224,35 @@ export function $groupElementsIntoSection(nodes: LexicalNode[], makeSlug: () => 
   const first = elements[0]!;
   const firstParent = first.getParentOrThrow();
   const section = $createSectionNode(makeSlug());
+  let last: LexicalNode = section;
   if ($isSectionNode(firstParent)) {
-    firstParent.insertAfter(section);
+    const selected = new Set(elements.map((n) => n.getKey()));
+    const children = firstParent.getChildren();
+    const firstIndex = children.findIndex((c) => selected.has(c.getKey()));
+    if (firstIndex === 0) {
+      // head slice: the new section goes before its source, order preserved
+      firstParent.insertBefore(section);
+    } else {
+      firstParent.insertAfter(section);
+      // middle slice: the source's unselected trailing siblings would end up
+      // reading *before* the grouped copy — split them into their own
+      // section behind it so the document order never changes
+      const trailing = children.slice(firstIndex).filter((c) => !selected.has(c.getKey()));
+      if (trailing.length > 0) {
+        const tail = $createSectionNode(makeSlug());
+        section.insertAfter(tail);
+        for (const node of trailing) tail.append(node);
+        last = tail;
+      }
+    }
   } else {
     first.insertBefore(section);
   }
   for (const node of elements) section.append(node);
 
-  // keep a place to write below the new section
+  // keep a place to write below the grouped copy
   const continuation = $createParagraphNode();
-  section.insertAfter(continuation);
+  last.insertAfter(continuation);
   continuation.select();
 
   return section.getSlug();

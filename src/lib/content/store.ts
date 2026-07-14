@@ -54,6 +54,41 @@ export async function writeDoc(oxen: OxenClient, view: DraftView, pageSlug: stri
   await oxen.writeWorkspaceFile(view.repo, view.workspaceId, pageDocPath(pageSlug), serializeDocFile(doc));
 }
 
+/** Every content file a doc's structure references (section versions + element runs). */
+function docContentPaths(pageSlug: string, doc: DocFile): string[] {
+  const paths: string[] = [];
+  for (const entry of doc.content) {
+    if (entry.kind === "elements") {
+      paths.push(elementsRunPath(pageSlug, entry.slug));
+    } else {
+      for (const version of entry.versions) paths.push(sectionVersionPath(pageSlug, entry.slug, version.slug));
+    }
+  }
+  return paths;
+}
+
+/**
+ * Writes a page's doc.json and stages removal of content files the previous
+ * structure referenced but the new one doesn't. Only for full-page replaces
+ * (import) where the editor reloads afterwards — autosaves must use
+ * `writeDoc` instead, because the editor can resurrect deleted sections via
+ * undo and their files have to survive until publish prunes them.
+ */
+export async function replaceDoc(oxen: OxenClient, view: DraftView, pageSlug: string, doc: DocFile): Promise<void> {
+  let previous: DocFile | null = null;
+  try {
+    previous = await readDoc(oxen, view, pageSlug);
+  } catch (err) {
+    if (err instanceof OxenError && err.status !== 404) throw err;
+    previous = null; // missing or unparseable — nothing to prune
+  }
+  await writeDoc(oxen, view, pageSlug, doc);
+  if (!previous) return;
+  const keep = new Set(docContentPaths(pageSlug, doc));
+  const orphans = docContentPaths(pageSlug, previous).filter((path) => !keep.has(path));
+  await oxen.deleteWorkspaceFiles(view.repo, view.workspaceId, orphans);
+}
+
 /** Returns the section version's markdown, or null if the file doesn't exist yet. */
 export async function readSectionVersion(
   oxen: OxenClient,
@@ -136,7 +171,42 @@ export async function publishDraft(
   view: DraftView,
   options: { message: string; author: CommitAuthor },
 ): Promise<void> {
+  await pruneOrphanContent(oxen, view);
   await oxen.commitWorkspace(view.repo, view.workspaceId, view.branch, options);
+}
+
+/**
+ * Stages removal of files under pages/ that no doc.json references —
+ * deleted sections' version files and out-of-range element runs. Autosaves
+ * never delete (the editor can resurrect content via undo), so publish is
+ * where orphans die; history and proposal diffs stay free of phantom files.
+ *
+ * Only *committed* files are candidates: a staged-but-unreferenced file is
+ * usually a write whose doc.json update is still debouncing in the editor,
+ * so it must survive this publish (a real orphan gets pruned on the next).
+ */
+async function pruneOrphanContent(oxen: OxenClient, view: DraftView): Promise<void> {
+  const site = await readSite(oxen, view);
+  const referenced = new Set<string>();
+  const prunablePages = new Set<string>();
+  for (const page of site.pages) {
+    referenced.add(pageDocPath(page.slug));
+    referenced.add(pageWireframePath(page.slug));
+    try {
+      const doc = await readDoc(oxen, view, page.slug);
+      for (const path of docContentPaths(page.slug, doc)) referenced.add(path);
+      prunablePages.add(page.slug);
+    } catch {
+      // unreadable doc — we can't know what it references; leave that page alone
+    }
+  }
+
+  const branchFiles = await listFilesAt(oxen, view.repo, view.branch, "pages").catch(() => [] as string[]);
+  const orphans = branchFiles.filter((path) => {
+    if (!path.startsWith("pages/") || referenced.has(path)) return false;
+    return prunablePages.has(path.split("/")[1]!);
+  });
+  await oxen.deleteWorkspaceFiles(view.repo, view.workspaceId, orphans);
 }
 
 /** True when the workspace holds edits that haven't been published yet. */
@@ -224,12 +294,17 @@ export async function applyBranchToMain(
   await oxen.getOrCreateWorkspace(repo, { workspaceId, branchName: "main", name: workspaceId });
   try {
     let wrote = 0;
+    const removals: string[] = [];
     for (const [path, { source }] of comparison.changed) {
-      if (source === null) continue; // v1: removals stay invisible via doc.json
+      if (source === null) {
+        removals.push(path); // deleted on the proposal branch — delete on main too
+        continue;
+      }
       await oxen.writeWorkspaceFile(repo, workspaceId, path, source);
       wrote += 1;
     }
-    if (wrote === 0) {
+    await oxen.deleteWorkspaceFiles(repo, workspaceId, removals);
+    if (wrote + removals.length === 0) {
       throw new Error("nothing to merge");
     }
     const commit = await oxen.commitWorkspace(repo, workspaceId, "main", options);
@@ -247,8 +322,27 @@ export async function applyBranchToMain(
 export async function syncPageFromMain(oxen: OxenClient, view: DraftView, pageSlug: string): Promise<void> {
   const prefix = `pages/${pageSlug}/`;
   const files = (await listFilesAt(oxen, view.repo, "main", `pages/${pageSlug}`)).filter((p) => p.startsWith(prefix));
+  if (files.length === 0) return; // page doesn't exist on main — nothing to replace with
+
+  // draft-only content files (sections/runs main doesn't know) must go too,
+  // or they'd survive the "replace with main" as orphans
+  let draftDoc: DocFile | null = null;
+  try {
+    draftDoc = await readDoc(oxen, view, pageSlug);
+  } catch {
+    draftDoc = null;
+  }
+
   for (const path of files) {
     const content = await oxen.readFile(view.repo, "main", path);
     await oxen.writeWorkspaceFile(view.repo, view.workspaceId, path, content);
+  }
+
+  if (draftDoc) {
+    const onMain = new Set(files);
+    const orphans = docContentPaths(pageSlug, draftDoc)
+      .concat(pageWireframePath(pageSlug))
+      .filter((path) => !onMain.has(path));
+    await oxen.deleteWorkspaceFiles(view.repo, view.workspaceId, orphans);
   }
 }

@@ -203,7 +203,3 @@ export function normalizeRuns(runs: TextRun[]): TextRun[] {
   return merged;
 }
 
-/** Type guard helper the block menu uses to name the current block. */
-export function $topLevelBlockOf(node: LexicalNode): LexicalNode {
-  return node.getTopLevelElementOrThrow();
-}

@@ -8,7 +8,7 @@ import type { Element, HeadingLevel } from "./elements";
  *   - a paragraph that is exactly one link (`[Label](url)`) is a button
  *   - a paragraph preceded by an `<!--eyebrow-->` comment is an eyebrow
  *
- * Round-trip safety: `parse(serialize(blocks))` must equal `blocks`.
+ * Round-trip safety: `parse(serialize(elements))` must equal `elements`.
  * Paragraph text that would be misread as structure (leading `#`, `- `,
  * or a bare link) is backslash-escaped on write and unescaped on read.
  */
@@ -20,7 +20,7 @@ const QUOTE_RE = /^>\s?(.*)$/;
 const LINK_ONLY_RE = /^\[([^\]]*)\]\(([^)\s]*)\)$/;
 
 export function parseElementsMarkdown(markdown: string): Element[] {
-  const blocks: Element[] = [];
+  const elements: Element[] = [];
   // paragraphs are separated by blank lines; normalize line endings first
   const chunks = markdown
     .replace(/\r\n/g, "\n")
@@ -33,65 +33,65 @@ export function parseElementsMarkdown(markdown: string): Element[] {
 
     if (lines[0] === EYEBROW_MARKER) {
       const text = lines.slice(1).join(" ").trim();
-      if (text) blocks.push({ type: "eyebrow", text: unescapeText(text) });
+      if (text) elements.push({ type: "eyebrow", text: unescapeText(text) });
       continue;
     }
 
     const heading = lines.length === 1 ? lines[0]!.match(HEADING_RE) : null;
     if (heading) {
-      blocks.push({ type: `h${heading[1]!.length}` as HeadingLevel, text: unescapeText(heading[2]!) });
+      elements.push({ type: `h${heading[1]!.length}` as HeadingLevel, text: unescapeText(heading[2]!) });
       continue;
     }
 
     if (lines.every((line) => BULLET_RE.test(line))) {
-      blocks.push({ type: "bullets", items: lines.map((line) => unescapeText(line.match(BULLET_RE)![1]!)) });
+      elements.push({ type: "bullets", items: lines.map((line) => unescapeText(line.match(BULLET_RE)![1]!)) });
       continue;
     }
 
     if (lines.every((line) => QUOTE_RE.test(line))) {
       const text = lines.map((line) => line.match(QUOTE_RE)![1]!).join(" ").trim();
-      if (text) blocks.push({ type: "quote", text: unescapeText(text) });
+      if (text) elements.push({ type: "quote", text: unescapeText(text) });
       continue;
     }
 
     const link = lines.length === 1 ? lines[0]!.match(LINK_ONLY_RE) : null;
     if (link) {
-      blocks.push({ type: "button", label: unescapeText(link[1]!), url: link[2]! });
+      elements.push({ type: "button", label: unescapeText(link[1]!), url: link[2]! });
       continue;
     }
 
-    blocks.push({ type: "p", text: unescapeText(lines.join(" ")) });
+    elements.push({ type: "p", text: unescapeText(lines.join(" ")) });
   }
 
-  return blocks;
+  return elements;
 }
 
-export function serializeElements(blocks: Element[]): string {
-  const chunks = blocks.map((block) => {
-    switch (block.type) {
+export function serializeElements(elements: Element[]): string {
+  const chunks = elements.map((element) => {
+    switch (element.type) {
       case "h1":
       case "h2":
       case "h3":
       case "h4":
       case "h5":
       case "h6":
-        return `${"#".repeat(Number(block.type[1]))} ${escapeText(block.text)}`;
+        return `${"#".repeat(Number(element.type[1]))} ${escapeText(element.text)}`;
       case "eyebrow":
-        return `${EYEBROW_MARKER}\n${escapeText(block.text)}`;
+        return `${EYEBROW_MARKER}\n${escapeText(element.text)}`;
       case "button":
-        return `[${escapeText(block.label)}](${block.url || "#"})`;
+        return `[${escapeText(element.label)}](${element.url || "#"})`;
       case "bullets":
-        return block.items.map((item) => `- ${escapeText(item)}`).join("\n");
+        return element.items.map((item) => `- ${escapeText(item)}`).join("\n");
       case "quote":
-        return `> ${escapeText(block.text)}`;
+        return `> ${escapeText(element.text)}`;
       case "p":
-        return escapeParagraph(block.text);
+        return escapeParagraph(element.text);
     }
   });
   return chunks.filter(Boolean).join("\n\n") + (chunks.length ? "\n" : "");
 }
 
-/** Escapes characters that would change a paragraph's *block* type on re-parse. */
+/** Escapes characters that would change a paragraph's *element* type on re-parse. */
 function escapeParagraph(text: string): string {
   let escaped = escapeText(text);
   if (LINK_ONLY_RE.test(escaped)) escaped = `\\${escaped}`;

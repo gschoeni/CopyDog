@@ -156,16 +156,14 @@ test("Shift+Enter and the phantom placeholder create sections", async ({ page })
   await expect(sections.nth(3)).toContainText("Born from the phantom.");
 
   // Backspace through the emptied section deletes it and the caret lands
-  // on whatever precedes it — here the loose copy between Features and
-  // the deleted section, so typing continues loose
+  // at the end of what precedes it — the Features section
   await page.getByText("Born from the phantom.").click({ clickCount: 3 });
   await page.keyboard.press("Backspace"); // clears the selected text
   await expect(sections.nth(3)).not.toContainText("Born from the phantom.");
   await page.keyboard.press("Backspace"); // empty section → deleted
   await expect(sections).toHaveCount(3, { timeout: 10_000 });
-  await page.keyboard.type("Continued loose.");
-  await expect(page.getByRole("textbox", { name: "Page copy" })).toContainText("Continued loose.");
-  await expect(sections.nth(2)).not.toContainText("Continued loose.");
+  await page.keyboard.type(" Continued.");
+  await expect(sections.nth(2)).toContainText("Continued.");
 });
 
 test("sections reorder by dragging their header grip", async ({ page }) => {

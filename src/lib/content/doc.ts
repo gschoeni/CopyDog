@@ -17,9 +17,12 @@ import { z } from "zod";
  * the project's canonical choice.
  */
 
+/** slugs become path segments in Oxen — keep them path-safe */
+export const contentSlugSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
+
 export const sectionVersionRefSchema = z.object({
   /** file basename under sections/{section}/ (without .md) */
-  slug: z.string().min(1),
+  slug: contentSlugSchema,
   /** human label shown in the version switcher ("Punchy", "Benefit-led") */
   label: z.string().min(1),
 });
@@ -27,7 +30,7 @@ export const sectionVersionRefSchema = z.object({
 export const docSectionSchema = z.object({
   kind: z.literal("section"),
   /** stable id, also the directory name under sections/ */
-  slug: z.string().min(1),
+  slug: contentSlugSchema,
   /** human label shown in the editor ("Hero", "Features") */
   title: z.string().min(1),
   /** version slug (file basename without .md) that is active in this view */
@@ -41,7 +44,7 @@ export const docSectionSchema = z.object({
 export const docElementsSchema = z.object({
   kind: z.literal("elements"),
   /** file basename under elements/ (without .md) */
-  slug: z.string().min(1),
+  slug: contentSlugSchema,
 });
 
 export const docContentSchema = z.discriminatedUnion("kind", [docSectionSchema, docElementsSchema]);
@@ -63,7 +66,7 @@ export function emptyDoc(): DocFile {
 
 /** v1 docs listed sections only — they parse as all-section content. */
 const legacySectionSchema = z.object({
-  slug: z.string().min(1),
+  slug: contentSlugSchema,
   title: z.string().min(1),
   activeVersion: z.string().min(1),
   versions: z.array(sectionVersionRefSchema).default([]),

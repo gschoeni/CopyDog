@@ -1,11 +1,11 @@
 import { z } from "zod";
 
 /**
- * The block model for website copy — the shared language between the
+ * The element model for website copy — the shared language between the
  * editor, the markdown files in Oxen, and the wireframe slots.
  *
  * `text`, `label`, and list items hold *inline markdown* (bold/italic/code),
- * so a Element[] is structure, and strings stay portable markdown.
+ * so an Element[] is structure, and strings stay portable markdown.
  */
 
 export const headingLevels = ["h1", "h2", "h3", "h4", "h5", "h6"] as const;

@@ -37,25 +37,25 @@ export function renderInline(inlineMarkdown: string): string {
     .join("");
 }
 
-/** A block rendered as a standalone design-system element (overflow/export). */
-export function renderBlock(block: Element): string {
-  switch (block.type) {
+/** An element rendered as a standalone design-system element (overflow/export). */
+export function renderElement(element: Element): string {
+  switch (element.type) {
     case "h1":
     case "h2":
     case "h3":
     case "h4":
     case "h5":
     case "h6":
-      return `<${block.type} class="wf-${block.type}">${renderInline(block.text)}</${block.type}>`;
+      return `<${element.type} class="wf-${element.type}">${renderInline(element.text)}</${element.type}>`;
     case "eyebrow":
-      return `<p class="wf-eyebrow">${renderInline(block.text)}</p>`;
+      return `<p class="wf-eyebrow">${renderInline(element.text)}</p>`;
     case "p":
-      return `<p class="wf-p">${renderInline(block.text)}</p>`;
+      return `<p class="wf-p">${renderInline(element.text)}</p>`;
     case "button":
-      return `<a class="wf-button" href="#">${renderInline(block.label)}</a>`;
+      return `<a class="wf-button" href="#">${renderInline(element.label)}</a>`;
     case "bullets":
-      return `<ul class="wf-list">${block.items.map((item) => `<li>${renderInline(item)}</li>`).join("")}</ul>`;
+      return `<ul class="wf-list">${element.items.map((item) => `<li>${renderInline(item)}</li>`).join("")}</ul>`;
     case "quote":
-      return `<blockquote class="wf-quote">${renderInline(block.text)}</blockquote>`;
+      return `<blockquote class="wf-quote">${renderInline(element.text)}</blockquote>`;
   }
 }

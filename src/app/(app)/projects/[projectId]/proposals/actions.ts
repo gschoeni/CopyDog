@@ -26,6 +26,7 @@ export async function mergeProposalAction(input: z.infer<typeof proposalRef>): P
     .from("proposals")
     .select("id, title, status, source_branch")
     .eq("id", proposalId)
+    .eq("project_id", project.id) // never act on another project's proposal
     .single<{ id: string; title: string; status: string; source_branch: string }>();
   if (!proposal) return { ok: false, error: "Proposal not found." };
   if (proposal.status !== "open") return { ok: false, error: "This proposal is already resolved." };
@@ -57,13 +58,14 @@ export async function mergeProposalAction(input: z.infer<typeof proposalRef>): P
 
 export async function closeProposalAction(input: z.infer<typeof proposalRef>): Promise<{ ok: boolean }> {
   const { projectId, proposalId } = proposalRef.parse(input);
-  await requireProjectAccess(projectId);
+  const { project } = await requireProjectAccess(projectId);
 
   const supabase = await createClient();
   await supabase
     .from("proposals")
     .update({ status: "closed", resolved_at: new Date().toISOString() })
     .eq("id", proposalId)
+    .eq("project_id", project.id) // never act on another project's proposal
     .eq("status", "open");
 
   revalidatePath(`/projects/${projectId}/proposals`);

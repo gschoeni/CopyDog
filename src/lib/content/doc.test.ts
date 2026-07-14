@@ -55,4 +55,12 @@ describe("doc file", () => {
       ],
     });
   });
+
+  it("rejects slugs that aren't path-safe (they become Oxen file paths)", () => {
+    const doc = {
+      version: 2,
+      content: [{ kind: "elements", slug: "../../site" }],
+    };
+    expect(() => parseDocFile(JSON.stringify(doc))).toThrow();
+  });
 });
