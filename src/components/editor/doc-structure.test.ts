@@ -232,7 +232,9 @@ describe("doc structure", () => {
     expect(snapshot.map((c) => c.kind)).toEqual(["elements", "section", "section"]);
     expect((snapshot[1] as { slug: string }).slug).toBe("new-1");
 
-    // from inside a section: lands after that section
+    // from inside a section: lands after that section. Moving the caret
+    // out of new-1 (still empty) dissolves it — abandoned empty sections
+    // don't linger as empty boxes.
     await update(editor, () => {
       $getRoot().getChildren().filter($isSectionNode)[1]!.selectEnd();
     });
@@ -242,7 +244,6 @@ describe("doc structure", () => {
     snapshot = editor.read($snapshotContent);
     expect(snapshot.map((c) => (c.kind === "section" ? (c as { slug: string }).slug : "loose"))).toEqual([
       "loose",
-      "new-1",
       "hero",
       "new-2",
     ]);
@@ -256,17 +257,17 @@ describe("doc structure", () => {
   it("Backspace in an emptied section deletes it and lands on what precedes it", async () => {
     const { editor, makeSlug } = makeEditor();
     registerEmptySectionBackspace(editor);
-    await update(editor, () =>
+    // select in the same update as the build: an empty section only
+    // survives the sweep while the caret sits inside it
+    await update(editor, () => {
       $buildDocFromContent([
         { kind: "elements", elements: [{ type: "p", text: "Loose before." }] },
         { kind: "section", slug: "empty", elements: [] },
         { kind: "section", slug: "features", elements: features },
-      ]),
-    );
-    void makeSlug;
-    await update(editor, () => {
+      ]);
       $getRoot().getChildren().filter($isSectionNode)[0]!.selectEnd();
     });
+    void makeSlug;
 
     expect(
       editor.dispatchCommand(KEY_BACKSPACE_COMMAND, { preventDefault: () => {} } as KeyboardEvent),
@@ -281,5 +282,30 @@ describe("doc structure", () => {
     expect(
       editor.dispatchCommand(KEY_BACKSPACE_COMMAND, { preventDefault: () => {} } as KeyboardEvent),
     ).toBe(false);
+  });
+
+  it("sweeps empty paragraphs the caret has left — spacing never lies", async () => {
+    const { editor } = makeEditor();
+    await update(editor, () =>
+      $buildDocFromContent([
+        { kind: "elements", elements: [{ type: "p", text: "Above." }] },
+        { kind: "section", slug: "hero", elements: hero },
+      ]),
+    );
+
+    // an empty paragraph appears between the loose copy and the section
+    // (e.g. a grouping continuation); the caret sits in it — it stays
+    await update(editor, () => {
+      const para = $createParagraphNode();
+      $getRoot().getFirstChild()!.insertAfter(para);
+      para.select();
+    });
+    expect(editor.read(() => $getRoot().getChildrenSize())).toBe(3);
+
+    // the caret moves on — the empty line vanishes
+    await update(editor, () => {
+      $getRoot().getFirstChild()!.selectEnd();
+    });
+    expect(editor.read(() => $getRoot().getChildrenSize())).toBe(2);
   });
 });
