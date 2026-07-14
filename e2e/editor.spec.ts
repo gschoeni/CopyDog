@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { openSectionChrome } from "./support/chrome";
 import { signIn } from "./support/auth";
 
 /**
@@ -14,10 +15,9 @@ test("create project, write copy, autosave persists across reload", async ({ pag
   const projectName = `Acme ${Date.now()}`;
   await page.getByPlaceholder("Acme landing page").fill(projectName);
   await page.getByRole("button", { name: "Create project" }).click();
-  await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/, { timeout: 20_000 });
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
 
   // open the Home page editor
-  await page.getByRole("link", { name: /Home/ }).click();
   await expect(page).toHaveURL(/\/pages\/home$/);
 
   // add a section and write copy using markdown shortcuts
@@ -27,7 +27,8 @@ test("create project, write copy, autosave persists across reload", async ({ pag
   await page.keyboard.press("Enter");
   await page.keyboard.type("No more pasting between docs and design tools.");
 
-  // rename the section
+  // rename the section (the handle opens the header)
+  await openSectionChrome(page);
   const title = page.getByLabel("Section title");
   await title.fill("Hero");
   await title.blur();
@@ -48,9 +49,8 @@ test("multi-page: add a page and switch between pages", async ({ page }) => {
   const projectName = `Multi ${Date.now()}`;
   await page.getByPlaceholder("Acme landing page").fill(projectName);
   await page.getByRole("button", { name: "Create project" }).click();
-  await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/, { timeout: 20_000 });
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
 
-  await page.getByRole("link", { name: /Home/ }).click();
   await expect(page).toHaveURL(/\/pages\/home$/);
 
   await page.getByRole("button", { name: "+ New page" }).click();

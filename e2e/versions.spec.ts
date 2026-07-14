@@ -6,9 +6,7 @@ import { signIn } from "./support/auth";
 async function createProjectAndOpenHome(page: import("@playwright/test").Page, name: string) {
   await page.getByPlaceholder("Acme landing page").fill(name);
   await page.getByRole("button", { name: "Create project" }).click();
-  await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/, { timeout: 20_000 });
-  await page.getByRole("link", { name: /Home/ }).click();
-  await expect(page).toHaveURL(/\/pages\/home$/);
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
 }
 
 test("alternate versions: create, edit independently, toggle back", async ({ page }) => {

@@ -7,8 +7,7 @@ test("export downloads a standalone HTML page with the active copy", async ({ pa
 
   await page.getByPlaceholder("Acme landing page").fill(`Export ${Date.now()}`);
   await page.getByRole("button", { name: "Create project" }).click();
-  await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/, { timeout: 20_000 });
-  await page.getByRole("link", { name: /Home/ }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
   await page.getByRole("textbox", { name: "Page copy" }).click();
   await page.keyboard.type("# Exported headline");
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });

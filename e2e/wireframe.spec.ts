@@ -8,8 +8,7 @@ test("generate wireframe from copy, live-update it, persists across reload", asy
   const projectName = `Wireframe ${Date.now()}`;
   await page.getByPlaceholder("Acme landing page").fill(projectName);
   await page.getByRole("button", { name: "Create project" }).click();
-  await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/, { timeout: 20_000 });
-  await page.getByRole("link", { name: /Home/ }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
 
   // write hero copy
   await page.getByRole("textbox", { name: "Page copy" }).click();
