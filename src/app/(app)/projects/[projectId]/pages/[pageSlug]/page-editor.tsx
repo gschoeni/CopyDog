@@ -314,7 +314,7 @@ export function PageEditor({
         const prev = prevSections.get(entry.slug);
         const meta = metaRef.current.get(entry.slug);
         if (!meta) {
-          // born in the editor (grouping, ⊕, Shift+Enter)
+          // born in the editor (grouping, rail ⊕, phantom)
           metaRef.current.set(entry.slug, {
             title: deriveSectionTitle(entry.elements),
             activeVersion: "original",

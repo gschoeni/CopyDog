@@ -133,39 +133,42 @@ test("section rail: ⊕ inserts a new section below and focuses it", async ({ pa
   await expect(sections.nth(2)).toContainText("Features");
 });
 
-test("Shift+Enter and the phantom placeholder create sections", async ({ page }) => {
+test("Shift+Enter makes a new element below; the phantom makes sections", async ({ page }) => {
   await setupTwoSections(page, `NewSec ${Date.now()}`);
   const sections = page.locator("[data-section-slug]");
 
-  // caret in the first section → Shift+Enter opens a fresh section below it
+  // caret mid-text in the first section → Shift+Enter opens a whole new
+  // element below it, inside the same section — no split, no new section
   await page.getByText("Hero body line.").click();
   await page.waitForTimeout(200); // let the click's selection settle
   await page.keyboard.press("Shift+Enter");
-  await expect(sections).toHaveCount(3, { timeout: 10_000 });
   await page.keyboard.type("Born by shortcut.");
-  await expect(sections.nth(1)).toContainText("Born by shortcut.");
-  await expect(sections.first()).not.toContainText("Born by shortcut.");
+  await expect(sections).toHaveCount(2);
+  await expect(sections.first()).toContainText("Hero body line.");
+  await expect(sections.first()).toContainText("Born by shortcut.");
+  // the original line stayed whole
+  await expect(page.getByText("Hero body line.", { exact: true })).toBeVisible();
 
   // the phantom below the document: hover reveals it, click makes it real
   const phantom = page.locator("[data-phantom-section]");
   await phantom.hover();
   await expect(phantom).toHaveClass(/hover:opacity-100/);
   await phantom.click();
-  await expect(sections).toHaveCount(4, { timeout: 10_000 });
+  await expect(sections).toHaveCount(3, { timeout: 10_000 });
   await page.keyboard.type("Born from the phantom.");
-  await expect(sections.nth(3)).toContainText("Born from the phantom.");
+  await expect(sections.nth(2)).toContainText("Born from the phantom.");
 
   // Backspace through the emptied section deletes it and the caret lands
   // on what precedes it — the blank continuation line left by grouping,
   // which persists (blank lines are content), so typing continues loose
   await page.getByText("Born from the phantom.").click({ clickCount: 3 });
   await page.keyboard.press("Backspace"); // clears the selected text
-  await expect(sections.nth(3)).not.toContainText("Born from the phantom.");
+  await expect(sections.nth(2)).not.toContainText("Born from the phantom.");
   await page.keyboard.press("Backspace"); // empty section → deleted
-  await expect(sections).toHaveCount(3, { timeout: 10_000 });
+  await expect(sections).toHaveCount(2, { timeout: 10_000 });
   await page.keyboard.type("Continued loose.");
   await expect(page.getByRole("textbox", { name: "Page copy" })).toContainText("Continued loose.");
-  await expect(sections.nth(2)).not.toContainText("Continued loose.");
+  await expect(sections.nth(1)).not.toContainText("Continued loose.");
 });
 
 test("sections reorder by dragging their header grip", async ({ page }) => {

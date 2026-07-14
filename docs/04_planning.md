@@ -235,8 +235,9 @@ in a section (headings auto-split the doc). The agreed model (see
 
 - **Loose by default.** Typing produces loose elements; nothing auto-sections.
   Sections are deliberate: highlight → *Group into section* (works from one
-  element up, across section boundaries), rail ⊕, Shift+Enter, or the phantom
-  placeholder at the document's end.
+  element up, across section boundaries), rail ⊕, or the phantom placeholder
+  at the document's end. (2026-07-14: Shift+Enter was re-purposed — it now
+  drops the caret into a fresh element below the current one.)
 - **Sections carry the collaboration features** — versions, notes,
   adopt/propose, TOC, wireframe. Loose copy is an unversioned body stream that
   still autosaves, publishes, and diffs.
