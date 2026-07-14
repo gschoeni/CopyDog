@@ -146,11 +146,13 @@ function $insertSectionAfterNode(node: LexicalNode, makeSlug: () => string): voi
 }
 
 /**
- * Shift+Enter starts a new section below the caret's root-level node —
- * works from inside a section or from loose copy. Registered above the
+ * Shift+Enter drops the caret into a fresh element directly below the
+ * current one — a whole new paragraph regardless of where in the text the
+ * caret sits (plain Enter would split it). Inside a section it stays in
+ * the section; in loose copy it stays loose. Registered above the
  * rich-text handler, which would otherwise insert a soft line break.
  */
-export function registerShiftEnterNewSection(editor: LexicalEditor, makeSlug: () => string): () => void {
+export function registerShiftEnterNewElement(editor: LexicalEditor): () => void {
   return editor.registerCommand(
     KEY_ENTER_COMMAND,
     (event) => {
@@ -159,9 +161,10 @@ export function registerShiftEnterNewSection(editor: LexicalEditor, makeSlug: ()
       if (!$isRangeSelection(selection)) return false;
       const topLevel = selection.anchor.getNode().getTopLevelElement();
       if (!topLevel) return false;
-      const anchor = $isSectionNode(topLevel.getParent()) ? topLevel.getParentOrThrow() : topLevel;
       event.preventDefault();
-      $insertSectionAfterNode(anchor, makeSlug);
+      const paragraph = $createParagraphNode();
+      topLevel.insertAfter(paragraph);
+      paragraph.select();
       return true;
     },
     COMMAND_PRIORITY_HIGH,

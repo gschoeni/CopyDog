@@ -7,6 +7,7 @@ import {
   $createTextNode,
   $getRoot,
   $getSelection,
+  $isElementNode,
   $isRangeSelection,
   KEY_BACKSPACE_COMMAND,
   KEY_ENTER_COMMAND,
@@ -23,7 +24,7 @@ import {
   $touchedElementNodes,
   registerEmptySectionBackspace,
   registerSectionTransforms,
-  registerShiftEnterNewSection,
+  registerShiftEnterNewElement,
 } from "./doc-structure";
 import { ButtonNode } from "./nodes/button-node";
 import { EyebrowNode } from "./nodes/eyebrow-node";
@@ -215,9 +216,9 @@ describe("doc structure", () => {
     ]);
   });
 
-  it("Shift+Enter starts a section below the caret — from a section or loose copy", async () => {
-    const { editor, makeSlug } = makeEditor();
-    registerShiftEnterNewSection(editor, makeSlug);
+  it("Shift+Enter drops into a fresh element below — never a section", async () => {
+    const { editor } = makeEditor();
+    registerShiftEnterNewElement(editor);
     await update(editor, () =>
       $buildDocFromContent([
         { kind: "elements", elements: [{ type: "p", text: "Loose." }] },
@@ -225,7 +226,7 @@ describe("doc structure", () => {
       ]),
     );
 
-    // from loose copy: section lands right after the loose element
+    // from loose copy: a new blank paragraph appears after it, still loose
     await update(editor, () => {
       $getRoot().getFirstChild()!.selectEnd();
     });
@@ -233,24 +234,36 @@ describe("doc structure", () => {
       editor.dispatchCommand(KEY_ENTER_COMMAND, { shiftKey: true, preventDefault: () => {} } as KeyboardEvent),
     ).toBe(true);
     let snapshot = editor.read($snapshotContent);
-    expect(snapshot.map((c) => c.kind)).toEqual(["elements", "section", "section"]);
-    expect((snapshot[1] as { slug: string }).slug).toBe("new-1");
+    expect(snapshot[0]).toEqual({
+      kind: "elements",
+      elements: [
+        { type: "p", text: "Loose." },
+        { type: "p", text: "" },
+      ],
+    });
+    expect(snapshot.filter((c) => c.kind === "section")).toHaveLength(1);
 
-    // from inside a section: lands after that section (the still-empty
-    // new-1 stays — sections persist until deliberately deleted)
+    // from mid-text inside a section: the element lands in the section,
+    // and the caret's line is NOT split (h1 keeps its full text)
     await update(editor, () => {
-      $getRoot().getChildren().filter($isSectionNode)[1]!.selectEnd();
+      const heroSection = $getRoot().getChildren().filter($isSectionNode)[0]!;
+      const h1 = heroSection.getChildren()[1]!;
+      if ($isElementNode(h1)) h1.select(0, 0); // caret at the start of "Big claim"
     });
     expect(
       editor.dispatchCommand(KEY_ENTER_COMMAND, { shiftKey: true, preventDefault: () => {} } as KeyboardEvent),
     ).toBe(true);
     snapshot = editor.read($snapshotContent);
-    expect(snapshot.map((c) => (c.kind === "section" ? (c as { slug: string }).slug : "loose"))).toEqual([
-      "loose",
-      "new-1",
-      "hero",
-      "new-2",
-    ]);
+    expect(snapshot[1]).toEqual({
+      kind: "section",
+      slug: "hero",
+      elements: [
+        { type: "eyebrow", text: "NEW" },
+        { type: "h1", text: "Big claim" },
+        { type: "p", text: "" },
+        { type: "p", text: "Support copy." },
+      ],
+    });
 
     // plain Enter is untouched
     expect(

@@ -46,7 +46,7 @@ import {
   $touchedElementNodes,
   registerEmptySectionBackspace,
   registerSectionTransforms,
-  registerShiftEnterNewSection,
+  registerShiftEnterNewElement,
   type ContentSnapshot,
 } from "./doc-structure";
 import { ButtonNode } from "./nodes/button-node";
@@ -220,7 +220,7 @@ function DocEditorInner({
 
   useEffect(() => registerSectionTransforms(editor), [editor]);
   useEffect(() => registerMarkdownShortcuts(editor, [HEADING, UNORDERED_LIST]), [editor]);
-  useEffect(() => registerShiftEnterNewSection(editor, makeSlug), [editor, makeSlug]);
+  useEffect(() => registerShiftEnterNewElement(editor), [editor]);
   useEffect(() => registerEmptySectionBackspace(editor), [editor]);
 
   useEffect(() => {

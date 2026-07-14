@@ -106,7 +106,7 @@ eyebrow, CTA — formerly "blocks" in code; we are renaming code to match) and
 **Loose by default.** Typing produces loose elements — messy, free-flowing
 copy, like a blank doc. Auto-sectioning on headings is removed. Sections form
 only deliberately: Group-into-section from a selection, the rail ⊕,
-Shift+Enter, or (future) an AI "section this page" pass.
+or (future) an AI "section this page" pass. (Shift+Enter was a section shortcut until 2026-07-14; it now creates a new element below the caret.)
 
 **Sections are the unit of structure.** Versions, notes, teammate adoption,
 the TOC, and the wireframe all remain section-scoped. Loose copy is one
