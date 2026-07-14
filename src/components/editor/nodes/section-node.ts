@@ -7,7 +7,7 @@ import {
   type Spread,
 } from "lexical";
 
-export type SerializedSectionNode = Spread<{ slug: string; pinned: boolean }, SerializedElementNode>;
+export type SerializedSectionNode = Spread<{ slug: string }, SerializedElementNode>;
 
 /**
  * A copy section as a container inside the page's single editor. Children
@@ -19,13 +19,10 @@ export type SerializedSectionNode = Spread<{ slug: string; pinned: boolean }, Se
  */
 export class SectionNode extends ElementNode {
   __slug: string;
-  /** pinned sections were grouped deliberately — auto-splitting skips them */
-  __pinned: boolean;
 
-  constructor(slug: string, pinned = false, key?: string) {
+  constructor(slug: string, key?: string) {
     super(key);
     this.__slug = slug;
-    this.__pinned = pinned;
   }
 
   static getType(): string {
@@ -33,15 +30,15 @@ export class SectionNode extends ElementNode {
   }
 
   static clone(node: SectionNode): SectionNode {
-    return new SectionNode(node.__slug, node.__pinned, node.__key);
+    return new SectionNode(node.__slug, node.__key);
   }
 
   static importJSON(json: SerializedSectionNode): SectionNode {
-    return $createSectionNode(json.slug, json.pinned);
+    return $createSectionNode(json.slug);
   }
 
   exportJSON(): SerializedSectionNode {
-    return { ...super.exportJSON(), type: "copy-section", slug: this.__slug, pinned: this.__pinned, version: 1 };
+    return { ...super.exportJSON(), type: "copy-section", slug: this.__slug, version: 1 };
   }
 
   getSlug(): string {
@@ -52,10 +49,6 @@ export class SectionNode extends ElementNode {
     const writable = this.getWritable();
     writable.__slug = slug;
     return writable;
-  }
-
-  isPinned(): boolean {
-    return this.getLatest().__pinned;
   }
 
   createDOM(_config: EditorConfig): HTMLElement {
@@ -86,8 +79,8 @@ export class SectionNode extends ElementNode {
   }
 }
 
-export function $createSectionNode(slug: string, pinned = false): SectionNode {
-  return $applyNodeReplacement(new SectionNode(slug, pinned));
+export function $createSectionNode(slug: string): SectionNode {
+  return $applyNodeReplacement(new SectionNode(slug));
 }
 
 export function $isSectionNode(node: LexicalNode | null | undefined): node is SectionNode {

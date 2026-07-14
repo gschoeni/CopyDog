@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { openSectionChrome } from "./support/chrome";
 import { signIn } from "./support/auth";
+import { writeSection } from "./support/sections";
 
 /**
  * Agent loop against the stub's scripted chat completions: the assistant
@@ -15,7 +16,8 @@ test("assistant rewrites a section through a tool call", async ({ page }) => {
   await page.getByRole("button", { name: "Create project" }).click();
   await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
   await page.getByRole("textbox", { name: "Page copy" }).click();
-  await page.keyboard.type("# Human headline");
+  await writeSection(page, ["# Human headline"], 1);
+  await page.waitForTimeout(1000);
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
 
   // open the assistant and ask for a rewrite

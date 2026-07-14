@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import type { Block } from "@/lib/copy/blocks";
+import type { Element } from "@/lib/copy/elements";
 import { injectCopy } from "./inject";
 
 const WIREFRAME = `<section class="wf-section" data-copy="hero">
   <div class="wf-container wf-center" data-overflow>
-    <p class="wf-eyebrow" data-block="eyebrow"></p>
-    <h1 class="wf-h1" data-block="h1"></h1>
-    <p class="wf-p" data-block="p"></p>
-    <div class="wf-actions"><a class="wf-button" data-block="button" href="#"></a></div>
+    <p class="wf-eyebrow" data-element="eyebrow"></p>
+    <h1 class="wf-h1" data-element="h1"></h1>
+    <p class="wf-p" data-element="p"></p>
+    <div class="wf-actions"><a class="wf-button" data-element="button" href="#"></a></div>
   </div>
 </section>`;
 
-const heroBlocks: Block[] = [
+const heroBlocks: Element[] = [
   { type: "eyebrow", text: "NEW" },
   { type: "h1", text: "Ship **faster**" },
   { type: "p", text: "Copy and wireframes together." },
@@ -21,55 +21,55 @@ const heroBlocks: Block[] = [
 
 describe("injectCopy", () => {
   it("fills slots in order with rendered copy", () => {
-    const html = injectCopy(WIREFRAME, [{ slug: "hero", blocks: heroBlocks }]);
-    expect(html).toContain(`<p class="wf-eyebrow" data-block="eyebrow">NEW</p>`);
-    expect(html).toContain(`<h1 class="wf-h1" data-block="h1">Ship <strong>faster</strong></h1>`);
+    const html = injectCopy(WIREFRAME, [{ slug: "hero", elements: heroBlocks }]);
+    expect(html).toContain(`<p class="wf-eyebrow" data-element="eyebrow">NEW</p>`);
+    expect(html).toContain(`<h1 class="wf-h1" data-element="h1">Ship <strong>faster</strong></h1>`);
     expect(html).toContain(`>Start free</a>`);
   });
 
   it("escapes copy text — copy can never inject markup", () => {
     const html = injectCopy(WIREFRAME, [
-      { slug: "hero", blocks: [{ type: "h1", text: `<script>alert(1)</script>` }] },
+      { slug: "hero", elements: [{ type: "h1", text: `<script>alert(1)</script>` }] },
     ]);
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
   });
 
   it("greys out slots with no matching copy", () => {
-    const html = injectCopy(WIREFRAME, [{ slug: "hero", blocks: [{ type: "h1", text: "Just a headline" }] }]);
+    const html = injectCopy(WIREFRAME, [{ slug: "hero", elements: [{ type: "h1", text: "Just a headline" }] }]);
     expect(html).toContain(`class="wf-eyebrow wf-empty"`);
     expect(html).toContain(`class="wf-p wf-empty"`);
   });
 
   it("appends copy without a slot to the overflow container", () => {
-    const extra: Block[] = [...heroBlocks, { type: "bullets", items: ["One", "Two"] }];
-    const html = injectCopy(WIREFRAME, [{ slug: "hero", blocks: extra }]);
+    const extra: Element[] = [...heroBlocks, { type: "bullets", items: ["One", "Two"] }];
+    const html = injectCopy(WIREFRAME, [{ slug: "hero", elements: extra }]);
     expect(html).toContain(`<ul class="wf-list"><li>One</li><li>Two</li></ul>`);
   });
 
   it("any heading level fits a heading slot", () => {
-    const html = injectCopy(WIREFRAME, [{ slug: "hero", blocks: [{ type: "h2", text: "Second level" }] }]);
-    expect(html).toContain(`<h1 class="wf-h1" data-block="h1">Second level</h1>`);
+    const html = injectCopy(WIREFRAME, [{ slug: "hero", elements: [{ type: "h2", text: "Second level" }] }]);
+    expect(html).toContain(`<h1 class="wf-h1" data-element="h1">Second level</h1>`);
   });
 
   it("fills bullet slots as list items", () => {
-    const wf = `<section data-copy="s"><ul class="wf-list" data-block="bullets"></ul></section>`;
-    const html = injectCopy(wf, [{ slug: "s", blocks: [{ type: "bullets", items: ["A", "B"] }] }]);
+    const wf = `<section data-copy="s"><ul class="wf-list" data-element="bullets"></ul></section>`;
+    const html = injectCopy(wf, [{ slug: "s", elements: [{ type: "bullets", items: ["A", "B"] }] }]);
     expect(html).toContain(`<li>A</li><li>B</li>`);
   });
 
   it("fills quote slots and renders inline links safely", () => {
-    const wf = `<section data-copy="s"><blockquote class="wf-quote" data-block="quote"></blockquote><p class="wf-p" data-block="p"></p></section>`;
+    const wf = `<section data-copy="s"><blockquote class="wf-quote" data-element="quote"></blockquote><p class="wf-p" data-element="p"></p></section>`;
     const html = injectCopy(wf, [
       {
         slug: "s",
-        blocks: [
+        elements: [
           { type: "quote", text: "Love it." },
           { type: "p", text: "See [docs](javascript:alert(1)) and [site](https://x.dev)." },
         ],
       },
     ]);
-    expect(html).toContain(`data-block="quote">Love it.</blockquote>`);
+    expect(html).toContain(`data-element="quote">Love it.</blockquote>`);
     expect(html).toContain(`<a href="https://x.dev">site</a>`);
     expect(html).not.toContain("javascript:");
   });

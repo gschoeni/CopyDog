@@ -4,15 +4,15 @@ import { requireProjectAccess } from "@/lib/content/access";
 import {
   hasUnpublishedChanges,
   readDoc,
+  readElementsRun,
   readSectionVersion,
   readSite,
   readWireframe,
 } from "@/lib/content/store";
-import { parseSectionMarkdown } from "@/lib/copy/markdown";
-
+import { parseElementsMarkdown } from "@/lib/copy/markdown";
 import { createClient } from "@/lib/supabase/server";
 
-import { PageEditor, type EditorSection } from "./page-editor";
+import { PageEditor, type PageContentItem } from "./page-editor";
 import { PagesSidebar, type SidebarMember } from "./pages-sidebar";
 
 /**
@@ -40,15 +40,27 @@ export default async function PageEditorRoute({
 
   const supabase = await createClient();
   const doc = await readDoc(oxen, view, pageSlug);
-  const [wireframe, dirty, { data: memberRows }, { count: openProposals }, sections] = await Promise.all([
+  const [wireframe, dirty, { data: memberRows }, { count: openProposals }, content] = await Promise.all([
     readWireframe(oxen, view, pageSlug),
     hasUnpublishedChanges(oxen, view),
     supabase.from("project_members").select("user_id, role, profile:profiles(display_name)").eq("project_id", projectId),
     supabase.from("proposals").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("status", "open"),
     Promise.all(
-      doc.sections.map(async (section): Promise<EditorSection> => {
-        const markdown = await readSectionVersion(oxen, view, pageSlug, section.slug, section.activeVersion);
-        return { ...section, blocks: parseSectionMarkdown(markdown ?? "") };
+      doc.content.map(async (entry): Promise<PageContentItem> => {
+        if (entry.kind === "elements") {
+          const markdown = await readElementsRun(oxen, view, pageSlug, entry.slug);
+          return { kind: "elements", elements: parseElementsMarkdown(markdown ?? "") };
+        }
+        const markdown = await readSectionVersion(oxen, view, pageSlug, entry.slug, entry.activeVersion);
+        return {
+          kind: "section",
+          slug: entry.slug,
+          title: entry.title,
+          activeVersion: entry.activeVersion,
+          versions: entry.versions,
+          linked: entry.linked,
+          elements: parseElementsMarkdown(markdown ?? ""),
+        };
       }),
     ),
   ]);
@@ -70,12 +82,12 @@ export default async function PageEditorRoute({
       <PageEditor
         // fingerprint key: router.refresh() after an import remounts the
         // editor with the new server content instead of stale client state
-        key={fingerprint(JSON.stringify(sections) + (wireframe ?? ""))}
+        key={fingerprint(JSON.stringify(content) + (wireframe ?? ""))}
         projectId={project.id}
         projectName={project.name}
         pageSlug={pageSlug}
         pageTitle={page.title}
-        initialSections={sections}
+        initialContent={content}
         initialWireframe={wireframe}
         initialDirty={dirty}
       />

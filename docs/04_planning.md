@@ -226,3 +226,35 @@ on `main` (`git log --first-parent main` to review phase by phase).
    provider credentials are configured in Supabase.
 4. **Deploy**: Vercel project + hosted Supabase (apply migrations via CI) — not
    yet set up.
+
+## 2026-07-13 — Refactor: pages are a mix of loose elements and sections
+
+Corrected a v1 design mistake: the copy editor required every element to live
+in a section (headings auto-split the doc). The agreed model (see
+[Decisions](05_decisions.md)) is now built and green:
+
+- **Loose by default.** Typing produces loose elements; nothing auto-sections.
+  Sections are deliberate: highlight → *Group into section* (works from one
+  element up, across section boundaries), rail ⊕, Shift+Enter, or the phantom
+  placeholder at the document's end.
+- **Sections carry the collaboration features** — versions, notes,
+  adopt/propose, TOC, wireframe. Loose copy is an unversioned body stream that
+  still autosaves, publishes, and diffs.
+- **Linked/unlinked sections.** Linked (default) sections render in the
+  wireframe; unlinking (header toggle, quiet badge, hollow TOC number) keeps a
+  section's versioning while dropping it from layout. Generate nudges with a
+  count of loose elements / unlinked sections that won't appear — never blocks.
+- **No dissolve.** A section is unlinked, deleted, or copied out — never
+  silently melted back into loose copy (emptied sections do clean themselves
+  up).
+- **Terminology**: "Block" → **Element** everywhere (code, tests, UI).
+- **Storage**: `doc.json` v2 — ordered `content[]` mixing
+  `{kind:"section", …, linked}` and `{kind:"elements", slug}`; loose runs at
+  `pages/{page}/elements/run-{i}.md` with positional identity. v1 docs parse as
+  all-linked sections; no migration needed.
+- One real bug surfaced by the new model: the phantom "New section" ghost was
+  positioned below the last *section*, which now overlapped loose copy after it
+  and stole clicks. It now sits past the end of the whole document and appends
+  the new section at the true end.
+
+Verified: lint, typecheck, 133 unit tests, production build, 27 e2e tests.

@@ -1,5 +1,5 @@
 import { LLM_MODELS, LlmClient } from "@/lib/llm/client";
-import { serializeBlocks } from "@/lib/copy/markdown";
+import { serializeElements } from "@/lib/copy/markdown";
 
 import { generateWireframeHeuristic, type SectionForLayout } from "./heuristic";
 import { sanitizeWireframeHtml } from "./sanitize";
@@ -19,10 +19,10 @@ Output rules:
   wf-eyebrow wf-h1 wf-h2 wf-h3 wf-h4 wf-h5 wf-h6 wf-p wf-list wf-quote wf-button wf-button-secondary
   wf-media wf-avatar wf-pill wf-navbar wf-logo wf-nav-items wf-footer
 - Each copy section becomes: <section class="wf-section" data-copy="SECTION_SLUG"> … </section>
-- Inside a section, each copy block gets an EMPTY slot element with data-block="TYPE" where TYPE is one of:
+- Inside a section, each copy element gets an EMPTY slot element with data-element="TYPE" where TYPE is one of:
   h1 h2 h3 h4 h5 h6 p eyebrow button bullets quote. Slots must appear in a sensible visual order.
-  Use exactly one slot per copy block (count them). bullets slots are <ul class="wf-list" data-block="bullets"></ul>.
-  button slots are <a class="wf-button" data-block="button" href="#"></a> grouped inside <div class="wf-actions">.
+  Use exactly one slot per copy element (count them). bullets slots are <ul class="wf-list" data-element="bullets"></ul>.
+  button slots are <a class="wf-button" data-element="button" href="#"></a> grouped inside <div class="wf-actions">.
 - Add one element with data-overflow per section (usually the main text column) so extra copy has a home.
 - Decorate freely with wf-media / wf-avatar / wf-pill placeholders (aria-hidden="true") to suggest imagery.
 - Start with a wf-navbar header and end with a wf-footer, both aria-hidden="true" decoration.
@@ -47,7 +47,7 @@ export class LlmGenerator implements WireframeGenerator {
 
   async generate(sections: SectionForLayout[]): Promise<string> {
     const copySummary = sections
-      .map((s) => `### Section slug: ${s.slug} (${s.title})\n${serializeBlocks(s.blocks) || "(no copy yet)"}`)
+      .map((s) => `### Section slug: ${s.slug} (${s.title})\n${serializeElements(s.elements) || "(no copy yet)"}`)
       .join("\n\n");
 
     const direction = this.instruction ? `\n\nLayout direction from the designer: ${this.instruction}` : "";

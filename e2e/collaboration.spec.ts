@@ -2,6 +2,7 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 
 import { openSectionChrome } from "./support/chrome";
 import { signIn } from "./support/auth";
+import { writeSection } from "./support/sections";
 
 /**
  * The full collaboration story, two real users in separate sessions:
@@ -30,9 +31,9 @@ test("two users: invite → publish → propose → merge → sync → adopt", a
   await alice.page.keyboard.press("Enter");
   await expect(alice.page.getByText(bobEmail.split("@")[0]!)).toBeVisible({ timeout: 10_000 });
 
-  // Alice writes hero copy and an alternate version
+  // Alice writes hero copy, groups it, and makes an alternate version
   await alice.page.getByRole("textbox", { name: "Page copy" }).click();
-  await alice.page.keyboard.type("# Alice's headline");
+  await writeSection(alice.page, ["# Alice's headline"], 1);
   await openSectionChrome(alice.page);
   const title = alice.page.getByLabel("Section title");
   await title.fill("Hero");

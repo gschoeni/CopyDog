@@ -1,7 +1,7 @@
-import type { Block, HeadingLevel } from "./blocks";
+import type { Element, HeadingLevel } from "./elements";
 
 /**
- * Section markdown ⇄ Block[] — the canonical serialization.
+ * Section markdown ⇄ Element[] — the canonical serialization.
  *
  * The dialect is plain CommonMark plus two deterministic conventions, so
  * files stay readable in any markdown tool:
@@ -19,8 +19,8 @@ const BULLET_RE = /^-\s+(.*)$/;
 const QUOTE_RE = /^>\s?(.*)$/;
 const LINK_ONLY_RE = /^\[([^\]]*)\]\(([^)\s]*)\)$/;
 
-export function parseSectionMarkdown(markdown: string): Block[] {
-  const blocks: Block[] = [];
+export function parseElementsMarkdown(markdown: string): Element[] {
+  const blocks: Element[] = [];
   // paragraphs are separated by blank lines; normalize line endings first
   const chunks = markdown
     .replace(/\r\n/g, "\n")
@@ -66,7 +66,7 @@ export function parseSectionMarkdown(markdown: string): Block[] {
   return blocks;
 }
 
-export function serializeBlocks(blocks: Block[]): string {
+export function serializeElements(blocks: Element[]): string {
   const chunks = blocks.map((block) => {
     switch (block.type) {
       case "h1":

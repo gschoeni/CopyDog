@@ -1,7 +1,7 @@
 import { createHeadlessEditor } from "@lexical/headless";
-import { ListItemNode, ListNode } from "@lexical/list";
 import { LinkNode } from "@lexical/link";
-import { HeadingNode, QuoteNode, $createHeadingNode } from "@lexical/rich-text";
+import { ListItemNode, ListNode } from "@lexical/list";
+import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import {
   $createParagraphNode,
   $createTextNode,
@@ -14,13 +14,13 @@ import {
 } from "lexical";
 import { describe, expect, it } from "vitest";
 
-import type { Block } from "@/lib/copy/blocks";
+import type { Element } from "@/lib/copy/elements";
 
 import {
-  $buildDocFromSections,
-  $groupBlocksIntoSection,
-  $snapshotSections,
-  $touchedBlockNodes,
+  $buildDocFromContent,
+  $groupElementsIntoSection,
+  $snapshotContent,
+  $touchedElementNodes,
   registerEmptySectionBackspace,
   registerSectionTransforms,
   registerShiftEnterNewSection,
@@ -39,7 +39,7 @@ function makeEditor(): { editor: LexicalEditor; makeSlug: () => string } {
       throw error;
     },
   });
-  registerSectionTransforms(editor, makeSlug);
+  registerSectionTransforms(editor);
   return { editor, makeSlug };
 }
 
@@ -47,257 +47,197 @@ function update(editor: LexicalEditor, fn: () => void): Promise<void> {
   return new Promise((resolve) => editor.update(fn, { onUpdate: resolve }));
 }
 
-const hero: Block[] = [
+const hero: Element[] = [
   { type: "eyebrow", text: "NEW" },
   { type: "h1", text: "Big claim" },
   { type: "p", text: "Support copy." },
 ];
-const features: Block[] = [
+const features: Element[] = [
   { type: "h2", text: "Features" },
   { type: "bullets", items: ["Fast", "Kind"] },
 ];
+const loose: Element[] = [
+  { type: "p", text: "Messy first thoughts." },
+  { type: "h2", text: "A heading that stays loose" },
+];
 
 describe("doc structure", () => {
-  it("builds sections and snapshots them back identically", async () => {
-    const { editor, makeSlug } = makeEditor();
+  it("builds a mix of loose runs and sections, and snapshots it back", async () => {
+    const { editor } = makeEditor();
     await update(editor, () =>
-      $buildDocFromSections(
-        [
-          { slug: "hero", blocks: hero },
-          { slug: "features", blocks: features },
-        ],
-        makeSlug,
-      ),
+      $buildDocFromContent([
+        { kind: "elements", elements: loose },
+        { kind: "section", slug: "hero", elements: hero },
+        { kind: "elements", elements: [{ type: "p", text: "Between sections." }] },
+        { kind: "section", slug: "features", elements: features },
+      ]),
     );
-    expect(editor.read($snapshotSections)).toEqual([
-      { slug: "hero", blocks: hero, pinned: false },
-      { slug: "features", blocks: features, pinned: false },
+    expect(editor.read($snapshotContent)).toEqual([
+      { kind: "elements", elements: loose },
+      { kind: "section", slug: "hero", elements: hero },
+      { kind: "elements", elements: [{ type: "p", text: "Between sections." }] },
+      { kind: "section", slug: "features", elements: features },
     ]);
   });
 
-  it("auto-splits when an h2 lands after body content", async () => {
-    const { editor, makeSlug } = makeEditor();
-    await update(editor, () =>
-      $buildDocFromSections([{ slug: "hero", blocks: hero }], makeSlug),
-    );
+  it("loose headings do NOT create sections — copy stays loose until grouped", async () => {
+    const { editor } = makeEditor();
+    await update(editor, () => $buildDocFromContent([{ kind: "elements", elements: loose }]));
+    // several updates later, still one loose run and zero sections
     await update(editor, () => {
-      const section = $getRoot().getChildren().find($isSectionNode)!;
-      const h2 = $createHeadingNode("h2");
-      h2.append($createTextNode("Pricing"));
-      section.append(h2);
       const p = $createParagraphNode();
-      p.append($createTextNode("One plan."));
-      section.append(p);
+      p.append($createTextNode("More loose copy."));
+      $getRoot().append(p);
     });
-
-    const snapshot = editor.read($snapshotSections);
-    expect(snapshot).toHaveLength(2);
-    expect(snapshot[0]!.slug).toBe("hero");
-    expect(snapshot[0]!.blocks).toEqual(hero);
-    expect(snapshot[1]!.blocks).toEqual([
-      { type: "h2", text: "Pricing" },
-      { type: "p", text: "One plan." },
-    ]);
+    const snapshot = editor.read($snapshotContent);
+    expect(snapshot).toHaveLength(1);
+    expect(snapshot[0]!.kind).toBe("elements");
   });
 
-  it("carries a preceding eyebrow into the split", async () => {
-    const { editor, makeSlug } = makeEditor();
-    await update(editor, () => $buildDocFromSections([{ slug: "hero", blocks: hero }], makeSlug));
-    await update(editor, () => {
-      const section = $getRoot().getChildren().find($isSectionNode)!;
-      const blocks: Block[] = [
-        { type: "eyebrow", text: "PRICING" },
-        { type: "h2", text: "Plans" },
-      ];
-      // append via helper-equivalent: eyebrow then heading
-      const eyebrow = new EyebrowNode();
-      eyebrow.append($createTextNode("PRICING"));
-      section.append(eyebrow);
-      const h2 = $createHeadingNode("h2");
-      h2.append($createTextNode("Plans"));
-      section.append(h2);
-      void blocks;
-    });
-
-    const snapshot = editor.read($snapshotSections);
-    expect(snapshot).toHaveLength(2);
-    expect(snapshot[1]!.blocks).toEqual([
-      { type: "eyebrow", text: "PRICING" },
-      { type: "h2", text: "Plans" },
-    ]);
-  });
-
-  it("a subtitle directly under a title does not split", async () => {
-    const { editor, makeSlug } = makeEditor();
+  it("dissolves emptied sections; loose copy needs no upkeep", async () => {
+    const { editor } = makeEditor();
     await update(editor, () =>
-      $buildDocFromSections(
-        [{ slug: "hero", blocks: [{ type: "h1", text: "Title" }, { type: "h2", text: "Subtitle" }, { type: "p", text: "Body." }] }],
-        makeSlug,
-      ),
+      $buildDocFromContent([
+        { kind: "elements", elements: [{ type: "p", text: "keep me" }] },
+        { kind: "section", slug: "gone", elements: [{ type: "p", text: "bye" }] },
+      ]),
     );
-    expect(editor.read($snapshotSections)).toHaveLength(1);
-  });
-
-  it("dissolves emptied sections but keeps the last one alive", async () => {
-    const { editor, makeSlug } = makeEditor();
-    await update(editor, () =>
-      $buildDocFromSections(
-        [
-          { slug: "a", blocks: [{ type: "p", text: "keep" }] },
-          { slug: "b", blocks: [{ type: "p", text: "gone" }] },
-        ],
-        makeSlug,
-      ),
-    );
-    await update(editor, () => {
-      const sections = $getRoot().getChildren().filter($isSectionNode);
-      sections[1]!.clear();
-    });
-    const snapshot = editor.read($snapshotSections);
-    expect(snapshot.map((s) => s.slug)).toEqual(["a"]);
-
-    // emptying the final section keeps a place to type
     await update(editor, () => {
       $getRoot().getChildren().filter($isSectionNode)[0]!.clear();
     });
-    expect(editor.read($snapshotSections)).toHaveLength(1);
+    expect(editor.read($snapshotContent)).toEqual([
+      { kind: "elements", elements: [{ type: "p", text: "keep me" }] },
+    ]);
   });
 
-  it("wraps stray top-level nodes into a section", async () => {
+  it("groups loose elements into a section and leaves a place to keep writing", async () => {
     const { editor, makeSlug } = makeEditor();
-    await update(editor, () => $buildDocFromSections([{ slug: "hero", blocks: hero }], makeSlug));
-    await update(editor, () => {
-      const p = $createParagraphNode();
-      p.append($createTextNode("stray paragraph"));
-      $getRoot().append(p);
-    });
-    // normalization runs in a follow-up update
-    await new Promise((r) => setTimeout(r, 0));
-    const snapshot = editor.read($snapshotSections);
-    expect(snapshot).toHaveLength(1);
-    expect(snapshot[0]!.blocks).toContainEqual({ type: "p", text: "stray paragraph" });
-  });
+    await update(editor, () => $buildDocFromContent([{ kind: "elements", elements: loose }]));
 
-  it("Shift+Enter starts a new empty section below the caret's section", async () => {
-    const { editor, makeSlug } = makeEditor();
-    registerShiftEnterNewSection(editor, makeSlug);
-    await update(editor, () =>
-      $buildDocFromSections(
-        [
-          { slug: "hero", blocks: hero },
-          { slug: "features", blocks: features },
-        ],
-        makeSlug,
-      ),
-    );
+    let slug: string | null = null;
     await update(editor, () => {
-      const first = $getRoot().getChildren().filter($isSectionNode)[0]!;
-      first.selectEnd();
+      const nodes = $getRoot().getChildren();
+      slug = $groupElementsIntoSection($touchedElementNodes(nodes), makeSlug);
     });
 
-    const handled = editor.dispatchCommand(KEY_ENTER_COMMAND, {
-      shiftKey: true,
-      preventDefault: () => {},
-    } as KeyboardEvent);
-    expect(handled).toBe(true);
-
-    const snapshot = editor.read($snapshotSections);
-    expect(snapshot.map((s) => s.slug)).toEqual(["hero", "new-1", "features"]);
-    expect(snapshot[1]!.blocks).toEqual([]);
-
-    // the caret moved into the new section
+    expect(slug).toBe("new-1");
+    const snapshot = editor.read($snapshotContent);
+    expect(snapshot).toEqual([{ kind: "section", slug: "new-1", elements: loose }]);
+    // the continuation paragraph is selected and ready
     editor.read(() => {
       const selection = $getSelection();
       expect($isRangeSelection(selection)).toBe(true);
-      const section = ($isRangeSelection(selection) ? selection.anchor.getNode() : null)
-        ?.getTopLevelElement()
-        ?.getParent();
-      expect($isSectionNode(section) && section.getSlug()).toBe("new-1");
     });
-
-    // plain Enter is untouched
-    const plain = editor.dispatchCommand(KEY_ENTER_COMMAND, {
-      shiftKey: false,
-      preventDefault: () => {},
-    } as KeyboardEvent);
-    expect(plain).toBe(false);
   });
 
-  it("Backspace in an emptied section deletes it and lands in the previous one", async () => {
+  it("groups a mix of loose and sectioned elements; emptied sections dissolve", async () => {
     const { editor, makeSlug } = makeEditor();
-    registerEmptySectionBackspace(editor);
     await update(editor, () =>
-      $buildDocFromSections(
-        [
-          { slug: "hero", blocks: hero },
-          { slug: "empty", blocks: [] },
-          { slug: "features", blocks: features },
-        ],
-        makeSlug,
-      ),
+      $buildDocFromContent([
+        { kind: "elements", elements: [{ type: "p", text: "Loose lead-in." }] },
+        { kind: "section", slug: "hero", elements: hero },
+      ]),
     );
+
     await update(editor, () => {
-      $getRoot().getChildren().filter($isSectionNode)[1]!.selectEnd();
+      const rootChildren = $getRoot().getChildren();
+      const looseP = rootChildren[0]!; // the loose paragraph
+      const heroSection = rootChildren[1]! as SectionNode;
+      const heroHeading = heroSection.getChildren()[1]!; // h1
+      $groupElementsIntoSection($touchedElementNodes([looseP, heroHeading]), makeSlug);
     });
 
-    const handled = editor.dispatchCommand(KEY_BACKSPACE_COMMAND, {
-      preventDefault: () => {},
-    } as KeyboardEvent);
-    expect(handled).toBe(true);
+    const snapshot = editor.read($snapshotContent);
+    // the loose paragraph and hero's h1 now share a new section; hero keeps the rest
+    expect(snapshot).toEqual([
+      {
+        kind: "section",
+        slug: "new-1",
+        elements: [
+          { type: "p", text: "Loose lead-in." },
+          { type: "h1", text: "Big claim" },
+        ],
+      },
+      {
+        kind: "section",
+        slug: "hero",
+        elements: [
+          { type: "eyebrow", text: "NEW" },
+          { type: "p", text: "Support copy." },
+        ],
+      },
+    ]);
+  });
 
-    const snapshot = editor.read($snapshotSections);
-    expect(snapshot.map((s) => s.slug)).toEqual(["hero", "features"]);
-    editor.read(() => {
-      const selection = $getSelection();
-      const section = ($isRangeSelection(selection) ? selection.anchor.getNode() : null)
-        ?.getTopLevelElement()
-        ?.getParent();
-      expect($isSectionNode(section) && section.getSlug()).toBe("hero");
+  it("Shift+Enter starts a section below the caret — from a section or loose copy", async () => {
+    const { editor, makeSlug } = makeEditor();
+    registerShiftEnterNewSection(editor, makeSlug);
+    await update(editor, () =>
+      $buildDocFromContent([
+        { kind: "elements", elements: [{ type: "p", text: "Loose." }] },
+        { kind: "section", slug: "hero", elements: hero },
+      ]),
+    );
+
+    // from loose copy: section lands right after the loose element
+    await update(editor, () => {
+      $getRoot().getFirstChild()!.selectEnd();
     });
+    expect(
+      editor.dispatchCommand(KEY_ENTER_COMMAND, { shiftKey: true, preventDefault: () => {} } as KeyboardEvent),
+    ).toBe(true);
+    let snapshot = editor.read($snapshotContent);
+    expect(snapshot.map((c) => c.kind)).toEqual(["elements", "section", "section"]);
+    expect((snapshot[1] as { slug: string }).slug).toBe("new-1");
 
-    // a section with text is left to normal editing
+    // from inside a section: lands after that section
     await update(editor, () => {
       $getRoot().getChildren().filter($isSectionNode)[1]!.selectEnd();
     });
     expect(
-      editor.dispatchCommand(KEY_BACKSPACE_COMMAND, { preventDefault: () => {} } as KeyboardEvent),
+      editor.dispatchCommand(KEY_ENTER_COMMAND, { shiftKey: true, preventDefault: () => {} } as KeyboardEvent),
+    ).toBe(true);
+    snapshot = editor.read($snapshotContent);
+    expect(snapshot.map((c) => (c.kind === "section" ? (c as { slug: string }).slug : "loose"))).toEqual([
+      "loose",
+      "new-1",
+      "hero",
+      "new-2",
+    ]);
+
+    // plain Enter is untouched
+    expect(
+      editor.dispatchCommand(KEY_ENTER_COMMAND, { shiftKey: false, preventDefault: () => {} } as KeyboardEvent),
     ).toBe(false);
   });
 
-  it("groups blocks across sections into a new section and cleans up", async () => {
+  it("Backspace in an emptied section deletes it and lands on what precedes it", async () => {
     const { editor, makeSlug } = makeEditor();
+    registerEmptySectionBackspace(editor);
     await update(editor, () =>
-      $buildDocFromSections(
-        [
-          { slug: "hero", blocks: hero },
-          { slug: "features", blocks: features },
-        ],
-        makeSlug,
-      ),
+      $buildDocFromContent([
+        { kind: "elements", elements: [{ type: "p", text: "Loose before." }] },
+        { kind: "section", slug: "empty", elements: [] },
+        { kind: "section", slug: "features", elements: features },
+      ]),
     );
-
-    let newSlug: string | null = null;
+    void makeSlug;
     await update(editor, () => {
-      const sections = $getRoot().getChildren().filter($isSectionNode);
-      const heroChildren = sections[0]!.getChildren();
-      const featureChildren = sections[1]!.getChildren();
-      // group hero's paragraph + features' heading (spanning sections)
-      const picked = [heroChildren[2]!, featureChildren[0]!];
-      newSlug = $groupBlocksIntoSection($touchedBlockNodes(picked), makeSlug);
+      $getRoot().getChildren().filter($isSectionNode)[0]!.selectEnd();
     });
 
-    expect(newSlug).toBeTruthy();
-    const snapshot = editor.read($snapshotSections);
-    const created = snapshot.find((s) => s.slug === newSlug);
-    expect(created?.blocks).toEqual([
-      { type: "p", text: "Support copy." },
-      { type: "h2", text: "Features" },
-    ]);
-    // sources kept their remaining blocks
-    expect(snapshot.find((s) => s.slug === "hero")?.blocks).toEqual([
-      { type: "eyebrow", text: "NEW" },
-      { type: "h1", text: "Big claim" },
-    ]);
-    expect(snapshot.find((s) => s.slug === "features")?.blocks).toEqual([{ type: "bullets", items: ["Fast", "Kind"] }]);
+    expect(
+      editor.dispatchCommand(KEY_BACKSPACE_COMMAND, { preventDefault: () => {} } as KeyboardEvent),
+    ).toBe(true);
+    const snapshot = editor.read($snapshotContent);
+    expect(snapshot.map((c) => c.kind)).toEqual(["elements", "section"]);
+
+    // a section with text is left to normal editing
+    await update(editor, () => {
+      $getRoot().getChildren().filter($isSectionNode)[0]!.selectEnd();
+    });
+    expect(
+      editor.dispatchCommand(KEY_BACKSPACE_COMMAND, { preventDefault: () => {} } as KeyboardEvent),
+    ).toBe(false);
   });
 });

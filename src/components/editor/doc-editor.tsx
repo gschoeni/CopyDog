@@ -34,19 +34,20 @@ import {
   type LexicalEditor,
 } from "lexical";
 
-import type { Block } from "@/lib/copy/blocks";
+import type { Element } from "@/lib/copy/elements";
 
 import {
-  $buildDocFromSections,
-  $groupBlocksIntoSection,
+  $buildDocFromContent,
+  $groupElementsIntoSection,
+  $appendNewSection,
   $insertSectionAfterSlug,
-  $replaceSectionBlocks,
-  $snapshotSections,
-  $touchedBlockNodes,
+  $replaceSectionElements,
+  $snapshotContent,
+  $touchedElementNodes,
   registerEmptySectionBackspace,
   registerSectionTransforms,
   registerShiftEnterNewSection,
-  type SectionSnapshot,
+  type ContentSnapshot,
 } from "./doc-structure";
 import { ButtonNode } from "./nodes/button-node";
 import { EyebrowNode } from "./nodes/eyebrow-node";
@@ -60,8 +61,8 @@ import { SelectionToolbarPlugin } from "./plugins/selection-toolbar";
  */
 
 export interface DocEditorHandle {
-  /** Replace one section's blocks (version switch / adoption). */
-  replaceSectionBlocks: (slug: string, blocks: Block[]) => void;
+  /** Replace one section's elements (version switch / adoption). */
+  replaceSectionElements: (slug: string, elements: Element[]) => void;
   /** Group the current selection into a new section; returns its slug. */
   groupSelection: () => string | null;
   /** Remove a section and its content from the document. */
@@ -77,16 +78,16 @@ export interface SectionRect {
 }
 
 export interface DocEditorProps {
-  initialSections: SectionSnapshot[];
+  initialContent: ContentSnapshot[];
   makeSlug: () => string;
-  onSnapshotChange: (sections: SectionSnapshot[]) => void;
+  onSnapshotChange: (content: ContentSnapshot[]) => void;
   /** Renders each section's header chrome into the reserved headroom. */
   renderSectionHeader: (slug: string) => ReactNode;
   autoFocus?: boolean;
 }
 
 export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(function DocEditor(
-  { initialSections, makeSlug, onSnapshotChange, renderSectionHeader, autoFocus },
+  { initialContent, makeSlug, onSnapshotChange, renderSectionHeader, autoFocus },
   ref,
 ) {
   const initialConfig = {
@@ -100,7 +101,7 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(function Do
       text: { bold: "font-semibold", italic: "italic", code: "editor-code" },
     },
     nodes: [HeadingNode, QuoteNode, LinkNode, ListNode, ListItemNode, EyebrowNode, ButtonNode, SectionNode],
-    editorState: () => $buildDocFromSections(initialSections, makeSlug),
+    editorState: () => $buildDocFromContent(initialContent),
     onError: (error: Error) => {
       throw error;
     },
@@ -128,13 +129,14 @@ function DocEditorInner({
 }: {
   handleRef: React.Ref<DocEditorHandle>;
   makeSlug: () => string;
-  onSnapshotChange: (sections: SectionSnapshot[]) => void;
+  onSnapshotChange: (content: ContentSnapshot[]) => void;
   renderSectionHeader: (slug: string) => ReactNode;
   autoFocus?: boolean;
 }) {
   const [editor] = useLexicalComposerContext();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [sectionRects, setSectionRects] = useState<SectionRect[]>([]);
+  const [contentBottom, setContentBottom] = useState(0);
   const [sectionDropLine, setSectionDropLine] = useState<number | null>(null);
   const [hoveredSlug, setHoveredSlug] = useState<string | null>(null);
   // the header strip opens deliberately (handle click / drag) and closes on
@@ -216,7 +218,7 @@ function DocEditorInner({
     };
   }, [sectionRects]);
 
-  useEffect(() => registerSectionTransforms(editor, makeSlug), [editor, makeSlug]);
+  useEffect(() => registerSectionTransforms(editor), [editor]);
   useEffect(() => registerMarkdownShortcuts(editor, [HEADING, UNORDERED_LIST]), [editor]);
   useEffect(() => registerShiftEnterNewSection(editor, makeSlug), [editor, makeSlug]);
   useEffect(() => registerEmptySectionBackspace(editor), [editor]);
@@ -231,15 +233,15 @@ function DocEditorInner({
   useEffect(() => {
     if (emittedInitial.current) return;
     emittedInitial.current = true;
-    onSnapshotChange(editor.getEditorState().read($snapshotSections));
+    onSnapshotChange(editor.getEditorState().read($snapshotContent));
   }, [editor, onSnapshotChange]);
 
   useImperativeHandle(
     handleRef,
     () => ({
-      replaceSectionBlocks: (slug, blocks) => {
+      replaceSectionElements: (slug, elements) => {
         editor.update(() => {
-          $replaceSectionBlocks(slug, blocks);
+          $replaceSectionElements(slug, elements);
         });
       },
       groupSelection: () => {
@@ -247,7 +249,7 @@ function DocEditorInner({
         editor.update(() => {
           const selection = $getSelection();
           if (!$isRangeSelection(selection)) return;
-          slug = $groupBlocksIntoSection($touchedBlockNodes(selection.getNodes()), makeSlug);
+          slug = $groupElementsIntoSection($touchedElementNodes(selection.getNodes()), makeSlug);
         });
         return slug;
       },
@@ -281,6 +283,8 @@ function DocEditorInner({
     for (const el of wrapper.querySelectorAll<HTMLElement>("[data-section-slug]")) {
       rects.push({ slug: el.dataset.sectionSlug!, top: el.offsetTop, height: el.offsetHeight });
     }
+    const content = wrapper.querySelector<HTMLElement>("[contenteditable]");
+    setContentBottom(content ? content.offsetTop + content.offsetHeight : 0);
     setSectionRects((prev) =>
       prev.length === rects.length &&
       prev.every((r, i) => r.slug === rects[i]!.slug && r.top === rects[i]!.top && r.height === rects[i]!.height)
@@ -298,7 +302,7 @@ function DocEditorInner({
 
   const handleChange = useCallback(
     (editorState: EditorState) => {
-      onSnapshotChange(editorState.read($snapshotSections));
+      onSnapshotChange(editorState.read($snapshotContent));
       // header positions depend on content height
       requestAnimationFrame(measure);
     },
@@ -311,7 +315,7 @@ function DocEditorInner({
         contentEditable={<ContentEditable className="outline-none" aria-label="Page copy" />}
         placeholder={
           <p className="pointer-events-none absolute left-18 top-[2.6rem] text-ink-tertiary">
-            Start writing — headings become sections as you go…
+            Start writing — highlight copy to group it into a section…
           </p>
         }
         ErrorBoundary={LexicalErrorBoundary}
@@ -326,7 +330,7 @@ function DocEditorInner({
           editor.update(() => {
             const selection = $getSelection();
             if (!$isRangeSelection(selection)) return;
-            slug = $groupBlocksIntoSection($touchedBlockNodes(selection.getNodes()), makeSlug);
+            slug = $groupElementsIntoSection($touchedElementNodes(selection.getNodes()), makeSlug);
           });
           return slug;
         }}
@@ -409,22 +413,19 @@ function DocEditorInner({
 
       {/* phantom section: hovering below the document reveals a ghost you
           can click to keep writing in a fresh section (UI only — nothing
-          exists until you click) */}
-      {sectionRects.length > 0 && (
+          exists until you click). It sits past the end of the whole
+          document, clear of any loose copy after the last section. */}
+      {contentBottom > 0 && (
         <button
           type="button"
           aria-label="New section"
           onClick={() => {
-            const last = sectionRects[sectionRects.length - 1]!;
-            insertSectionAfter(editor, last.slug, makeSlug);
+            editor.update(() => {
+              $appendNewSection(makeSlug);
+            });
           }}
           className="absolute left-16 right-0 flex h-14 items-center rounded-lg border border-dashed border-border-strong px-4 text-sm text-ink-tertiary opacity-0 transition-opacity duration-150 hover:opacity-100 hover:text-ink-secondary"
-          style={{
-            top: (() => {
-              const last = sectionRects[sectionRects.length - 1]!;
-              return last.top + last.height + 16;
-            })(),
-          }}
+          style={{ top: contentBottom + 16 }}
           data-phantom-section
         >
           <span aria-hidden className="mr-2 text-lg leading-none">

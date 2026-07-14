@@ -1,7 +1,7 @@
 /**
  * Inline markdown ⇄ formatted text runs.
  *
- * Block text is stored as inline markdown (`**bold**`, `*italic*`,
+ * Element text is stored as inline markdown (`**bold**`, `*italic*`,
  * `` `code` ``); the editor works in runs. Supported marks are exactly
  * bold, italic, and code — everything else passes through as plain text.
  */

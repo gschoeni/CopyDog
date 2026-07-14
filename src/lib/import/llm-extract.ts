@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { blockSchema } from "@/lib/copy/blocks";
+import { elementSchema } from "@/lib/copy/elements";
 import { LLM_MODELS, type LlmClient, type LlmMessage } from "@/lib/llm/client";
 
 import type { ExtractedSection } from "./extract";
@@ -16,7 +16,7 @@ const extractionSchema = z.object({
     .array(
       z.object({
         title: z.string().min(1).max(60),
-        blocks: z.array(blockSchema).min(1).max(40),
+        elements: z.array(elementSchema).min(1).max(40),
       }),
     )
     .min(1)
@@ -25,8 +25,8 @@ const extractionSchema = z.object({
 
 const SYSTEM_PROMPT = `You extract website copy into structured sections for a copywriting tool.
 
-Return ONLY a JSON object (no fences, no prose): {"sections":[{"title":"...","blocks":[...]}]}
-Each block is one of:
+Return ONLY a JSON object (no fences, no prose): {"sections":[{"title":"...","elements":[...]}]}
+Each element is one of:
   {"type":"h1"|"h2"|"h3"|"h4"|"h5"|"h6","text":"..."}
   {"type":"p","text":"..."}
   {"type":"eyebrow","text":"..."}          (short overline above a heading)
@@ -34,7 +34,7 @@ Each block is one of:
   {"type":"bullets","items":["...","..."]}\n  {"type":"quote","text":"..."}          (pull quotes, testimonials)
 Rules:
 - Capture the page's real marketing copy in reading order; skip navigation, cookie banners, legal footers.
-- Group blocks into the page's natural sections (hero, features, testimonial, CTA…). Title each section briefly.
+- Group elements into the page's natural sections (hero, features, testimonial, CTA…). Title each section briefly.
 - Keep the author's words exactly; inline **bold** / *italic* markdown may be used where the source emphasizes.`;
 
 export async function extractSectionsWithLlm(llm: LlmClient, html: string): Promise<ExtractedSection[]> {

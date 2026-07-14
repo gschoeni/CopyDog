@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { signIn } from "./support/auth";
+import { writeSection } from "./support/sections";
 
 test("export downloads a standalone HTML page with the active copy", async ({ page }) => {
   await signIn(page);
@@ -9,11 +10,12 @@ test("export downloads a standalone HTML page with the active copy", async ({ pa
   await page.getByRole("button", { name: "Create project" }).click();
   await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
   await page.getByRole("textbox", { name: "Page copy" }).click();
-  await page.keyboard.type("# Exported headline");
+  await writeSection(page, ["# Exported headline"], 1);
+  await page.waitForTimeout(1000);
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
 
   await page.getByRole("tab", { name: "Wireframe" }).click();
-  await page.getByRole("button", { name: "Generate wireframe from copy" }).click();
+  await page.getByRole("button", { name: "Generate wireframe from sections" }).click();
   await expect(page.locator(".wf-root").getByRole("heading", { name: "Exported headline" })).toBeVisible({
     timeout: 20_000,
   });

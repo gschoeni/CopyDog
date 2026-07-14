@@ -2,11 +2,12 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { openSectionChrome } from "./support/chrome";
 import { signIn } from "./support/auth";
+import { typeLines, writeSection } from "./support/sections";
 
 /**
- * The continuous document: selection spans sections, highlighted blocks
+ * The continuous document: selection spans sections, highlighted elements
  * group into a new section, and the Notion-style rail inserts and drags
- * blocks between sections.
+ * elements between sections.
  */
 
 async function setupTwoSections(page: Page, name: string) {
@@ -16,14 +17,8 @@ async function setupTwoSections(page: Page, name: string) {
   await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
 
   await page.getByRole("textbox", { name: "Page copy" }).click();
-  await page.keyboard.type("# Hero title");
-  await page.keyboard.press("Enter");
-  await page.keyboard.type("Hero body line.");
-  await page.keyboard.press("Enter");
-  await page.keyboard.type("## Features");
-  await page.keyboard.press("Enter");
-  await page.keyboard.type("Feature body line.");
-  await expect(page.locator("[data-section-slug]")).toHaveCount(2, { timeout: 10_000 });
+  await writeSection(page, ["# Hero title", "Hero body line."], 1);
+  await writeSection(page, ["## Features", "Feature body line."], 2);
 }
 
 test("selection spans sections and the toolbar groups it into a new section", async ({ page }) => {
@@ -44,7 +39,7 @@ test("selection spans sections and the toolbar groups it into a new section", as
   await expect(groupButton).toBeVisible({ timeout: 5_000 });
   await groupButton.click();
 
-  // hero keeps its title; a new section owns the grouped blocks
+  // hero keeps its title; a new section owns the grouped elements
   await expect(page.locator("[data-section-slug]")).toHaveCount(2);
   const sections = page.locator("[data-section-slug]");
   await expect(sections.first()).toContainText("Hero title");
@@ -53,10 +48,6 @@ test("selection spans sections and the toolbar groups it into a new section", as
   await expect(sections.nth(1)).toContainText("Features");
   await expect(sections.nth(1)).toContainText("Feature body line.");
 
-  // grouped sections are pinned: the h2-after-body inside doesn't re-split
-  await page.waitForTimeout(1200);
-  await expect(page.locator("[data-section-slug]")).toHaveCount(2);
-
   // survives a reload (files + doc.json persisted)
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
   await page.reload();
@@ -64,7 +55,7 @@ test("selection spans sections and the toolbar groups it into a new section", as
   await expect(page.locator("[data-section-slug]").nth(1)).toContainText("Feature body line.");
 });
 
-test("turn-into: highlighted text changes block type from the toolbar", async ({ page }) => {
+test("turn-into: highlighted text changes element type from the toolbar", async ({ page }) => {
   await setupTwoSections(page, `TurnInto ${Date.now()}`);
 
   // select the hero body paragraph
@@ -165,14 +156,16 @@ test("Shift+Enter and the phantom placeholder create sections", async ({ page })
   await expect(sections.nth(3)).toContainText("Born from the phantom.");
 
   // Backspace through the emptied section deletes it and the caret lands
-  // at the end of the previous one — typing continues there
+  // on whatever precedes it — here the loose copy between Features and
+  // the deleted section, so typing continues loose
   await page.getByText("Born from the phantom.").click({ clickCount: 3 });
   await page.keyboard.press("Backspace"); // clears the selected text
   await expect(sections.nth(3)).not.toContainText("Born from the phantom.");
   await page.keyboard.press("Backspace"); // empty section → deleted
   await expect(sections).toHaveCount(3, { timeout: 10_000 });
-  await page.keyboard.type(" Continued.");
-  await expect(sections.nth(2)).toContainText("Continued.");
+  await page.keyboard.type("Continued loose.");
+  await expect(page.getByRole("textbox", { name: "Page copy" })).toContainText("Continued loose.");
+  await expect(sections.nth(2)).not.toContainText("Continued loose.");
 });
 
 test("sections reorder by dragging their header grip", async ({ page }) => {

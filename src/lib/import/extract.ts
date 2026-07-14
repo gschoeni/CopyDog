@@ -1,6 +1,6 @@
 import { parse, HTMLElement as ParsedElement, NodeType, type Node as ParsedNode } from "node-html-parser";
 
-import type { Block } from "@/lib/copy/blocks";
+import type { Element } from "@/lib/copy/elements";
 
 /**
  * Deterministic HTML → copy extraction. No LLM required: works from the
@@ -11,7 +11,7 @@ import type { Block } from "@/lib/copy/blocks";
 
 export interface ExtractedSection {
   title: string;
-  blocks: Block[];
+  elements: Element[];
 }
 
 const MAX_SECTIONS = 12;
@@ -34,11 +34,11 @@ export function extractSectionsFromHtml(html: string): ExtractedSection[] {
 
   const sections: ExtractedSection[] = [];
   for (const container of containers.slice(0, MAX_SECTIONS)) {
-    const blocks = extractBlocks(container).slice(0, MAX_BLOCKS_PER_SECTION);
-    if (blocks.length === 0) continue;
-    const heading = blocks.find((b) => "text" in b && b.type.startsWith("h"));
+    const elements = extractBlocks(container).slice(0, MAX_BLOCKS_PER_SECTION);
+    if (elements.length === 0) continue;
+    const heading = elements.find((b) => "text" in b && b.type.startsWith("h"));
     const title = heading && "text" in heading ? clip(heading.text, 40) : `Section ${sections.length + 1}`;
-    sections.push({ title, blocks });
+    sections.push({ title, elements });
   }
   return sections;
 }
@@ -82,32 +82,32 @@ function flattenCopyElements(node: ParsedElement, out: ParsedElement[] = []): Pa
   return out;
 }
 
-function extractBlocks(container: ParsedElement): Block[] {
-  const blocks: Block[] = [];
+function extractBlocks(container: ParsedElement): Element[] {
+  const elements: Element[] = [];
   for (const el of flattenCopyElements(container)) {
     const tag = el.rawTagName!.toLowerCase();
     const text = inlineMarkdownOf(el);
     if (!text.trim() && tag !== "ul" && tag !== "ol") continue;
 
     if (/^h[1-6]$/.test(tag)) {
-      blocks.push({ type: tag as Block["type"] & `h${number}`, text: text.trim() } as Block);
+      elements.push({ type: tag as Element["type"] & `h${number}`, text: text.trim() } as Element);
     } else if (tag === "ul" || tag === "ol") {
       const items = el
         .querySelectorAll("li")
         .map((li) => inlineMarkdownOf(li).trim())
         .filter(Boolean);
-      if (items.length) blocks.push({ type: "bullets", items });
+      if (items.length) elements.push({ type: "bullets", items });
     } else if (tag === "blockquote") {
-      blocks.push({ type: "quote", text: text.trim() });
+      elements.push({ type: "quote", text: text.trim() });
     } else if (tag === "a") {
-      blocks.push({ type: "button", label: text.trim(), url: el.getAttribute("href") ?? "#" });
+      elements.push({ type: "button", label: text.trim(), url: el.getAttribute("href") ?? "#" });
     } else if (isEyebrowLike(el, text)) {
-      blocks.push({ type: "eyebrow", text: text.trim() });
+      elements.push({ type: "eyebrow", text: text.trim() });
     } else {
-      blocks.push({ type: "p", text: text.trim() });
+      elements.push({ type: "p", text: text.trim() });
     }
   }
-  return blocks;
+  return elements;
 }
 
 function looksLikeCta(el: ParsedElement): boolean {
@@ -140,7 +140,7 @@ function inlineMarkdownOf(node: ParsedNode, isRoot = true): string {
   if (tag === "em" || tag === "i") return `*${inner.trim()}*`;
   if (tag === "code") return `\`${inner.trim()}\``;
   if (tag === "a" && !isRoot) {
-    // nested anchors become inline links; a root anchor is the block itself
+    // nested anchors become inline links; a root anchor is the element itself
     // (a CTA button) and keeps its plain label
     const href = node.getAttribute("href") ?? "#";
     return `[${inner.trim().replace(/([\]\\])/g, "\\$1")}](${href})`;

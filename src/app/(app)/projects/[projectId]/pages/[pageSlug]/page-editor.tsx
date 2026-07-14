@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DocEditor, type DocEditorHandle } from "@/components/editor/doc-editor";
-import type { SectionSnapshot } from "@/components/editor/doc-structure";
+import type { ContentSnapshot } from "@/components/editor/doc-structure";
 import { Button } from "@/components/ui/button";
 import { ImportIcon, SparklesIcon } from "@/components/ui/icons";
-import type { Block } from "@/lib/copy/blocks";
-import type { DocSection } from "@/lib/content/doc";
-import { parseSectionMarkdown, serializeBlocks } from "@/lib/copy/markdown";
+import type { Element } from "@/lib/copy/elements";
+import type { DocContent, DocSection } from "@/lib/content/doc";
+import { parseElementsMarkdown, serializeElements } from "@/lib/copy/markdown";
 import { DEFAULT_SECTION_TITLE, deriveSectionTitle } from "@/lib/copy/sections";
 import { shortId } from "@/lib/slug";
 import { injectCopy } from "@/lib/wireframe/inject";
@@ -20,6 +20,7 @@ import {
   createVersionAction,
   generateWireframeAction,
   readVersionAction,
+  saveElementsRunAction,
   saveSectionAction,
   saveStructureAction,
 } from "./actions";
@@ -30,8 +31,26 @@ import { SectionNotes } from "./section-notes";
 import { SectionToc } from "./section-toc";
 import { VersionSwitcher } from "./version-switcher";
 
-export interface EditorSection extends DocSection {
-  blocks: Block[];
+/** A page's content as the editor sees it: loose element runs + sections. */
+export type PageContentItem =
+  | { kind: "elements"; elements: Element[] }
+  | {
+      kind: "section";
+      slug: string;
+      title: string;
+      activeVersion: string;
+      versions: DocSection["versions"];
+      linked: boolean;
+      elements: Element[];
+    };
+
+export interface SectionView {
+  slug: string;
+  title: string;
+  activeVersion: string;
+  versions: DocSection["versions"];
+  linked: boolean;
+  elements: Element[];
 }
 
 export interface PageEditorProps {
@@ -39,7 +58,7 @@ export interface PageEditorProps {
   projectName: string;
   pageSlug: string;
   pageTitle: string;
-  initialSections: EditorSection[];
+  initialContent: PageContentItem[];
   initialWireframe: string | null;
   initialDirty: boolean;
 }
@@ -51,46 +70,45 @@ interface SectionMeta {
   title: string;
   activeVersion: string;
   versions: DocSection["versions"];
-  wireframeSlot: string | null;
-  pinned: boolean;
+  linked: boolean;
 }
 
 const AUTOSAVE_DELAY_MS = 800;
 
+/** Loose runs are identified by their position among runs. */
+const runSlug = (ordinal: number) => `run-${ordinal}`;
+
 /**
- * The workbench. The copy pane is ONE continuous document (DocEditor):
- * selection spans sections, blocks drag anywhere, sections group and
- * reorder. This component owns section *metadata* (titles, versions, notes
- * anchors) and turns editor snapshots into Oxen workspace saves.
+ * The workbench. The copy pane is ONE continuous document: loose elements
+ * by default, sections where the writer groups them. This component owns
+ * section metadata (titles, versions, linked state) and turns editor
+ * snapshots into Oxen workspace saves — element runs by position, section
+ * versions by slug.
  */
 export function PageEditor({
   projectId,
   projectName,
   pageSlug,
   pageTitle,
-  initialSections,
+  initialContent,
   initialWireframe,
   initialDirty,
 }: PageEditorProps) {
   const router = useRouter();
   const docRef = useRef<DocEditorHandle>(null);
 
-  // ---- section metadata (doc.json fields), keyed by slug -----------------
-  const metaRef = useRef<Map<string, SectionMeta>>(
-    new Map(
-      initialSections.map((s) => [
-        s.slug,
-        {
-          title: s.title,
-          activeVersion: s.activeVersion,
-          versions: s.versions,
-          wireframeSlot: s.wireframeSlot,
-          pinned: s.pinned,
-        },
-      ]),
-    ),
+  // ---- section metadata (doc.json fields), keyed by slug ------------------
+  const initialMeta = useMemo(
+    () =>
+      new Map<string, SectionMeta>(
+        initialContent
+          .filter((c): c is Extract<PageContentItem, { kind: "section" }> => c.kind === "section")
+          .map((s) => [s.slug, { title: s.title, activeVersion: s.activeVersion, versions: s.versions, linked: s.linked }]),
+      ),
+    [initialContent],
   );
-  const usedSlugs = useRef(new Set(initialSections.map((s) => s.slug)));
+  const metaRef = useRef<Map<string, SectionMeta>>(initialMeta);
+  const usedSlugs = useRef<Set<string>>(new Set(initialMeta.keys()));
   const makeSlug = useCallback(() => {
     let slug = `sec-${shortId(4)}`;
     while (usedSlugs.current.has(slug)) slug = `sec-${shortId(4)}`;
@@ -98,14 +116,20 @@ export function PageEditor({
     return slug;
   }, []);
 
-  const initialSnapshot = useMemo<SectionSnapshot[]>(
-    () => initialSections.map((s) => ({ slug: s.slug, blocks: s.blocks, pinned: s.pinned })),
-    [initialSections],
+  const initialSnapshot = useMemo<ContentSnapshot[]>(
+    () =>
+      initialContent.map((item) =>
+        item.kind === "section"
+          ? { kind: "section", slug: item.slug, elements: item.elements }
+          : { kind: "elements", elements: item.elements },
+      ),
+    [initialContent],
   );
 
-  // combined view (meta + live blocks) for the wireframe preview & headers
-  const [sections, setSections] = useState<EditorSection[]>(initialSections);
-  const lastSnapshot = useRef<SectionSnapshot[]>(initialSnapshot);
+  const lastSnapshot = useRef<ContentSnapshot[]>(initialSnapshot);
+  // combined view for the preview, TOC, and headers
+  const [sections, setSections] = useState<SectionView[]>(() => sectionViews(initialSnapshot, initialMeta));
+  const [looseCount, setLooseCount] = useState(() => countLoose(initialSnapshot));
 
   const [wireframe, setWireframe] = useState<string | null>(initialWireframe);
   const [mode, setMode] = useState<ViewMode>("copy");
@@ -169,33 +193,46 @@ export function PageEditor({
     [settle],
   );
 
-  const scheduleContentSave = useCallback(
-    (slug: string, blocks: Block[]) => {
-      const existing = contentTimers.current.get(slug);
+  const debounced = useCallback(
+    (key: string, save: () => Promise<unknown>) => {
+      const existing = contentTimers.current.get(key);
       if (existing) clearTimeout(existing);
       setSaveState("saving");
       contentTimers.current.set(
-        slug,
+        key,
         setTimeout(() => {
-          contentTimers.current.delete(slug);
-          const meta = metaRef.current.get(slug);
-          if (!meta) {
-            settle();
-            return;
-          }
-          void trackSave(
-            saveSectionAction({
-              projectId,
-              pageSlug,
-              sectionSlug: slug,
-              versionSlug: meta.activeVersion,
-              markdown: serializeBlocks(blocks),
-            }),
-          );
+          contentTimers.current.delete(key);
+          void trackSave(save());
         }, AUTOSAVE_DELAY_MS),
       );
     },
-    [projectId, pageSlug, trackSave, settle],
+    [trackSave],
+  );
+
+  const scheduleSectionSave = useCallback(
+    (slug: string, elements: Element[]) => {
+      debounced(`s:${slug}`, () => {
+        const meta = metaRef.current.get(slug);
+        if (!meta) return Promise.resolve();
+        return saveSectionAction({
+          projectId,
+          pageSlug,
+          sectionSlug: slug,
+          versionSlug: meta.activeVersion,
+          markdown: serializeElements(elements),
+        });
+      });
+    },
+    [debounced, projectId, pageSlug],
+  );
+
+  const scheduleRunSave = useCallback(
+    (ordinal: number, elements: Element[]) => {
+      debounced(`r:${ordinal}`, () =>
+        saveElementsRunAction({ projectId, pageSlug, runSlug: runSlug(ordinal), markdown: serializeElements(elements) }),
+      );
+    },
+    [debounced, projectId, pageSlug],
   );
 
   const scheduleStructureSave = useCallback(() => {
@@ -203,89 +240,97 @@ export function PageEditor({
     setSaveState("saving");
     structureTimer.current = setTimeout(() => {
       structureTimer.current = null;
-      const structural = lastSnapshot.current
-        .filter((s) => metaRef.current.has(s.slug))
-        .map((s) => {
-          const meta = metaRef.current.get(s.slug)!;
-          return {
-            slug: s.slug,
-            title: meta.title,
-            activeVersion: meta.activeVersion,
-            versions: meta.versions,
-            wireframeSlot: meta.wireframeSlot,
-            pinned: meta.pinned,
-          };
+      let run = 0;
+      const content: DocContent[] = [];
+      for (const entry of lastSnapshot.current) {
+        if (entry.kind === "elements") {
+          content.push({ kind: "elements", slug: runSlug(run++) });
+          continue;
+        }
+        const meta = metaRef.current.get(entry.slug);
+        if (!meta) continue;
+        content.push({
+          kind: "section",
+          slug: entry.slug,
+          title: meta.title,
+          activeVersion: meta.activeVersion,
+          versions: meta.versions,
+          linked: meta.linked,
         });
-      void trackSave(saveStructureAction({ projectId, pageSlug, sections: structural }));
+      }
+      void trackSave(saveStructureAction({ projectId, pageSlug, content }));
     }, AUTOSAVE_DELAY_MS);
   }, [projectId, pageSlug, trackSave]);
 
-  /** Rebuild the combined section view (meta + blocks) for preview/headers. */
-  const rebuildSections = useCallback(() => {
-    setSections(
-      lastSnapshot.current
-        .filter((s) => metaRef.current.has(s.slug))
-        .map((s) => {
-          const meta = metaRef.current.get(s.slug)!;
-          return { slug: s.slug, blocks: s.blocks, ...meta };
-        }),
-    );
+  const rebuildViews = useCallback(() => {
+    setSections(sectionViews(lastSnapshot.current, metaRef.current));
+    setLooseCount(countLoose(lastSnapshot.current));
   }, []);
 
   /**
-   * The editor speaks; we reconcile. New sections get metadata and files,
-   * removed ones are dropped, edited ones autosave, and titles follow their
-   * first heading until renamed by hand.
+   * The editor speaks; we reconcile. Sections diff by slug (new ones get
+   * metadata + files, titles follow their first heading until renamed by
+   * hand); loose runs diff by position among runs.
    */
   const handleSnapshotChange = useCallback(
-    (snapshot: SectionSnapshot[]) => {
+    (snapshot: ContentSnapshot[]) => {
       const previous = lastSnapshot.current;
-      const previousBySlug = new Map(previous.map((s) => [s.slug, s]));
-      const currentSlugs = new Set(snapshot.map((s) => s.slug));
+      const prevSections = new Map(
+        previous
+          .filter((c): c is Extract<ContentSnapshot, { kind: "section" }> => c.kind === "section")
+          .map((s) => [s.slug, s]),
+      );
+      const nextSectionSlugs = new Set(
+        snapshot.filter((c): c is Extract<ContentSnapshot, { kind: "section" }> => c.kind === "section").map((c) => c.slug),
+      );
       let structural = false;
 
-      for (const old of previous) {
-        if (!currentSlugs.has(old.slug)) {
-          metaRef.current.delete(old.slug);
-          const timer = contentTimers.current.get(old.slug);
+      for (const slug of prevSections.keys()) {
+        if (!nextSectionSlugs.has(slug)) {
+          metaRef.current.delete(slug);
+          const timer = contentTimers.current.get(`s:${slug}`);
           if (timer) {
             clearTimeout(timer);
-            contentTimers.current.delete(old.slug);
+            contentTimers.current.delete(`s:${slug}`);
           }
           structural = true;
         }
       }
 
-      for (const section of snapshot) {
-        const prev = previousBySlug.get(section.slug);
-        const meta = metaRef.current.get(section.slug);
+      let runOrdinal = 0;
+      const prevRuns = previous.filter((c) => c.kind === "elements");
+      for (const entry of snapshot) {
+        if (entry.kind === "elements") {
+          const prevRun = prevRuns[runOrdinal];
+          if (!prevRun || !elementsEqual(prevRun.elements, entry.elements)) {
+            scheduleRunSave(runOrdinal, entry.elements);
+          }
+          runOrdinal += 1;
+          continue;
+        }
 
+        const prev = prevSections.get(entry.slug);
+        const meta = metaRef.current.get(entry.slug);
         if (!meta) {
-          // born in the editor (auto-split, grouping, +)
-          metaRef.current.set(section.slug, {
-            title: deriveSectionTitle(section.blocks),
+          // born in the editor (grouping, ⊕, Shift+Enter)
+          metaRef.current.set(entry.slug, {
+            title: deriveSectionTitle(entry.elements),
             activeVersion: "original",
             versions: [{ slug: "original", label: "Original" }],
-            wireframeSlot: null,
-            pinned: section.pinned ?? false,
+            linked: true,
           });
-          usedSlugs.current.add(section.slug);
-          scheduleContentSave(section.slug, section.blocks);
+          usedSlugs.current.add(entry.slug);
+          scheduleSectionSave(entry.slug, entry.elements);
           structural = true;
           continue;
         }
 
-        if (meta.pinned !== (section.pinned ?? false)) {
-          meta.pinned = section.pinned ?? false;
-          structural = true;
-        }
-
-        if (prev && !blocksEqual(prev.blocks, section.blocks)) {
-          scheduleContentSave(section.slug, section.blocks);
+        if (prev && !elementsEqual(prev.elements, entry.elements)) {
+          scheduleSectionSave(entry.slug, entry.elements);
           // auto-title until manually renamed
-          const prevDerived = deriveSectionTitle(prev.blocks);
+          const prevDerived = deriveSectionTitle(prev.elements);
           if (meta.title === DEFAULT_SECTION_TITLE || meta.title === prevDerived) {
-            const derived = deriveSectionTitle(section.blocks);
+            const derived = deriveSectionTitle(entry.elements);
             if (derived !== meta.title) {
               meta.title = derived;
               structural = true;
@@ -295,14 +340,20 @@ export function PageEditor({
       }
 
       if (!structural) {
-        structural = previous.length !== snapshot.length || previous.some((s, i) => s.slug !== snapshot[i]!.slug);
+        structural =
+          previous.length !== snapshot.length ||
+          previous.some((entry, i) => {
+            const next = snapshot[i]!;
+            if (entry.kind !== next.kind) return true;
+            return entry.kind === "section" && next.kind === "section" && entry.slug !== next.slug;
+          });
       }
 
       lastSnapshot.current = snapshot;
-      rebuildSections();
+      rebuildViews();
       if (structural) scheduleStructureSave();
     },
-    [rebuildSections, scheduleContentSave, scheduleStructureSave],
+    [rebuildViews, scheduleRunSave, scheduleSectionSave, scheduleStructureSave],
   );
 
   // ---- section operations (invoked from header chrome) ---------------------
@@ -312,7 +363,7 @@ export function PageEditor({
       if (!meta) return;
       const { markdown } = await readVersionAction({ projectId, pageSlug, sectionSlug: slug, versionSlug });
       meta.activeVersion = versionSlug;
-      docRef.current?.replaceSectionBlocks(slug, parseSectionMarkdown(markdown));
+      docRef.current?.replaceSectionElements(slug, parseElementsMarkdown(markdown));
       scheduleStructureSave();
     },
     [projectId, pageSlug, scheduleStructureSave],
@@ -332,11 +383,11 @@ export function PageEditor({
       });
       meta.versions = [...meta.versions, { slug: versionSlug, label }];
       meta.activeVersion = versionSlug;
-      docRef.current?.replaceSectionBlocks(slug, parseSectionMarkdown(markdown));
+      docRef.current?.replaceSectionElements(slug, parseElementsMarkdown(markdown));
       scheduleStructureSave();
-      rebuildSections();
+      rebuildViews();
     },
-    [projectId, pageSlug, scheduleStructureSave, rebuildSections],
+    [projectId, pageSlug, scheduleStructureSave, rebuildViews],
   );
 
   const adoptTeammateVersion = useCallback(
@@ -354,11 +405,11 @@ export function PageEditor({
       });
       meta.versions = [...meta.versions, { slug: versionSlug, label: source.label }];
       meta.activeVersion = versionSlug;
-      docRef.current?.replaceSectionBlocks(slug, parseSectionMarkdown(markdown));
+      docRef.current?.replaceSectionElements(slug, parseElementsMarkdown(markdown));
       scheduleStructureSave();
-      rebuildSections();
+      rebuildViews();
     },
-    [projectId, pageSlug, scheduleStructureSave, rebuildSections],
+    [projectId, pageSlug, scheduleStructureSave, rebuildViews],
   );
 
   const renameSection = useCallback(
@@ -367,9 +418,20 @@ export function PageEditor({
       if (!meta || meta.title === title) return;
       meta.title = title;
       scheduleStructureSave();
-      rebuildSections();
+      rebuildViews();
     },
-    [scheduleStructureSave, rebuildSections],
+    [scheduleStructureSave, rebuildViews],
+  );
+
+  const toggleLinked = useCallback(
+    (slug: string) => {
+      const meta = metaRef.current.get(slug);
+      if (!meta) return;
+      meta.linked = !meta.linked;
+      scheduleStructureSave();
+      rebuildViews();
+    },
+    [scheduleStructureSave, rebuildViews],
   );
 
   const deleteSection = useCallback((slug: string) => {
@@ -384,8 +446,6 @@ export function PageEditor({
 
   const scrollToSection = useCallback((slug: string) => {
     const el = copyPaneRef.current?.querySelector(`[data-section-slug="${CSS.escape(slug)}"]`);
-    // scroll-margin-top on .doc-section handles the header/chrome offset,
-    // and the browser picks the right scrolling ancestor
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
@@ -408,7 +468,13 @@ export function PageEditor({
     };
   }, []);
 
-  const preview = useMemo(() => (wireframe ? injectCopy(wireframe, sections) : null), [wireframe, sections]);
+  /** The wireframe renders linked sections only. */
+  const linkedSections = useMemo(() => sections.filter((s) => s.linked), [sections]);
+  const preview = useMemo(
+    () => (wireframe ? injectCopy(wireframe, linkedSections.map((s) => ({ slug: s.slug, elements: s.elements }))) : null),
+    [wireframe, linkedSections],
+  );
+  const unlinkedCount = sections.length - linkedSections.length;
 
   const statusLabel =
     saveState === "saving" ? "Saving…" : saveState === "error" ? "Couldn't save — retrying on next edit" : "Saved to your draft";
@@ -431,6 +497,27 @@ export function PageEditor({
             aria-label="Section title"
             className="w-full min-w-0 bg-transparent text-[11px] font-semibold uppercase tracking-[0.15em] text-ink-tertiary outline-none transition-colors focus:text-ink-secondary"
           />
+          {!meta.linked && (
+            <span className="shrink-0 rounded-full bg-surface-sunken px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ink-tertiary">
+              unlinked
+            </span>
+          )}
+          <button
+            type="button"
+            aria-label={meta.linked ? "Unlink from wireframe" : "Link to wireframe"}
+            aria-pressed={meta.linked}
+            title={
+              meta.linked
+                ? "Linked: appears in the wireframe. Click to unlink."
+                : "Unlinked: kept out of the wireframe. Click to link."
+            }
+            onClick={() => toggleLinked(slug)}
+            className={`flex size-6 shrink-0 items-center justify-center rounded transition-colors hover:bg-surface-hover ${
+              meta.linked ? "text-accent" : "text-ink-tertiary"
+            }`}
+          >
+            <LinkedIcon linked={meta.linked} />
+          </button>
           <VersionSwitcher
             projectId={projectId}
             pageSlug={pageSlug}
@@ -474,7 +561,7 @@ export function PageEditor({
         </div>
       );
     },
-    [projectId, pageSlug, renameSection, switchVersion, createVersion, adoptTeammateVersion, deleteSection, moveSection, sections],
+    [projectId, pageSlug, sections, renameSection, toggleLinked, switchVersion, createVersion, adoptTeammateVersion, moveSection, deleteSection],
   );
 
   return (
@@ -529,8 +616,8 @@ export function PageEditor({
 
       <div className={`min-h-0 flex-1 ${mode === "split" ? "grid grid-cols-2" : "flex"}`}>
         {/* hidden, not unmounted: the editor keeps its live state across
-            mode switches (unmounting would resurrect page-load content).
-            No overflow here — the window scrolls, so sticky binds to it. */}
+            mode switches. No overflow here — the window scrolls, so sticky
+            binds to it. */}
         <div ref={copyPaneRef} className={`min-w-0 flex-1 ${mode === "wireframe" ? "hidden" : ""}`}>
           <div className="flex min-h-full">
             <SectionToc sections={sections} compact={mode === "split"} onNavigate={scrollToSection} />
@@ -538,11 +625,11 @@ export function PageEditor({
               <div className={`mx-auto w-full px-6 pb-32 pt-8 ${mode === "split" ? "max-w-xl" : "max-w-3xl"}`}>
                 <DocEditor
                   ref={docRef}
-                  initialSections={initialSnapshot}
+                  initialContent={initialSnapshot}
                   makeSlug={makeSlug}
                   onSnapshotChange={handleSnapshotChange}
                   renderSectionHeader={renderSectionHeader}
-                  autoFocus={initialSections.every((s) => s.blocks.length === 0)}
+                  autoFocus={initialContent.every((c) => c.elements.length === 0)}
                 />
               </div>
             </div>
@@ -555,7 +642,8 @@ export function PageEditor({
           <WireframePane
             preview={preview}
             generating={generating}
-            hasCopy={sections.some((s) => s.blocks.length > 0)}
+            hasLayoutReadyCopy={linkedSections.some((s) => s.elements.length > 0)}
+            omitted={{ looseElements: looseCount, unlinkedSections: unlinkedCount }}
             onGenerate={generate}
             bordered={mode === "split"}
             exportHref={`/projects/${projectId}/pages/${pageSlug}/export`}
@@ -579,8 +667,43 @@ export function PageEditor({
   );
 }
 
-function blocksEqual(a: Block[], b: Block[]): boolean {
+function sectionViews(snapshot: ContentSnapshot[], meta: Map<string, SectionMeta>): SectionView[] {
+  const views: SectionView[] = [];
+  for (const entry of snapshot) {
+    if (entry.kind !== "section") continue;
+    const m = meta.get(entry.slug);
+    if (!m) continue;
+    views.push({ slug: entry.slug, elements: entry.elements, ...m });
+  }
+  return views;
+}
+
+function countLoose(snapshot: ContentSnapshot[]): number {
+  return snapshot.reduce((n, entry) => (entry.kind === "elements" ? n + entry.elements.length : n), 0);
+}
+
+function elementsEqual(a: Element[], b: Element[]): boolean {
   return a.length === b.length && JSON.stringify(a) === JSON.stringify(b);
+}
+
+function LinkedIcon({ linked }: { linked: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
+      {linked ? (
+        <>
+          <path d="M6.5 9.5l3-3" strokeLinecap="round" />
+          <path d="M7.5 4.75L9 3.25a2.65 2.65 0 013.75 3.75L11.25 8.5" strokeLinecap="round" />
+          <path d="M8.5 11.25L7 12.75a2.65 2.65 0 01-3.75-3.75L4.75 7.5" strokeLinecap="round" />
+        </>
+      ) : (
+        <>
+          <path d="M7.5 4.75L9 3.25a2.65 2.65 0 013.75 3.75L11.25 8.5" strokeLinecap="round" />
+          <path d="M8.5 11.25L7 12.75a2.65 2.65 0 01-3.75-3.75L4.75 7.5" strokeLinecap="round" />
+          <path d="M3.5 3.5l9 9" strokeLinecap="round" />
+        </>
+      )}
+    </svg>
+  );
 }
 
 function ModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewMode) => void }) {
@@ -611,23 +734,31 @@ function ModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewM
 function WireframePane({
   preview,
   generating,
-  hasCopy,
+  hasLayoutReadyCopy,
+  omitted,
   onGenerate,
   bordered,
   exportHref,
 }: {
   preview: string | null;
   generating: boolean;
-  hasCopy: boolean;
+  hasLayoutReadyCopy: boolean;
+  omitted: { looseElements: number; unlinkedSections: number };
   onGenerate: () => void;
   bordered: boolean;
   exportHref: string;
 }) {
+  const omittedNote = describeOmitted(omitted);
   return (
     <div className={`relative min-w-0 flex-1 overflow-y-auto bg-surface-sunken ${bordered ? "border-l border-border" : ""}`}>
       {preview ? (
         <>
-          <div className="pointer-events-none sticky top-0 z-10 flex justify-end gap-2 p-3">
+          <div className="pointer-events-none sticky top-0 z-10 flex items-center justify-end gap-2 p-3">
+            {omittedNote && (
+              <p className="pointer-events-auto rounded-md bg-bg/80 px-2 py-1 text-[11px] text-ink-tertiary backdrop-blur-sm">
+                {omittedNote}
+              </p>
+            )}
             <a
               href={exportHref}
               download
@@ -657,16 +788,25 @@ function WireframePane({
             </div>
             <h2 className="text-sm font-semibold">No wireframe yet</h2>
             <p className="mt-1.5 text-sm leading-relaxed text-ink-secondary">
-              {hasCopy
-                ? "Turn your copy into a greyscale layout. Every section becomes a designed block you can keep editing."
-                : "Write some copy first — then CopyDog can lay it out as a wireframe."}
+              {hasLayoutReadyCopy
+                ? "Turn your sections into a greyscale layout you can keep editing."
+                : "The wireframe lays out sections. Highlight some copy and use “Group into section” first."}
             </p>
-            <Button className="mt-5" onClick={onGenerate} disabled={generating || !hasCopy}>
-              {generating ? "Designing…" : "Generate wireframe from copy"}
+            {omittedNote && <p className="mt-2 text-xs text-ink-tertiary">{omittedNote}</p>}
+            <Button className="mt-5" onClick={onGenerate} disabled={generating || !hasLayoutReadyCopy}>
+              {generating ? "Designing…" : "Generate wireframe from sections"}
             </Button>
           </div>
         </div>
       )}
     </div>
   );
+}
+
+function describeOmitted({ looseElements, unlinkedSections }: { looseElements: number; unlinkedSections: number }): string | null {
+  const parts: string[] = [];
+  if (looseElements > 0) parts.push(`${looseElements} loose element${looseElements === 1 ? "" : "s"}`);
+  if (unlinkedSections > 0) parts.push(`${unlinkedSections} unlinked section${unlinkedSections === 1 ? "" : "s"}`);
+  if (parts.length === 0) return null;
+  return `${parts.join(" and ")} won't appear — group or link to include.`;
 }

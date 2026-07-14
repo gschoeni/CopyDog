@@ -5,13 +5,13 @@ import { z } from "zod";
  * editor, the markdown files in Oxen, and the wireframe slots.
  *
  * `text`, `label`, and list items hold *inline markdown* (bold/italic/code),
- * so a Block[] is structure, and strings stay portable markdown.
+ * so a Element[] is structure, and strings stay portable markdown.
  */
 
 export const headingLevels = ["h1", "h2", "h3", "h4", "h5", "h6"] as const;
 export type HeadingLevel = (typeof headingLevels)[number];
 
-export const blockSchema = z.discriminatedUnion("type", [
+export const elementSchema = z.discriminatedUnion("type", [
   z.object({ type: z.enum(headingLevels), text: z.string() }),
   z.object({ type: z.literal("p"), text: z.string() }),
   /** short overline above a heading ("NEW", "PRICING") */
@@ -23,10 +23,10 @@ export const blockSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("quote"), text: z.string() }),
 ]);
 
-export type Block = z.infer<typeof blockSchema>;
-export type BlockType = Block["type"];
+export type Element = z.infer<typeof elementSchema>;
+export type ElementType = Element["type"];
 
-export const BLOCK_TYPE_LABELS: Record<BlockType, string> = {
+export const ELEMENT_TYPE_LABELS: Record<ElementType, string> = {
   h1: "Heading 1",
   h2: "Heading 2",
   h3: "Heading 3",

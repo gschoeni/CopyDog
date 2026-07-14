@@ -6,8 +6,8 @@ describe("exportPageHtml", () => {
   it("produces a standalone document with injected copy and inlined styles", () => {
     const html = exportPageHtml({
       title: "Acme — Home",
-      wireframeHtml: `<section class="wf-section" data-copy="hero"><h1 class="wf-h1" data-block="h1"></h1></section>`,
-      sections: [{ slug: "hero", blocks: [{ type: "h1", text: "Ship it" }] }],
+      wireframeHtml: `<section class="wf-section" data-copy="hero"><h1 class="wf-h1" data-element="h1"></h1></section>`,
+      sections: [{ slug: "hero", elements: [{ type: "h1", text: "Ship it" }] }],
     });
 
     expect(html).toContain("<!DOCTYPE html>");

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { signIn } from "./support/auth";
+import { writeSection } from "./support/sections";
 
 test("table of contents lists numbered sections, navigates, and compacts in split mode", async ({ page }) => {
   await signIn(page);
@@ -10,21 +11,9 @@ test("table of contents lists numbered sections, navigates, and compacts in spli
 
   // three sections with enough copy to force scrolling
   await page.getByRole("textbox", { name: "Page copy" }).click();
-  await page.keyboard.type("# Hero");
-  await page.keyboard.press("Enter");
-  for (let i = 0; i < 12; i++) {
-    await page.keyboard.type(`Hero filler line number ${i} with a decent amount of words in it.`);
-    await page.keyboard.press("Enter");
-  }
-  await page.keyboard.type("## Features");
-  await page.keyboard.press("Enter");
-  for (let i = 0; i < 12; i++) {
-    await page.keyboard.type(`Feature filler line number ${i} with a decent amount of words in it.`);
-    await page.keyboard.press("Enter");
-  }
-  await page.keyboard.type("## Closing call");
-  await page.keyboard.press("Enter");
-  await page.keyboard.type("The last section's copy.");
+  await writeSection(page, ["# Hero", "Hero filler line number 0 with a decent amount of words in it.", "Hero filler line number 1 with a decent amount of words in it.", "Hero filler line number 2 with a decent amount of words in it.", "Hero filler line number 3 with a decent amount of words in it.", "Hero filler line number 4 with a decent amount of words in it.", "Hero filler line number 5 with a decent amount of words in it.", "Hero filler line number 6 with a decent amount of words in it.", "Hero filler line number 7 with a decent amount of words in it.", "Hero filler line number 8 with a decent amount of words in it.", "Hero filler line number 9 with a decent amount of words in it.", "Hero filler line number 10 with a decent amount of words in it.", "Hero filler line number 11 with a decent amount of words in it."], 1);
+  await writeSection(page, ["## Features", "Feature filler line number 0 with a decent amount of words in it.", "Feature filler line number 1 with a decent amount of words in it.", "Feature filler line number 2 with a decent amount of words in it.", "Feature filler line number 3 with a decent amount of words in it.", "Feature filler line number 4 with a decent amount of words in it.", "Feature filler line number 5 with a decent amount of words in it.", "Feature filler line number 6 with a decent amount of words in it.", "Feature filler line number 7 with a decent amount of words in it.", "Feature filler line number 8 with a decent amount of words in it.", "Feature filler line number 9 with a decent amount of words in it.", "Feature filler line number 10 with a decent amount of words in it.", "Feature filler line number 11 with a decent amount of words in it."], 2);
+  await writeSection(page, ["## Closing call", "The last section's copy."], 3);
 
   // TOC shows all three, numbered and titled
   const toc = page.getByRole("navigation", { name: "Sections" });

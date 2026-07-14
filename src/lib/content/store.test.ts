@@ -44,7 +44,7 @@ describe("content store", () => {
     expect(site.pages[0]).toEqual({ slug: "home", title: "Home" });
 
     const doc = await readDoc(oxen, view, "home");
-    expect(doc.sections).toEqual([]);
+    expect(doc.content).toEqual([]);
   });
 
   it("returns null for a section version that does not exist", async () => {
@@ -56,22 +56,22 @@ describe("content store", () => {
 
     await writeSectionVersion(oxen, view, "home", "hero", "original", "# Hello\n");
     await writeDoc(oxen, view, "home", {
-      version: 1,
-      sections: [
+      version: 2,
+      content: [
         {
+          kind: "section",
           slug: "hero",
           title: "Hero",
           activeVersion: "original",
           versions: [{ slug: "original", label: "Original" }],
-          wireframeSlot: null,
-          pinned: false,
+          linked: true,
         },
       ],
     });
 
     // staged content is visible in the draft view…
     expect(await readSectionVersion(oxen, view, "home", "hero", "original")).toBe("# Hello\n");
-    expect((await readDoc(oxen, view, "home")).sections).toHaveLength(1);
+    expect((await readDoc(oxen, view, "home")).content).toHaveLength(1);
     // …but no commit happened
     expect(stub.branchHead(REPO, view.branch)).toBe(headBefore);
 
