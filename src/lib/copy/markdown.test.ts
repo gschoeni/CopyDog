@@ -82,6 +82,20 @@ describe("serializeBlocks", () => {
   });
 });
 
+describe("quote blocks", () => {
+  it("parses > lines into a quote", () => {
+    expect(parseSectionMarkdown("> Simply the best tool.\n> Ever.")).toEqual([
+      { type: "quote", text: "Simply the best tool. Ever." },
+    ]);
+  });
+
+  it("serializes quotes and protects paragraphs starting with >", () => {
+    expect(serializeBlocks([{ type: "quote", text: "Wow." }])).toBe("> Wow.\n");
+    const tricky = [{ type: "p" as const, text: "> not a quote" }];
+    expect(parseSectionMarkdown(serializeBlocks(tricky))).toEqual(tricky);
+  });
+});
+
 describe("round-trip", () => {
   const cases: [string, Block[]][] = [
     ["hero", [
@@ -97,6 +111,7 @@ describe("round-trip", () => {
     ["bullets with tricky items", [{ type: "bullets", items: ["- nested-looking", "#hashtag item"] }]],
     ["heading with inline emphasis", [{ type: "h3", text: "The *fine* print" }]],
     ["empty bullets pruned to none", []],
+    ["quote with inline emphasis", [{ type: "quote", text: "It *just* works" }]],
     ["multiple buttons", [
       { type: "button", label: "Primary", url: "https://a.dev" },
       { type: "button", label: "Secondary", url: "https://b.dev" },

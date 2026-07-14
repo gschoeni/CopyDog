@@ -66,7 +66,14 @@ function flattenCopyElements(node: ParsedElement, out: ParsedElement[] = []): Pa
   for (const child of node.childNodes) {
     if (!(child instanceof ParsedElement)) continue;
     const tag = child.rawTagName?.toLowerCase() ?? "";
-    if (/^h[1-6]$/.test(tag) || tag === "p" || tag === "ul" || tag === "ol" || (tag === "a" && looksLikeCta(child))) {
+    if (
+      /^h[1-6]$/.test(tag) ||
+      tag === "p" ||
+      tag === "ul" ||
+      tag === "ol" ||
+      tag === "blockquote" ||
+      (tag === "a" && looksLikeCta(child))
+    ) {
       out.push(child);
     } else {
       flattenCopyElements(child, out);
@@ -90,6 +97,8 @@ function extractBlocks(container: ParsedElement): Block[] {
         .map((li) => inlineMarkdownOf(li).trim())
         .filter(Boolean);
       if (items.length) blocks.push({ type: "bullets", items });
+    } else if (tag === "blockquote") {
+      blocks.push({ type: "quote", text: text.trim() });
     } else if (tag === "a") {
       blocks.push({ type: "button", label: text.trim(), url: el.getAttribute("href") ?? "#" });
     } else if (isEyebrowLike(el, text)) {
@@ -117,19 +126,25 @@ function isEyebrowLike(el: ParsedElement, text: string): boolean {
   return trimmed.length > 0 && trimmed.length <= 40 && trimmed === trimmed.toUpperCase() && /[A-Z]/.test(trimmed);
 }
 
-/** Element text with <strong>/<em>/<code> re-encoded as inline markdown. */
-function inlineMarkdownOf(node: ParsedNode): string {
+/** Element text with <strong>/<em>/<code>/<a> re-encoded as inline markdown. */
+function inlineMarkdownOf(node: ParsedNode, isRoot = true): string {
   if (node.nodeType === NodeType.TEXT_NODE) {
     return escapeInline(node.rawText.replace(/\s+/g, " "));
   }
   if (!(node instanceof ParsedElement)) return "";
   const tag = node.rawTagName?.toLowerCase() ?? "";
   if (SKIP_TAGS.has(tag)) return "";
-  const inner = node.childNodes.map(inlineMarkdownOf).join("");
+  const inner = node.childNodes.map((child) => inlineMarkdownOf(child, false)).join("");
   if (!inner.trim()) return inner;
   if (tag === "strong" || tag === "b") return `**${inner.trim()}**`;
   if (tag === "em" || tag === "i") return `*${inner.trim()}*`;
   if (tag === "code") return `\`${inner.trim()}\``;
+  if (tag === "a" && !isRoot) {
+    // nested anchors become inline links; a root anchor is the block itself
+    // (a CTA button) and keeps its plain label
+    const href = node.getAttribute("href") ?? "#";
+    return `[${inner.trim().replace(/([\]\\])/g, "\\$1")}](${href})`;
+  }
   if (tag === "br") return " ";
   return inner;
 }

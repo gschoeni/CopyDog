@@ -58,6 +58,22 @@ describe("injectCopy", () => {
     expect(html).toContain(`<li>A</li><li>B</li>`);
   });
 
+  it("fills quote slots and renders inline links safely", () => {
+    const wf = `<section data-copy="s"><blockquote class="wf-quote" data-block="quote"></blockquote><p class="wf-p" data-block="p"></p></section>`;
+    const html = injectCopy(wf, [
+      {
+        slug: "s",
+        blocks: [
+          { type: "quote", text: "Love it." },
+          { type: "p", text: "See [docs](javascript:alert(1)) and [site](https://x.dev)." },
+        ],
+      },
+    ]);
+    expect(html).toContain(`data-block="quote">Love it.</blockquote>`);
+    expect(html).toContain(`<a href="https://x.dev">site</a>`);
+    expect(html).not.toContain("javascript:");
+  });
+
   it("leaves unknown sections untouched", () => {
     const html = injectCopy(WIREFRAME, []);
     expect(html).toContain("wf-empty");

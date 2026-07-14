@@ -1,6 +1,7 @@
 import { createHeadlessEditor } from "@lexical/headless";
 import { ListItemNode, ListNode } from "@lexical/list";
-import { HeadingNode, $createHeadingNode } from "@lexical/rich-text";
+import { LinkNode } from "@lexical/link";
+import { HeadingNode, QuoteNode, $createHeadingNode } from "@lexical/rich-text";
 import {
   $createParagraphNode,
   $createTextNode,
@@ -31,7 +32,7 @@ function makeEditor(): { editor: LexicalEditor; makeSlug: () => string } {
   const makeSlug = () => `new-${++n}`;
   const editor = createHeadlessEditor({
     namespace: "doc-test",
-    nodes: [HeadingNode, ListNode, ListItemNode, EyebrowNode, ButtonNode, SectionNode],
+    nodes: [HeadingNode, QuoteNode, LinkNode, ListNode, ListItemNode, EyebrowNode, ButtonNode, SectionNode],
     onError: (error) => {
       throw error;
     },

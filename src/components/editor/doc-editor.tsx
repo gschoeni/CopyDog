@@ -13,15 +13,17 @@ import {
 
 import { ListItemNode, ListNode } from "@lexical/list";
 import { HEADING, UNORDERED_LIST, registerMarkdownShortcuts } from "@lexical/markdown";
+import { LinkNode } from "@lexical/link";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
+import { LinkPlugin } from "@lexical/react/LexicalLinkPlugin";
 import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
-import { HeadingNode } from "@lexical/rich-text";
+import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import {
   $createParagraphNode,
   $getNodeByKey,
@@ -92,9 +94,11 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(function Do
       heading: { h1: "editor-h1", h2: "editor-h2", h3: "editor-h3", h4: "editor-h4", h5: "editor-h5", h6: "editor-h6" },
       paragraph: "editor-p",
       list: { ul: "editor-ul", listitem: "editor-li" },
+      quote: "editor-quote",
+      link: "editor-link",
       text: { bold: "font-semibold", italic: "italic", code: "editor-code" },
     },
-    nodes: [HeadingNode, ListNode, ListItemNode, EyebrowNode, ButtonNode, SectionNode],
+    nodes: [HeadingNode, QuoteNode, LinkNode, ListNode, ListItemNode, EyebrowNode, ButtonNode, SectionNode],
     editorState: () => $buildDocFromSections(initialSections, makeSlug),
     onError: (error: Error) => {
       throw error;
@@ -312,6 +316,7 @@ function DocEditorInner({
       />
       <HistoryPlugin />
       <ListPlugin />
+      <LinkPlugin />
       <OnChangePlugin onChange={handleChange} ignoreSelectionChange />
       <SelectionToolbarPlugin
         onGroup={() => {

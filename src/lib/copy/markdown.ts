@@ -16,6 +16,7 @@ import type { Block, HeadingLevel } from "./blocks";
 const EYEBROW_MARKER = "<!--eyebrow-->";
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;
 const BULLET_RE = /^-\s+(.*)$/;
+const QUOTE_RE = /^>\s?(.*)$/;
 const LINK_ONLY_RE = /^\[([^\]]*)\]\(([^)\s]*)\)$/;
 
 export function parseSectionMarkdown(markdown: string): Block[] {
@@ -47,6 +48,12 @@ export function parseSectionMarkdown(markdown: string): Block[] {
       continue;
     }
 
+    if (lines.every((line) => QUOTE_RE.test(line))) {
+      const text = lines.map((line) => line.match(QUOTE_RE)![1]!).join(" ").trim();
+      if (text) blocks.push({ type: "quote", text: unescapeText(text) });
+      continue;
+    }
+
     const link = lines.length === 1 ? lines[0]!.match(LINK_ONLY_RE) : null;
     if (link) {
       blocks.push({ type: "button", label: unescapeText(link[1]!), url: link[2]! });
@@ -75,6 +82,8 @@ export function serializeBlocks(blocks: Block[]): string {
         return `[${escapeText(block.label)}](${block.url || "#"})`;
       case "bullets":
         return block.items.map((item) => `- ${escapeText(item)}`).join("\n");
+      case "quote":
+        return `> ${escapeText(block.text)}`;
       case "p":
         return escapeParagraph(block.text);
     }
@@ -91,9 +100,9 @@ function escapeParagraph(text: string): string {
 
 function escapeText(text: string): string {
   // leading structure markers only — inline markdown (bold/italic) passes through
-  return text.replace(/^(#{1,6}\s|-\s|<!--)/, "\\$1");
+  return text.replace(/^(#{1,6}\s|-\s|>\s?|<!--)/, "\\$1");
 }
 
 function unescapeText(text: string): string {
-  return text.replace(/^\\(\[|#{1,6}\s|-\s|<!--)/, "$1");
+  return text.replace(/^\\(\[|#{1,6}\s|-\s|>|<!--)/, "$1");
 }

@@ -31,6 +31,21 @@ describe("parseInline", () => {
   });
 });
 
+describe("inline links", () => {
+  it("parses an anchor into a link run", () => {
+    expect(parseInline("read [the docs](https://x.dev) now")).toEqual([
+      { text: "read " },
+      { text: "the docs", link: "https://x.dev" },
+      { text: " now" },
+    ]);
+  });
+
+  it("keeps escaped brackets as plain text", () => {
+    const runs = [{ text: "[not a link](nope)" }];
+    expect(parseInline(serializeInline(runs))).toEqual(runs);
+  });
+});
+
 describe("serializeInline / round-trip", () => {
   const cases: [string, TextRun[]][] = [
     ["mixed marks", [{ text: "Get " }, { text: "twice", bold: true }, { text: " the " }, { text: "flow", italic: true }]],
@@ -38,6 +53,8 @@ describe("serializeInline / round-trip", () => {
     ["bold italic", [{ text: "very", bold: true, italic: true }]],
     ["literal asterisks", [{ text: "2 * 3 * 4" }]],
     ["literal backtick-free code chars", [{ text: "a*b", bold: true }]],
+    ["link run", [{ text: "before " }, { text: "docs", link: "https://x.dev" }, { text: " after" }]],
+    ["link with bracket in label", [{ text: "a]b", link: "#" }]],
   ];
 
   it.each(cases)("parse(serialize(x)) === x — %s", (_name, runs) => {

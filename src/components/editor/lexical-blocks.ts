@@ -1,5 +1,6 @@
+import { $createLinkNode, $isLinkNode } from "@lexical/link";
 import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from "@lexical/list";
-import { $createHeadingNode, $isHeadingNode } from "@lexical/rich-text";
+import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode } from "@lexical/rich-text";
 import {
   $createParagraphNode,
   $createTextNode,
@@ -71,6 +72,12 @@ export function $appendBlocksToElement(element: ElementNode, blocks: Block[]): v
         element.append(list);
         break;
       }
+      case "quote": {
+        const quote = $createQuoteNode();
+        appendInline(quote, block.text);
+        element.append(quote);
+        break;
+      }
       case "p": {
         const paragraph = $createParagraphNode();
         appendInline(paragraph, block.text);
@@ -116,6 +123,11 @@ export function $blocksFromElement(container: ElementNode): Block[] {
       if (items.length) blocks.push({ type: "bullets", items });
       continue;
     }
+    if ($isQuoteNode(node)) {
+      const text = inlineOf(node);
+      if (text) blocks.push({ type: "quote", text });
+      continue;
+    }
     if ($isParagraphNode(node)) {
       const text = inlineOf(node);
       if (text) blocks.push({ type: "p", text });
@@ -132,7 +144,13 @@ function appendInline(element: ElementNode, inlineMarkdown: string): void {
     if (run.bold) text.toggleFormat("bold");
     if (run.italic) text.toggleFormat("italic");
     if (run.code) text.toggleFormat("code");
-    element.append(text);
+    if (run.link !== undefined) {
+      const link = $createLinkNode(run.link);
+      link.append(text);
+      element.append(link);
+    } else {
+      element.append(text);
+    }
   }
 }
 
@@ -140,13 +158,17 @@ function inlineOf(element: ElementNode): string {
   return serializeInline(normalizeRuns(collectRuns(element)));
 }
 
-function collectRuns(element: ElementNode): TextRun[] {
+function collectRuns(element: ElementNode, link?: string): TextRun[] {
   const runs: TextRun[] = [];
   for (const child of element.getChildren()) {
     if ($isTextNode(child)) {
-      runs.push(runOf(child));
+      const run = runOf(child);
+      if (link !== undefined) run.link = link;
+      runs.push(run);
+    } else if ($isLinkNode(child)) {
+      runs.push(...collectRuns(child, child.getURL()));
     } else if ($isElementNode(child)) {
-      runs.push(...collectRuns(child));
+      runs.push(...collectRuns(child, link));
     }
   }
   return runs;
@@ -166,7 +188,13 @@ export function normalizeRuns(runs: TextRun[]): TextRun[] {
   for (const run of runs) {
     if (!run.text) continue;
     const prev = merged[merged.length - 1];
-    if (prev && !!prev.bold === !!run.bold && !!prev.italic === !!run.italic && !!prev.code === !!run.code) {
+    if (
+      prev &&
+      !!prev.bold === !!run.bold &&
+      !!prev.italic === !!run.italic &&
+      !!prev.code === !!run.code &&
+      prev.link === run.link
+    ) {
       prev.text += run.text;
     } else {
       merged.push({ ...run });

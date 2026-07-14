@@ -1,6 +1,7 @@
 import { createHeadlessEditor } from "@lexical/headless";
 import { ListItemNode, ListNode } from "@lexical/list";
-import { HeadingNode } from "@lexical/rich-text";
+import { LinkNode } from "@lexical/link";
+import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { describe, expect, it } from "vitest";
 
 import type { Block } from "@/lib/copy/blocks";
@@ -13,7 +14,7 @@ import { EyebrowNode } from "./nodes/eyebrow-node";
 function makeEditor() {
   return createHeadlessEditor({
     namespace: "test",
-    nodes: [HeadingNode, ListNode, ListItemNode, EyebrowNode, ButtonNode],
+    nodes: [HeadingNode, QuoteNode, LinkNode, ListNode, ListItemNode, EyebrowNode, ButtonNode],
     onError: (error) => {
       throw error;
     },
@@ -35,6 +36,8 @@ describe("lexical ⇄ blocks", () => {
       { type: "p", text: "Body with **bold**, *italic*, and `code`." },
       { type: "bullets", items: ["First point", "Second **strong** point"] },
       { type: "button", label: "Start free", url: "https://copydog.app" },
+      { type: "quote", text: "The best copy tool we've used." },
+      { type: "p", text: "Read [the docs](https://docs.x.dev) for more." },
     ];
 
     expect(await roundTrip(blocks)).toEqual(blocks);

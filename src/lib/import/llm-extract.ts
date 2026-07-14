@@ -31,7 +31,7 @@ Each block is one of:
   {"type":"p","text":"..."}
   {"type":"eyebrow","text":"..."}          (short overline above a heading)
   {"type":"button","label":"...","url":"..."}  (calls to action)
-  {"type":"bullets","items":["...","..."]}
+  {"type":"bullets","items":["...","..."]}\n  {"type":"quote","text":"..."}          (pull quotes, testimonials)
 Rules:
 - Capture the page's real marketing copy in reading order; skip navigation, cookie banners, legal footers.
 - Group blocks into the page's natural sections (hero, features, testimonial, CTA…). Title each section briefly.

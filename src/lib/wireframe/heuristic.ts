@@ -108,6 +108,9 @@ function slotsFor(blocks: Block[], options: { media: boolean }): string {
       case "bullets":
         slots.push(`<ul class="wf-list" data-block="bullets"></ul>`);
         break;
+      case "quote":
+        slots.push(`<blockquote class="wf-quote" data-block="quote"></blockquote>`);
+        break;
       case "p":
         slots.push(`<p class="wf-p" data-block="p"></p>`);
         break;

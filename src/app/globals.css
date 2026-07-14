@@ -242,6 +242,22 @@ body {
   margin-bottom: 2.75rem;
 }
 
+.copy-editor .editor-quote {
+  border-left: 3px solid var(--color-border-strong);
+  padding: 0.15em 0 0.15em 1em;
+  margin: 0.6em 0;
+  font-size: 1.0625rem;
+  font-style: italic;
+  color: var(--color-ink-secondary);
+}
+
+.copy-editor .editor-link {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklch, var(--color-accent) 45%, transparent);
+}
+
 .copy-editor .editor-code {
   font-family: var(--font-mono);
   font-size: 0.875em;
