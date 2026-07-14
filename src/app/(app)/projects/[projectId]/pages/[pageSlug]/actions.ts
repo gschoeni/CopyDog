@@ -2,12 +2,12 @@
 
 import { z } from "zod";
 
-import { docSectionSchema, type DocSection } from "@/lib/content/doc";
+import { docContentSchema, docSections, type DocContent } from "@/lib/content/doc";
 import { requireProjectAccess } from "@/lib/content/access";
 import { extractSectionsFromHtml, type ExtractedSection } from "@/lib/import/extract";
 import { fetchImportHtml, ImportFetchError } from "@/lib/import/fetch-url";
 import { extractSectionsFromImage, extractSectionsWithLlm } from "@/lib/import/llm-extract";
-import { serializeBlocks } from "@/lib/copy/markdown";
+import { serializeElements } from "@/lib/copy/markdown";
 import {
   adoptVersion,
   draftBranchName,
@@ -18,12 +18,13 @@ import {
   readSite,
   syncPageFromMain,
   writeDoc,
+  writeElementsRun,
   writeSectionVersion,
   writeWireframe,
 } from "@/lib/content/store";
 import { createClient } from "@/lib/supabase/server";
 import { SITE_FILE_PATH, serializeSiteFile } from "@/lib/content/site";
-import { parseSectionMarkdown } from "@/lib/copy/markdown";
+import { parseElementsMarkdown } from "@/lib/copy/markdown";
 import { getLlmClient } from "@/lib/llm";
 import { generateWireframe, selectGenerator } from "@/lib/wireframe/generate";
 import type { SectionForLayout } from "@/lib/wireframe/heuristic";
@@ -55,14 +56,29 @@ export async function saveSectionAction(input: z.infer<typeof saveSectionInput>)
 const saveStructureInput = z.object({
   projectId: z.uuid(),
   pageSlug: slugSchema,
-  sections: z.array(docSectionSchema).max(200),
+  content: z.array(docContentSchema).max(400),
 });
 
-/** Persists section order/titles/active-versions (doc.json) for a page. */
+/** Persists the page's ordered content (element runs + sections) to doc.json. */
 export async function saveStructureAction(input: z.infer<typeof saveStructureInput>): Promise<{ ok: boolean }> {
-  const { projectId, pageSlug, sections } = saveStructureInput.parse(input);
+  const { projectId, pageSlug, content } = saveStructureInput.parse(input);
   const { oxen, view } = await requireProjectAccess(projectId);
-  await writeDoc(oxen, view, pageSlug, { version: 1, sections });
+  await writeDoc(oxen, view, pageSlug, { version: 2, content });
+  return { ok: true };
+}
+
+const saveElementsRunInput = z.object({
+  projectId: z.uuid(),
+  pageSlug: slugSchema,
+  runSlug: slugSchema,
+  markdown: z.string().max(100_000),
+});
+
+/** Saves a loose element run's copy. */
+export async function saveElementsRunAction(input: z.infer<typeof saveElementsRunInput>): Promise<{ ok: boolean }> {
+  const { projectId, pageSlug, runSlug, markdown } = saveElementsRunInput.parse(input);
+  const { oxen, view } = await requireProjectAccess(projectId);
+  await writeElementsRun(oxen, view, pageSlug, runSlug, markdown);
   return { ok: true };
 }
 
@@ -139,7 +155,7 @@ export async function publishAction(input: z.infer<typeof publishInput>): Promis
   const rows: Record<string, unknown>[] = [];
   for (const page of site.pages) {
     const doc = await readDoc(oxen, view, page.slug);
-    for (const section of doc.sections) {
+    for (const section of docSections(doc)) {
       for (const version of section.versions) {
         rows.push({
           project_id: project.id,
@@ -347,7 +363,7 @@ export async function importPageAction(input: z.infer<typeof importPageInput>): 
   }
 
   // write section files + doc structure (replaces the page)
-  const sections: DocSection[] = [];
+  const content: DocContent[] = [];
   const used = new Set<string>();
   for (const section of extracted) {
     const base =
@@ -360,26 +376,30 @@ export async function importPageAction(input: z.infer<typeof importPageInput>): 
     for (let n = 2; used.has(slug); n++) slug = `${base}-${n}`;
     used.add(slug);
 
-    await writeSectionVersion(oxen, view, pageSlug, slug, "original", serializeBlocks(section.blocks));
-    sections.push({
+    await writeSectionVersion(oxen, view, pageSlug, slug, "original", serializeElements(section.elements));
+    content.push({
+      kind: "section",
       slug,
       title: section.title,
       activeVersion: "original",
       versions: [{ slug: "original", label: "Original" }],
-      wireframeSlot: slug,
-      pinned: false,
+      linked: true,
     });
   }
-  await writeDoc(oxen, view, pageSlug, { version: 1, sections });
+  await writeDoc(oxen, view, pageSlug, { version: 2, content });
 
   // lay it out
   const html = await generateWireframe(
     selectGenerator(llm),
-    extracted.map((section, i) => ({ slug: sections[i]!.slug, title: section.title, blocks: section.blocks })),
+    extracted.map((section, i) => ({
+      slug: (content[i] as Extract<DocContent, { kind: "section" }>).slug,
+      title: section.title,
+      elements: section.elements,
+    })),
   );
   await writeWireframe(oxen, view, pageSlug, html);
 
-  return { ok: true, sections: sections.length };
+  return { ok: true, sections: content.length };
 }
 
 async function extractWithFallback(
@@ -402,9 +422,9 @@ const generateWireframeInput = z.object({
 });
 
 /**
- * Generates (or regenerates) the page's wireframe from its active copy and
- * stages it in the caller's workspace. LLM-designed when a key is
- * configured; rule-based otherwise. Returns the wireframe HTML.
+ * Generates (or regenerates) the page's wireframe from its *linked*
+ * sections' active copy and stages it in the caller's workspace.
+ * LLM-designed when a key is configured; rule-based otherwise.
  */
 export async function generateWireframeAction(
   input: z.infer<typeof generateWireframeInput>,
@@ -414,23 +434,19 @@ export async function generateWireframeAction(
 
   const doc = await readDoc(oxen, view, pageSlug);
   const sections: SectionForLayout[] = await Promise.all(
-    doc.sections.map(async (section) => ({
-      slug: section.slug,
-      title: section.title,
-      blocks: parseSectionMarkdown(
-        (await readSectionVersion(oxen, view, pageSlug, section.slug, section.activeVersion)) ?? "",
-      ),
-    })),
+    docSections(doc)
+      .filter((section) => section.linked)
+      .map(async (section) => ({
+        slug: section.slug,
+        title: section.title,
+        elements: parseElementsMarkdown(
+          (await readSectionVersion(oxen, view, pageSlug, section.slug, section.activeVersion)) ?? "",
+        ),
+      })),
   );
 
   const html = await generateWireframe(selectGenerator(getLlmClient()), sections);
   await writeWireframe(oxen, view, pageSlug, html);
-
-  // sections are now bound to their slots (slot id == section slug)
-  await writeDoc(oxen, view, pageSlug, {
-    version: 1,
-    sections: doc.sections.map((s) => ({ ...s, wireframeSlot: s.slug })),
-  });
 
   return { html };
 }
@@ -454,7 +470,7 @@ export async function addPageAction(input: z.infer<typeof addPageInput>): Promis
 
   site.pages.push({ slug, title });
   await oxen.writeWorkspaceFile(view.repo, view.workspaceId, SITE_FILE_PATH, serializeSiteFile(site));
-  await writeDoc(oxen, view, slug, { version: 1, sections: [] });
+  await writeDoc(oxen, view, slug, { version: 2, content: [] });
 
   return { slug };
 }

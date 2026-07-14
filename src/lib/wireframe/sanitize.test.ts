@@ -5,7 +5,7 @@ import { sanitizeWireframeHtml } from "./sanitize";
 describe("sanitizeWireframeHtml", () => {
   it("keeps allowed structure and wf- classes", () => {
     const html = sanitizeWireframeHtml(
-      `<section class="wf-section" data-copy="hero"><h1 class="wf-h1" data-block="h1"></h1></section>`,
+      `<section class="wf-section" data-copy="hero"><h1 class="wf-h1" data-element="h1"></h1></section>`,
     );
     expect(html).toContain(`data-copy="hero"`);
     expect(html).toContain(`class="wf-h1"`);

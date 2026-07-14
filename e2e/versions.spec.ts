@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { openSectionChrome } from "./support/chrome";
 import { signIn } from "./support/auth";
+import { writeSection } from "./support/sections";
 
 async function createProjectAndOpenHome(page: import("@playwright/test").Page, name: string) {
   await page.getByPlaceholder("Acme landing page").fill(name);
@@ -15,7 +16,8 @@ test("alternate versions: create, edit independently, toggle back", async ({ pag
 
   // one section with some original copy
   await page.getByRole("textbox", { name: "Page copy" }).click();
-  await page.keyboard.type("Original headline idea");
+  await writeSection(page, ["Original headline idea"], 1);
+  await page.waitForTimeout(1000);
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
 
   // branch a new version from current copy (the handle opens the header)
@@ -54,6 +56,9 @@ test("alternate versions: create, edit independently, toggle back", async ({ pag
 test("notes: add, see count, resolve", async ({ page }) => {
   await signIn(page);
   await createProjectAndOpenHome(page, `Notes ${Date.now()}`);
+  await page.getByRole("textbox", { name: "Page copy" }).click();
+  await writeSection(page, ["Notes host line"], 1);
+  await page.waitForTimeout(1000);
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
 
   await openSectionChrome(page);

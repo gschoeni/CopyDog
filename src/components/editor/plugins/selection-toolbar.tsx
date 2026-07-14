@@ -16,10 +16,10 @@ import {
   SELECTION_CHANGE_COMMAND,
 } from "lexical";
 
-import type { BlockType, HeadingLevel } from "@/lib/copy/blocks";
-import { BLOCK_TYPE_LABELS, headingLevels } from "@/lib/copy/blocks";
+import type { ElementType, HeadingLevel } from "@/lib/copy/elements";
+import { ELEMENT_TYPE_LABELS, headingLevels } from "@/lib/copy/elements";
 
-import { $touchedBlockNodes } from "../doc-structure";
+import { $touchedElementNodes } from "../doc-structure";
 import { $createButtonNode, $isButtonNode } from "../nodes/button-node";
 import { $createEyebrowNode, $isEyebrowNode } from "../nodes/eyebrow-node";
 import { $isSectionNode } from "../nodes/section-node";
@@ -34,8 +34,8 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
   const [state, setState] = useState<{
     top: number;
     left: number;
-    blockType: BlockType;
-    blockCount: number;
+    blockType: ElementType;
+    elementCount: number;
     hasLink: boolean;
   } | null>(null);
   const [linkDraft, setLinkDraft] = useState<string | null>(null);
@@ -62,13 +62,13 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
       }
       const wrapperRect = wrapper.getBoundingClientRect();
 
-      const blocks = $touchedBlockNodes(selection.getNodes());
+      const touched = $touchedElementNodes(selection.getNodes());
       const hasLink = selection
         .getNodes()
         .some((node) => $isLinkNode(node) || $isLinkNode(node.getParent()));
 
-      const anchorBlock = blocks[0];
-      let blockType: BlockType = "p";
+      const anchorBlock = touched[0];
+      let blockType: ElementType = "p";
       if (anchorBlock) {
         if ($isHeadingNode(anchorBlock)) blockType = anchorBlock.getTag() as HeadingLevel;
         else if ($isQuoteNode(anchorBlock)) blockType = "quote";
@@ -81,7 +81,7 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
         top: rect.top - wrapperRect.top - 44,
         left: Math.max(0, rect.left - wrapperRect.left),
         blockType,
-        blockCount: blocks.length,
+        elementCount: touched.length,
         hasLink,
       });
     });
@@ -104,7 +104,7 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
   }, [editor, refresh]);
 
   const applyBlockType = useCallback(
-    (type: BlockType) => {
+    (type: ElementType) => {
       if (type === "bullets") {
         editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
         return;
@@ -112,7 +112,7 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
       editor.update(() => {
         const selection = $getSelection();
         if (!$isRangeSelection(selection)) return;
-        const anchor = $touchedBlockNodes(selection.getNodes())[0];
+        const anchor = $touchedElementNodes(selection.getNodes())[0];
         if (anchor && $isListNode(anchor)) {
           editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
         }
@@ -180,7 +180,7 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
         {(["h1", "h2", "h3"] as const).map((level) => (
           <MarkButton
             key={level}
-            label={BLOCK_TYPE_LABELS[level]}
+            label={ELEMENT_TYPE_LABELS[level]}
             active={state.blockType === level}
             onClick={() => applyBlockType(state.blockType === level ? "p" : level)}
           >
@@ -196,7 +196,7 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
         </MarkButton>
         <div className="mx-0.5 h-4 w-px bg-border" aria-hidden />
         <TurnIntoMenu blockType={state.blockType} onApply={applyBlockType} />
-        {state.blockCount > 1 && (
+        {state.elementCount >= 1 && (
           <>
             <div className="mx-0.5 h-4 w-px bg-border" aria-hidden />
             <button
@@ -243,7 +243,7 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
  * selection), and taking focus would drop the selection anyway. This menu
  * never takes focus — the selection survives, the conversion applies.
  */
-function TurnIntoMenu({ blockType, onApply }: { blockType: BlockType; onApply: (type: BlockType) => void }) {
+function TurnIntoMenu({ blockType, onApply }: { blockType: ElementType; onApply: (type: ElementType) => void }) {
   const [open, setOpen] = useState(false);
 
   // the toolbar unmounts whenever the selection changes, so `open` state
@@ -258,7 +258,7 @@ function TurnIntoMenu({ blockType, onApply }: { blockType: BlockType; onApply: (
         onClick={() => setOpen((v) => !v)}
         className="flex h-7 items-center gap-1 rounded-md px-2 text-xs text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
       >
-        {BLOCK_TYPE_LABELS[blockType]}
+        {ELEMENT_TYPE_LABELS[blockType]}
         <svg viewBox="0 0 16 16" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
           <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
@@ -266,10 +266,10 @@ function TurnIntoMenu({ blockType, onApply }: { blockType: BlockType; onApply: (
       {open && (
         <div
           role="listbox"
-          aria-label="Block types"
+          aria-label="Element types"
           className="absolute left-0 top-8 z-30 w-40 rounded-lg border border-border bg-surface p-1 shadow-raised"
         >
-          {(Object.keys(BLOCK_TYPE_LABELS) as BlockType[]).map((type) => (
+          {(Object.keys(ELEMENT_TYPE_LABELS) as ElementType[]).map((type) => (
             <button
               key={type}
               type="button"
@@ -281,7 +281,7 @@ function TurnIntoMenu({ blockType, onApply }: { blockType: BlockType; onApply: (
               }}
               className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
             >
-              {BLOCK_TYPE_LABELS[type]}
+              {ELEMENT_TYPE_LABELS[type]}
               {type === blockType && <span className="text-accent">✓</span>}
             </button>
           ))}

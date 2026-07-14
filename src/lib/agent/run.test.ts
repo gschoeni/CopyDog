@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { docSections } from "@/lib/content/doc";
 import { ensureDraftView, readDoc, readSectionVersion, writeDoc, writeSectionVersion, type DraftView } from "@/lib/content/store";
 import { LlmClient } from "@/lib/llm/client";
 import { OxenClient } from "@/lib/oxen/client";
@@ -36,15 +37,15 @@ describe("runAgentTurn", () => {
     view = await ensureDraftView(oxen, REPO, "greg");
     await writeSectionVersion(oxen, view, "home", "hero", "original", "# Old headline\n");
     await writeDoc(oxen, view, "home", {
-      version: 1,
-      sections: [
+      version: 2,
+      content: [
         {
+          kind: "section",
           slug: "hero",
           title: "Hero",
           activeVersion: "original",
           versions: [{ slug: "original", label: "Original" }],
-          wireframeSlot: null,
-          pinned: false,
+          linked: true,
         },
       ],
     });
@@ -82,8 +83,9 @@ describe("runAgentTurn", () => {
 
     // the new version exists and is active in the draft
     const doc = await readDoc(oxen, view, "home");
-    expect(doc.sections[0]!.activeVersion).toBe("punchier");
-    expect(doc.sections[0]!.versions.map((v) => v.label)).toEqual(["Original", "Punchier"]);
+    const section = docSections(doc)[0]!;
+    expect(section.activeVersion).toBe("punchier");
+    expect(section.versions.map((v) => v.label)).toEqual(["Original", "Punchier"]);
     expect(await readSectionVersion(oxen, view, "home", "hero", "punchier")).toBe("# Ship it today\n");
     // original untouched
     expect(await readSectionVersion(oxen, view, "home", "hero", "original")).toBe("# Old headline\n");

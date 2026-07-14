@@ -25,7 +25,7 @@ describe("provisionProjectRepo", () => {
     expect(site.pages).toEqual([{ slug: "home", title: "Home" }]);
 
     const doc = parseDocFile(await client.readFile(repoName, "main", "pages/home/doc.json"));
-    expect(doc.sections).toEqual([]);
+    expect(doc.content).toEqual([]);
 
     // provisioning workspace is cleaned up; main holds exactly the seed commit
     const branches = await client.listBranches(repoName);

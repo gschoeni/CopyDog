@@ -1,11 +1,13 @@
 "use client";
 
-import type { EditorSection } from "./page-editor";
+import type { SectionView } from "./page-editor";
 
 /**
  * The section map: numbered titles down the left of the copy editor.
- * One glance shows the page's shape; one click jumps to a section.
- * In split mode it collapses to just the numbers.
+ * One glance shows the page's structured skeleton; one click jumps to a
+ * section. Loose copy is intentionally not on the map (nor in the
+ * wireframe); unlinked sections show a hollow number. In split mode the
+ * map collapses to just the numbers.
  *
  * Structure: the outer div carries the top padding that aligns the list
  * with the copy column's first text line; the inner nav is the sticky
@@ -16,7 +18,7 @@ export function SectionToc({
   compact,
   onNavigate,
 }: {
-  sections: EditorSection[];
+  sections: SectionView[];
   compact: boolean;
   onNavigate: (slug: string) => void;
 }) {
@@ -24,10 +26,7 @@ export function SectionToc({
 
   return (
     <div className={`hidden shrink-0 pt-[4.5rem] md:block ${compact ? "w-11 pl-2" : "w-52 pl-5 pr-1"}`}>
-      <nav
-        aria-label="Sections"
-        className="sticky top-[4.5rem] max-h-[calc(100dvh-6rem)] overflow-y-auto pb-8"
-      >
+      <nav aria-label="Sections" className="sticky top-[4.5rem] max-h-[calc(100dvh-6rem)] overflow-y-auto pb-8">
         {compact ? (
           <div className="mb-2 flex justify-center" title="On this page" aria-hidden>
             <TocIcon />
@@ -44,17 +43,25 @@ export function SectionToc({
               <button
                 type="button"
                 onClick={() => onNavigate(section.slug)}
-                title={section.title}
+                title={section.linked ? section.title : `${section.title} (unlinked)`}
                 aria-label={`Go to section ${index + 1}: ${section.title}`}
                 className={`group flex w-full items-center gap-2 rounded-md text-left transition-colors hover:bg-surface-hover ${
                   compact ? "justify-center p-1" : "px-2 py-1"
                 }`}
               >
-                <span className="flex size-5 shrink-0 items-center justify-center rounded text-[11px] font-semibold tabular-nums text-ink-tertiary transition-colors group-hover:text-accent">
+                <span
+                  className={`flex size-5 shrink-0 items-center justify-center rounded text-[11px] font-semibold tabular-nums transition-colors group-hover:text-accent ${
+                    section.linked ? "text-ink-tertiary" : "text-ink-tertiary/60 ring-1 ring-inset ring-border"
+                  }`}
+                >
                   {index + 1}
                 </span>
                 {!compact && (
-                  <span className="truncate text-xs text-ink-secondary transition-colors group-hover:text-ink">
+                  <span
+                    className={`truncate text-xs transition-colors group-hover:text-ink ${
+                      section.linked ? "text-ink-secondary" : "text-ink-tertiary"
+                    }`}
+                  >
                     {section.title}
                   </span>
                 )}

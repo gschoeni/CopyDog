@@ -12,7 +12,7 @@ const ALLOWED_TAGS = new Set([
   "blockquote", "strong", "em", "code",
 ]);
 
-const ALLOWED_ATTRS = new Set(["class", "data-copy", "data-block", "data-overflow", "aria-hidden"]);
+const ALLOWED_ATTRS = new Set(["class", "data-copy", "data-element", "data-overflow", "aria-hidden"]);
 
 export function sanitizeWireframeHtml(html: string): string {
   const root = parse(html, { comment: false });

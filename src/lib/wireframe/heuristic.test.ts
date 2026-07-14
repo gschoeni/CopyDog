@@ -8,7 +8,7 @@ const SECTIONS: SectionForLayout[] = [
   {
     slug: "hero",
     title: "Hero",
-    blocks: [
+    elements: [
       { type: "eyebrow", text: "NEW" },
       { type: "h1", text: "Big headline" },
       { type: "p", text: "Support copy." },
@@ -18,7 +18,7 @@ const SECTIONS: SectionForLayout[] = [
   {
     slug: "features",
     title: "Features",
-    blocks: [
+    elements: [
       { type: "h2", text: "Why it works" },
       { type: "bullets", items: ["Fast", "Versioned", "Together"] },
     ],
@@ -26,7 +26,7 @@ const SECTIONS: SectionForLayout[] = [
   {
     slug: "cta",
     title: "CTA",
-    blocks: [
+    elements: [
       { type: "h2", text: "Ready?" },
       { type: "button", label: "Go", url: "#" },
     ],
@@ -34,14 +34,14 @@ const SECTIONS: SectionForLayout[] = [
 ];
 
 describe("generateWireframeHeuristic", () => {
-  it("produces a slot for every copy block in every section", () => {
+  it("produces a slot for every copy element in every section", () => {
     const html = generateWireframeHeuristic(SECTIONS);
     for (const section of SECTIONS) {
       expect(html).toContain(`data-copy="${section.slug}"`);
     }
-    expect(html.match(/data-block="h1"/g)).toHaveLength(1);
-    expect(html.match(/data-block="button"/g)).toHaveLength(2);
-    expect(html.match(/data-block="bullets"/g)).toHaveLength(1);
+    expect(html.match(/data-element="h1"/g)).toHaveLength(1);
+    expect(html.match(/data-element="button"/g)).toHaveLength(2);
+    expect(html.match(/data-element="bullets"/g)).toHaveLength(1);
   });
 
   it("survives sanitization unchanged in structure", () => {
@@ -62,7 +62,7 @@ describe("generateWireframeHeuristic", () => {
   });
 
   it("handles empty sections gracefully", () => {
-    const html = generateWireframeHeuristic([{ slug: "empty", title: "Empty", blocks: [] }]);
+    const html = generateWireframeHeuristic([{ slug: "empty", title: "Empty", elements: [] }]);
     expect(html).toContain(`data-copy="empty"`);
   });
 });

@@ -2,8 +2,9 @@ import { notFound } from "next/navigation";
 import type { NextRequest } from "next/server";
 
 import { requireProjectAccess } from "@/lib/content/access";
+import { docSections } from "@/lib/content/doc";
 import { readDoc, readSectionVersion, readSite, readWireframe } from "@/lib/content/store";
-import { parseSectionMarkdown } from "@/lib/copy/markdown";
+import { parseElementsMarkdown } from "@/lib/copy/markdown";
 import { generateWireframeHeuristic } from "@/lib/wireframe/heuristic";
 import { exportPageHtml } from "@/lib/wireframe/export";
 import { sanitizeWireframeHtml } from "@/lib/wireframe/sanitize";
@@ -33,10 +34,12 @@ export async function GET(
 
   const doc = await readDoc(oxen, view, pageSlug);
   const sections = await Promise.all(
-    doc.sections.map(async (section) => ({
+    docSections(doc)
+      .filter((section) => section.linked)
+      .map(async (section) => ({
       slug: section.slug,
       title: section.title,
-      blocks: parseSectionMarkdown(
+      elements: parseElementsMarkdown(
         (await readSectionVersion(oxen, view, pageSlug, section.slug, section.activeVersion)) ?? "",
       ),
     })),

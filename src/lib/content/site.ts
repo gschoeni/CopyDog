@@ -6,9 +6,10 @@ import { z } from "zod";
  *
  * Repo layout:
  *   site.json                          — sitemap (this file)
- *   pages/{page}/doc.json              — section order + wireframe bindings
+ *   pages/{page}/doc.json              — ordered content (element runs + sections)
  *   pages/{page}/wireframe.html        — greyscale layout with copy slots
- *   pages/{page}/sections/{section}/{version}.md — copy version files
+ *   pages/{page}/elements/{run}.md     — loose copy runs
+ *   pages/{page}/sections/{section}/{version}.md — section version files
  */
 
 export const pageRefSchema = z.object({
@@ -48,4 +49,8 @@ export function pageWireframePath(pageSlug: string): string {
 
 export function sectionVersionPath(pageSlug: string, sectionSlug: string, versionSlug: string): string {
   return `pages/${pageSlug}/sections/${sectionSlug}/${versionSlug}.md`;
+}
+
+export function elementsRunPath(pageSlug: string, runSlug: string): string {
+  return `pages/${pageSlug}/elements/${runSlug}.md`;
 }

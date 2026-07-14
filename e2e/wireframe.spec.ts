@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { signIn } from "./support/auth";
+import { writeSection } from "./support/sections";
 
 test("generate wireframe from copy, live-update it, persists across reload", async ({ page }) => {
   await signIn(page);
@@ -10,17 +11,16 @@ test("generate wireframe from copy, live-update it, persists across reload", asy
   await page.getByRole("button", { name: "Create project" }).click();
   await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
 
-  // write hero copy
+  // write hero copy and group it into a (linked) section
   await page.getByRole("textbox", { name: "Page copy" }).click();
-  await page.keyboard.type("# Copy meets layout");
-  await page.keyboard.press("Enter");
-  await page.keyboard.type("The wireframe is a view over your words.");
+  await writeSection(page, ["# Copy meets layout", "The wireframe is a view over your words."], 1);
+  await page.waitForTimeout(1000);
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
 
   // switch to wireframe view and generate
   await page.getByRole("tab", { name: "Wireframe" }).click();
   await expect(page.getByText("No wireframe yet")).toBeVisible();
-  await page.getByRole("button", { name: "Generate wireframe from copy" }).click();
+  await page.getByRole("button", { name: "Generate wireframe from sections" }).click();
 
   // the greyscale wireframe renders with the copy substituted in
   const wireframe = page.locator(".wf-root").last();

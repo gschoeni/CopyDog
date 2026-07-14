@@ -5,6 +5,7 @@ import type { CommitAuthor } from "@/lib/oxen/types";
 import { parseDocFile, serializeDocFile, type DocFile } from "./doc";
 import {
   SITE_FILE_PATH,
+  elementsRunPath,
   pageDocPath,
   pageWireframePath,
   parseSiteFile,
@@ -83,6 +84,31 @@ export async function writeSectionVersion(
     sectionVersionPath(pageSlug, sectionSlug, versionSlug),
     markdown,
   );
+}
+
+/** Returns a loose element run's markdown, or null if it doesn't exist. */
+export async function readElementsRun(
+  oxen: OxenClient,
+  view: DraftView,
+  pageSlug: string,
+  runSlug: string,
+): Promise<string | null> {
+  try {
+    return await oxen.readWorkspaceFile(view.repo, view.workspaceId, elementsRunPath(pageSlug, runSlug));
+  } catch (err) {
+    if (err instanceof OxenError && err.status === 404) return null;
+    throw err;
+  }
+}
+
+export async function writeElementsRun(
+  oxen: OxenClient,
+  view: DraftView,
+  pageSlug: string,
+  runSlug: string,
+  markdown: string,
+): Promise<void> {
+  await oxen.writeWorkspaceFile(view.repo, view.workspaceId, elementsRunPath(pageSlug, runSlug), markdown);
 }
 
 /** Returns the page's wireframe HTML, or null if none has been created yet. */

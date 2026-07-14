@@ -1,4 +1,4 @@
-import type { Block } from "./blocks";
+import type { Element } from "./elements";
 import { parseInline } from "./inline";
 
 /**
@@ -38,7 +38,7 @@ export function renderInline(inlineMarkdown: string): string {
 }
 
 /** A block rendered as a standalone design-system element (overflow/export). */
-export function renderBlock(block: Block): string {
+export function renderBlock(block: Element): string {
   switch (block.type) {
     case "h1":
     case "h2":

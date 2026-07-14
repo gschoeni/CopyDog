@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { Block } from "./blocks";
-import { parseSectionMarkdown, serializeBlocks } from "./markdown";
+import type { Element } from "./elements";
+import { parseElementsMarkdown, serializeElements } from "./markdown";
 
-describe("parseSectionMarkdown", () => {
+describe("parseElementsMarkdown", () => {
   it("parses a typical hero section", () => {
     const md = [
       "<!--eyebrow-->",
@@ -19,7 +19,7 @@ describe("parseSectionMarkdown", () => {
       "- Unlimited collaborators",
     ].join("\n");
 
-    expect(parseSectionMarkdown(md)).toEqual([
+    expect(parseElementsMarkdown(md)).toEqual([
       { type: "eyebrow", text: "NEW FOR 2026" },
       { type: "h1", text: "Ship copy and wireframes together" },
       { type: "p", text: "Stop pasting between docs and design tools." },
@@ -30,43 +30,43 @@ describe("parseSectionMarkdown", () => {
 
   it("parses all heading levels", () => {
     for (let level = 1; level <= 6; level++) {
-      expect(parseSectionMarkdown(`${"#".repeat(level)} Title`)).toEqual([
+      expect(parseElementsMarkdown(`${"#".repeat(level)} Title`)).toEqual([
         { type: `h${level}`, text: "Title" },
       ]);
     }
   });
 
   it("keeps inline markdown inside block text", () => {
-    expect(parseSectionMarkdown("Some **bold** and *italic* copy.")).toEqual([
+    expect(parseElementsMarkdown("Some **bold** and *italic* copy.")).toEqual([
       { type: "p", text: "Some **bold** and *italic* copy." },
     ]);
   });
 
   it("treats a paragraph with a link amid text as a paragraph, not a button", () => {
-    expect(parseSectionMarkdown("Read [the docs](https://x.dev) today.")).toEqual([
+    expect(parseElementsMarkdown("Read [the docs](https://x.dev) today.")).toEqual([
       { type: "p", text: "Read [the docs](https://x.dev) today." },
     ]);
   });
 
   it("handles empty and whitespace-only input", () => {
-    expect(parseSectionMarkdown("")).toEqual([]);
-    expect(parseSectionMarkdown("\n\n  \n")).toEqual([]);
+    expect(parseElementsMarkdown("")).toEqual([]);
+    expect(parseElementsMarkdown("\n\n  \n")).toEqual([]);
   });
 
   it("ignores an eyebrow marker with no text", () => {
-    expect(parseSectionMarkdown("<!--eyebrow-->")).toEqual([]);
+    expect(parseElementsMarkdown("<!--eyebrow-->")).toEqual([]);
   });
 });
 
-describe("serializeBlocks", () => {
+describe("serializeElements", () => {
   it("writes readable markdown", () => {
-    const blocks: Block[] = [
+    const blocks: Element[] = [
       { type: "eyebrow", text: "PRICING" },
       { type: "h2", text: "Simple plans" },
       { type: "p", text: "One price, everything included." },
       { type: "button", label: "See pricing", url: "#" },
     ];
-    expect(serializeBlocks(blocks)).toBe(
+    expect(serializeElements(blocks)).toBe(
       ["<!--eyebrow-->", "PRICING", "", "## Simple plans", "", "One price, everything included.", "", "[See pricing](#)", ""].join(
         "\n",
       ),
@@ -74,30 +74,30 @@ describe("serializeBlocks", () => {
   });
 
   it("serializes empty input to an empty string", () => {
-    expect(serializeBlocks([])).toBe("");
+    expect(serializeElements([])).toBe("");
   });
 
   it("defaults empty button urls to #", () => {
-    expect(serializeBlocks([{ type: "button", label: "Go", url: "" }])).toBe("[Go](#)\n");
+    expect(serializeElements([{ type: "button", label: "Go", url: "" }])).toBe("[Go](#)\n");
   });
 });
 
 describe("quote blocks", () => {
   it("parses > lines into a quote", () => {
-    expect(parseSectionMarkdown("> Simply the best tool.\n> Ever.")).toEqual([
+    expect(parseElementsMarkdown("> Simply the best tool.\n> Ever.")).toEqual([
       { type: "quote", text: "Simply the best tool. Ever." },
     ]);
   });
 
   it("serializes quotes and protects paragraphs starting with >", () => {
-    expect(serializeBlocks([{ type: "quote", text: "Wow." }])).toBe("> Wow.\n");
+    expect(serializeElements([{ type: "quote", text: "Wow." }])).toBe("> Wow.\n");
     const tricky = [{ type: "p" as const, text: "> not a quote" }];
-    expect(parseSectionMarkdown(serializeBlocks(tricky))).toEqual(tricky);
+    expect(parseElementsMarkdown(serializeElements(tricky))).toEqual(tricky);
   });
 });
 
 describe("round-trip", () => {
-  const cases: [string, Block[]][] = [
+  const cases: [string, Element[]][] = [
     ["hero", [
       { type: "eyebrow", text: "NEW" },
       { type: "h1", text: "Big claim" },
@@ -119,6 +119,6 @@ describe("round-trip", () => {
   ];
 
   it.each(cases)("parse(serialize(x)) === x — %s", (_name, blocks) => {
-    expect(parseSectionMarkdown(serializeBlocks(blocks))).toEqual(blocks);
+    expect(parseElementsMarkdown(serializeElements(blocks))).toEqual(blocks);
   });
 });

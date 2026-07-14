@@ -13,30 +13,30 @@ import {
   type TextNode,
 } from "lexical";
 
-import type { Block, HeadingLevel } from "@/lib/copy/blocks";
-import { headingLevels } from "@/lib/copy/blocks";
+import type { Element, HeadingLevel } from "@/lib/copy/elements";
+import { headingLevels } from "@/lib/copy/elements";
 import { parseInline, serializeInline, type TextRun } from "@/lib/copy/inline";
 
 import { $createButtonNode, $isButtonNode } from "./nodes/button-node";
 import { $createEyebrowNode, $isEyebrowNode } from "./nodes/eyebrow-node";
 
 /**
- * Block[] ⇄ Lexical document. Both functions must run inside
+ * Element[] ⇄ Lexical document. Both functions must run inside
  * editor.update()/read() — they operate on the active editor state.
  * The editor is a *view*: these conversions keep markdown canonical.
  */
 
-export function $populateFromBlocks(blocks: Block[]): void {
+export function $populateFromElements(blocks: Element[]): void {
   const root = $getRoot();
   root.clear();
-  $appendBlocksToElement(root, blocks);
+  $appendElementsTo(root, blocks);
   if (root.getChildrenSize() === 0) {
     root.append($createParagraphNode());
   }
 }
 
 /** Builds Lexical nodes for blocks and appends them to any container. */
-export function $appendBlocksToElement(element: ElementNode, blocks: Block[]): void {
+export function $appendElementsTo(element: ElementNode, blocks: Element[]): void {
   for (const block of blocks) {
     switch (block.type) {
       case "h1":
@@ -88,13 +88,13 @@ export function $appendBlocksToElement(element: ElementNode, blocks: Block[]): v
   }
 }
 
-export function $extractBlocks(): Block[] {
-  return $blocksFromElement($getRoot());
+export function $extractElements(): Element[] {
+  return $elementsFrom($getRoot());
 }
 
 /** Reads a container's children back into the canonical block model. */
-export function $blocksFromElement(container: ElementNode): Block[] {
-  const blocks: Block[] = [];
+export function $elementsFrom(container: ElementNode): Element[] {
+  const blocks: Element[] = [];
 
   for (const node of container.getChildren()) {
     if ($isHeadingNode(node)) {

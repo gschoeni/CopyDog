@@ -29,21 +29,21 @@ const LANDING_PAGE = `<!DOCTYPE html>
 </body></html>`;
 
 describe("extractSectionsFromHtml", () => {
-  it("extracts sections with typed blocks from semantic HTML", () => {
+  it("extracts sections with typed elements from semantic HTML", () => {
     const sections = extractSectionsFromHtml(LANDING_PAGE);
     expect(sections).toHaveLength(3);
 
     const [hero, features, cta] = sections;
     expect(hero!.title).toBe("Ship copy faster");
-    expect(hero!.blocks).toEqual([
+    expect(hero!.elements).toEqual([
       { type: "eyebrow", text: "NEW FOR 2026" },
       { type: "h1", text: "Ship **copy** faster" },
       { type: "p", text: "Stop pasting between docs and design tools." },
       { type: "button", label: "Start free", url: "/signup" },
     ]);
 
-    expect(features!.blocks).toContainEqual({ type: "bullets", items: ["Versioned copy", "Live *wireframes*"] });
-    expect(cta!.blocks).toContainEqual({ type: "button", label: "Get started", url: "/signup" });
+    expect(features!.elements).toContainEqual({ type: "bullets", items: ["Versioned copy", "Live *wireframes*"] });
+    expect(cta!.elements).toContainEqual({ type: "button", label: "Get started", url: "/signup" });
   });
 
   it("groups by headings when the page has no section elements", () => {
@@ -53,8 +53,8 @@ describe("extractSectionsFromHtml", () => {
     </body>`;
     const sections = extractSectionsFromHtml(html);
     expect(sections).toHaveLength(2);
-    expect(sections[0]!.blocks[0]).toEqual({ type: "h1", text: "Title one" });
-    expect(sections[1]!.blocks).toHaveLength(3);
+    expect(sections[0]!.elements[0]).toEqual({ type: "h1", text: "Title one" });
+    expect(sections[1]!.elements).toHaveLength(3);
   });
 
   it("ignores script/style/nav content and empty pages", () => {
@@ -63,6 +63,6 @@ describe("extractSectionsFromHtml", () => {
 
   it("escapes markdown special characters in source text", () => {
     const sections = extractSectionsFromHtml(`<body><h1>Prices from *only* $5</h1><p>Really long enough body text.</p></body>`);
-    expect(sections[0]!.blocks[0]).toEqual({ type: "h1", text: "Prices from \\*only\\* $5" });
+    expect(sections[0]!.elements[0]).toEqual({ type: "h1", text: "Prices from \\*only\\* $5" });
   });
 });

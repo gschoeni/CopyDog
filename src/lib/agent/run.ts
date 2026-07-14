@@ -1,4 +1,4 @@
-import { readDoc, readSectionVersion } from "@/lib/content/store";
+import { readDoc, readElementsRun, readSectionVersion } from "@/lib/content/store";
 import { LLM_MODELS, type LlmMessage } from "@/lib/llm/client";
 
 import { AGENT_TOOLS, executeTool, type ToolContext } from "./tools";
@@ -73,13 +73,19 @@ export async function runAgentTurn(
 
 async function buildPageContext(ctx: ToolContext): Promise<string> {
   const doc = await readDoc(ctx.oxen, ctx.view, ctx.pageSlug);
-  if (doc.sections.length === 0) {
-    return `Current page "${ctx.pageSlug}" has no sections yet.`;
+  if (doc.content.length === 0) {
+    return `Current page "${ctx.pageSlug}" is empty.`;
   }
   const parts = await Promise.all(
-    doc.sections.map(async (section) => {
-      const markdown = (await readSectionVersion(ctx.oxen, ctx.view, ctx.pageSlug, section.slug, section.activeVersion)) ?? "";
-      return `### ${section.title} (slug: ${section.slug}, active version: ${section.activeVersion})\n${markdown || "(empty)"}`;
+    doc.content.map(async (entry) => {
+      if (entry.kind === "elements") {
+        const markdown = (await readElementsRun(ctx.oxen, ctx.view, ctx.pageSlug, entry.slug)) ?? "";
+        return `### Loose copy (not in a section)\n${markdown || "(empty)"}`;
+      }
+      const markdown =
+        (await readSectionVersion(ctx.oxen, ctx.view, ctx.pageSlug, entry.slug, entry.activeVersion)) ?? "";
+      const linkNote = entry.linked ? "" : ", unlinked from the wireframe";
+      return `### ${entry.title} (section slug: ${entry.slug}, active version: ${entry.activeVersion}${linkNote})\n${markdown || "(empty)"}`;
     }),
   );
   return `Current copy on page "${ctx.pageSlug}":\n\n${parts.join("\n\n")}`;

@@ -1,7 +1,8 @@
 import { z } from "zod";
 
+import { docSections } from "@/lib/content/doc";
 import { readDoc, readSectionVersion, writeDoc, writeSectionVersion, writeWireframe, type DraftView } from "@/lib/content/store";
-import { parseSectionMarkdown } from "@/lib/copy/markdown";
+import { parseElementsMarkdown } from "@/lib/copy/markdown";
 import type { LlmClient, LlmTool } from "@/lib/llm/client";
 import type { OxenClient } from "@/lib/oxen/client";
 import { generateWireframe, LlmGenerator, HeuristicGenerator } from "@/lib/wireframe/generate";
@@ -97,7 +98,7 @@ export async function executeTool(name: string, rawArgs: string, ctx: ToolContex
 
 async function rewriteSection(args: z.infer<typeof rewriteArgs>, ctx: ToolContext): Promise<ToolOutcome> {
   const doc = await readDoc(ctx.oxen, ctx.view, ctx.pageSlug);
-  const section = doc.sections.find((s) => s.slug === args.sectionSlug);
+  const section = docSections(doc).find((s) => s.slug === args.sectionSlug);
   if (!section) {
     return { result: `No section with slug "${args.sectionSlug}" on this page.`, mutated: false };
   }
@@ -128,16 +129,16 @@ async function addSection(args: z.infer<typeof addArgs>, ctx: ToolContext): Prom
       .replace(/^-+|-+$/g, "")
       .slice(0, 40) || "section";
   let slug = base;
-  for (let n = 2; doc.sections.some((s) => s.slug === slug); n++) slug = `${base}-${n}`;
+  for (let n = 2; docSections(doc).some((s) => s.slug === slug); n++) slug = `${base}-${n}`;
 
   await writeSectionVersion(ctx.oxen, ctx.view, ctx.pageSlug, slug, "original", args.markdown);
-  doc.sections.push({
+  doc.content.push({
+    kind: "section",
     slug,
     title: args.title,
     activeVersion: "original",
     versions: [{ slug: "original", label: "Original" }],
-    wireframeSlot: null,
-    pinned: false,
+    linked: true,
   });
   await writeDoc(ctx.oxen, ctx.view, ctx.pageSlug, doc);
 
@@ -147,10 +148,12 @@ async function addSection(args: z.infer<typeof addArgs>, ctx: ToolContext): Prom
 async function updateWireframe(args: z.infer<typeof wireframeArgs>, ctx: ToolContext): Promise<ToolOutcome> {
   const doc = await readDoc(ctx.oxen, ctx.view, ctx.pageSlug);
   const sections = await Promise.all(
-    doc.sections.map(async (section) => ({
+    docSections(doc)
+      .filter((section) => section.linked)
+      .map(async (section) => ({
       slug: section.slug,
       title: section.title,
-      blocks: parseSectionMarkdown(
+      elements: parseElementsMarkdown(
         (await readSectionVersion(ctx.oxen, ctx.view, ctx.pageSlug, section.slug, section.activeVersion)) ?? "",
       ),
     })),
