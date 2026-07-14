@@ -133,19 +133,22 @@ test("section rail: ⊕ inserts a new section below and focuses it", async ({ pa
   await expect(sections.nth(2)).toContainText("Features");
 });
 
-test("Shift+Enter makes a new element below; the phantom makes sections", async ({ page }) => {
+test("Shift+Enter escapes the section; the phantom makes sections", async ({ page }) => {
   await setupTwoSections(page, `NewSec ${Date.now()}`);
   const sections = page.locator("[data-section-slug]");
 
-  // caret mid-text in the first section → Shift+Enter opens a whole new
-  // element below it, inside the same section — no split, no new section
+  // caret mid-text in the first section → Shift+Enter escapes: the caret
+  // drops into a fresh LOOSE element below the section — no split, no new
+  // section, and the grouped copy is untouched
   await page.getByText("Hero body line.").click();
   await page.waitForTimeout(200); // let the click's selection settle
   await page.keyboard.press("Shift+Enter");
-  await page.keyboard.type("Born by shortcut.");
+  await page.keyboard.type("Escaped the section.");
   await expect(sections).toHaveCount(2);
   await expect(sections.first()).toContainText("Hero body line.");
-  await expect(sections.first()).toContainText("Born by shortcut.");
+  await expect(sections.first()).not.toContainText("Escaped the section.");
+  await expect(sections.nth(1)).not.toContainText("Escaped the section.");
+  await expect(page.getByRole("textbox", { name: "Page copy" })).toContainText("Escaped the section.");
   // the original line stayed whole
   await expect(page.getByText("Hero body line.", { exact: true })).toBeVisible();
 

@@ -216,7 +216,7 @@ describe("doc structure", () => {
     ]);
   });
 
-  it("Shift+Enter drops into a fresh element below — never a section", async () => {
+  it("Shift+Enter escapes: new loose element below the section (or element)", async () => {
     const { editor } = makeEditor();
     registerShiftEnterNewElement(editor);
     await update(editor, () =>
@@ -241,10 +241,9 @@ describe("doc structure", () => {
         { type: "p", text: "" },
       ],
     });
-    expect(snapshot.filter((c) => c.kind === "section")).toHaveLength(1);
 
-    // from mid-text inside a section: the element lands in the section,
-    // and the caret's line is NOT split (h1 keeps its full text)
+    // from mid-text inside a section: the caret escapes to a fresh loose
+    // paragraph *below the section*; the section and its line stay whole
     await update(editor, () => {
       const heroSection = $getRoot().getChildren().filter($isSectionNode)[0]!;
       const h1 = heroSection.getChildren()[1]!;
@@ -254,16 +253,8 @@ describe("doc structure", () => {
       editor.dispatchCommand(KEY_ENTER_COMMAND, { shiftKey: true, preventDefault: () => {} } as KeyboardEvent),
     ).toBe(true);
     snapshot = editor.read($snapshotContent);
-    expect(snapshot[1]).toEqual({
-      kind: "section",
-      slug: "hero",
-      elements: [
-        { type: "eyebrow", text: "NEW" },
-        { type: "h1", text: "Big claim" },
-        { type: "p", text: "" },
-        { type: "p", text: "Support copy." },
-      ],
-    });
+    expect(snapshot[1]).toEqual({ kind: "section", slug: "hero", elements: hero });
+    expect(snapshot[2]).toEqual({ kind: "elements", elements: [{ type: "p", text: "" }] });
 
     // plain Enter is untouched
     expect(
