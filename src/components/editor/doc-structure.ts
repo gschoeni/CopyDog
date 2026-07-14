@@ -146,10 +146,10 @@ function $insertSectionAfterNode(node: LexicalNode, makeSlug: () => string): voi
 }
 
 /**
- * Shift+Enter drops the caret into a fresh element directly below the
- * current one — a whole new paragraph regardless of where in the text the
- * caret sits (plain Enter would split it). Inside a section it stays in
- * the section; in loose copy it stays loose. Registered above the
+ * Shift+Enter escapes to a fresh loose element: from inside a section the
+ * caret drops into a new paragraph *below the section*; from loose copy,
+ * into a new paragraph below the current element. Either way the current
+ * line stays whole (plain Enter would split it). Registered above the
  * rich-text handler, which would otherwise insert a soft line break.
  */
 export function registerShiftEnterNewElement(editor: LexicalEditor): () => void {
@@ -162,8 +162,10 @@ export function registerShiftEnterNewElement(editor: LexicalEditor): () => void 
       const topLevel = selection.anchor.getNode().getTopLevelElement();
       if (!topLevel) return false;
       event.preventDefault();
+      const parent = topLevel.getParent();
+      const anchor = $isSectionNode(parent) ? parent : topLevel;
       const paragraph = $createParagraphNode();
-      topLevel.insertAfter(paragraph);
+      anchor.insertAfter(paragraph);
       paragraph.select();
       return true;
     },
