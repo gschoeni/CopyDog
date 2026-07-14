@@ -14,6 +14,15 @@ export function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Anchor destinations: web/mail/relative/fragment only — never scripts. */
+export function safeHref(url: string): string {
+  const trimmed = url.trim();
+  if (/^(https?:|mailto:)/i.test(trimmed) || trimmed.startsWith("/") || trimmed.startsWith("#")) {
+    return trimmed;
+  }
+  return "#";
+}
+
 /** Inline markdown → HTML string (escaped). */
 export function renderInline(inlineMarkdown: string): string {
   return parseInline(inlineMarkdown)
@@ -22,6 +31,7 @@ export function renderInline(inlineMarkdown: string): string {
       if (run.code) html = `<code>${html}</code>`;
       if (run.italic) html = `<em>${html}</em>`;
       if (run.bold) html = `<strong>${html}</strong>`;
+      if (run.link !== undefined) html = `<a href="${escapeHtml(safeHref(run.link))}">${html}</a>`;
       return html;
     })
     .join("");
@@ -45,5 +55,7 @@ export function renderBlock(block: Block): string {
       return `<a class="wf-button" href="#">${renderInline(block.label)}</a>`;
     case "bullets":
       return `<ul class="wf-list">${block.items.map((item) => `<li>${renderInline(item)}</li>`).join("")}</ul>`;
+    case "quote":
+      return `<blockquote class="wf-quote">${renderInline(block.text)}</blockquote>`;
   }
 }

@@ -16,11 +16,11 @@ Output rules:
 - Output ONLY an HTML fragment. No markdown fences, no <html>/<head>/<body>, no <style>, no <script>.
 - Allowed tags: section div header footer nav main aside figure h1-h6 p a span ul ol li blockquote strong em code
 - Allowed classes (nothing else): wf-section wf-container wf-center wf-split wf-grid-3 wf-stack wf-actions
-  wf-eyebrow wf-h1 wf-h2 wf-h3 wf-h4 wf-h5 wf-h6 wf-p wf-list wf-button wf-button-secondary
+  wf-eyebrow wf-h1 wf-h2 wf-h3 wf-h4 wf-h5 wf-h6 wf-p wf-list wf-quote wf-button wf-button-secondary
   wf-media wf-avatar wf-pill wf-navbar wf-logo wf-nav-items wf-footer
 - Each copy section becomes: <section class="wf-section" data-copy="SECTION_SLUG"> … </section>
 - Inside a section, each copy block gets an EMPTY slot element with data-block="TYPE" where TYPE is one of:
-  h1 h2 h3 h4 h5 h6 p eyebrow button bullets. Slots must appear in a sensible visual order.
+  h1 h2 h3 h4 h5 h6 p eyebrow button bullets quote. Slots must appear in a sensible visual order.
   Use exactly one slot per copy block (count them). bullets slots are <ul class="wf-list" data-block="bullets"></ul>.
   button slots are <a class="wf-button" data-block="button" href="#"></a> grouped inside <div class="wf-actions">.
 - Add one element with data-overflow per section (usually the main text column) so extra copy has a home.

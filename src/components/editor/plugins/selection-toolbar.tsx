@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { $isLinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
 import { $isListNode, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND } from "@lexical/list";
-import { $createHeadingNode, $isHeadingNode } from "@lexical/rich-text";
+import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode } from "@lexical/rich-text";
 import { $setBlocksType } from "@lexical/selection";
 import {
   $createParagraphNode,
@@ -24,9 +25,9 @@ import { $createEyebrowNode, $isEyebrowNode } from "../nodes/eyebrow-node";
 import { $isSectionNode } from "../nodes/section-node";
 
 /**
- * The floating toolbar above a text selection: inline marks, turn-into,
- * and — when the selection touches more than one block — "Group into
- * section", the reorganization move this editor is built around.
+ * The floating toolbar above a text selection: inline marks, a link,
+ * quick block types (H1–H3, quote), the full turn-into menu, and — when
+ * the selection touches more than one block — "Group into section".
  */
 export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | null }) {
   const [editor] = useLexicalComposerContext();
@@ -35,14 +36,16 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
     left: number;
     blockType: BlockType;
     blockCount: number;
-    spansSections: boolean;
+    hasLink: boolean;
   } | null>(null);
+  const [linkDraft, setLinkDraft] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     editor.getEditorState().read(() => {
       const selection = $getSelection();
       if (!$isRangeSelection(selection) || selection.isCollapsed()) {
         setState(null);
+        setLinkDraft(null);
         return;
       }
       const nativeSelection = window.getSelection();
@@ -60,12 +63,15 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
       const wrapperRect = wrapper.getBoundingClientRect();
 
       const blocks = $touchedBlockNodes(selection.getNodes());
-      const sections = new Set(blocks.map((b) => b.getParent()).filter($isSectionNode).map((s) => s.getKey()));
+      const hasLink = selection
+        .getNodes()
+        .some((node) => $isLinkNode(node) || $isLinkNode(node.getParent()));
 
       const anchorBlock = blocks[0];
       let blockType: BlockType = "p";
       if (anchorBlock) {
         if ($isHeadingNode(anchorBlock)) blockType = anchorBlock.getTag() as HeadingLevel;
+        else if ($isQuoteNode(anchorBlock)) blockType = "quote";
         else if ($isEyebrowNode(anchorBlock)) blockType = "eyebrow";
         else if ($isButtonNode(anchorBlock)) blockType = "button";
         else if ($isListNode(anchorBlock)) blockType = "bullets";
@@ -76,7 +82,7 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
         left: Math.max(0, rect.left - wrapperRect.left),
         blockType,
         blockCount: blocks.length,
-        spansSections: sections.size > 1,
+        hasLink,
       });
     });
   }, [editor]);
@@ -112,6 +118,8 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
         }
         if (headingLevels.includes(type as HeadingLevel)) {
           $setBlocksType(selection, () => $createHeadingNode(type as HeadingLevel));
+        } else if (type === "quote") {
+          $setBlocksType(selection, () => $createQuoteNode());
         } else if (type === "eyebrow") {
           $setBlocksType(selection, () => $createEyebrowNode());
         } else if (type === "button") {
@@ -124,36 +132,106 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
     [editor],
   );
 
+  const toggleLink = useCallback(() => {
+    if (state?.hasLink) {
+      editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
+      setLinkDraft(null);
+    } else {
+      setLinkDraft((draft) => (draft === null ? "" : null));
+    }
+  }, [editor, state?.hasLink]);
+
+  const applyLink = useCallback(
+    (url: string) => {
+      const target = url.trim();
+      if (target) {
+        editor.dispatchCommand(TOGGLE_LINK_COMMAND, target);
+      }
+      setLinkDraft(null);
+      editor.focus();
+    },
+    [editor],
+  );
+
   if (!state) return null;
 
   return (
     <div
       role="toolbar"
       aria-label="Selection tools"
-      className="absolute z-20 flex items-center gap-1 rounded-lg border border-border bg-surface p-1 shadow-raised"
+      className="absolute z-20 rounded-lg border border-border bg-surface shadow-raised"
       style={{ top: state.top, left: state.left }}
-      onMouseDown={(e) => e.preventDefault() /* keep the text selection */}
+      // keep the text selection — but let the link input take focus
+      onMouseDown={(e) => {
+        if ((e.target as HTMLElement).tagName !== "INPUT") e.preventDefault();
+      }}
     >
-      <MarkButton label="Bold" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")}>
-        <span className="font-bold">B</span>
-      </MarkButton>
-      <MarkButton label="Italic" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")}>
-        <span className="italic">i</span>
-      </MarkButton>
-      <div className="mx-0.5 h-4 w-px bg-border" aria-hidden />
-      <TurnIntoMenu blockType={state.blockType} onApply={applyBlockType} />
-      {state.blockCount > 1 && (
-        <>
-          <div className="mx-0.5 h-4 w-px bg-border" aria-hidden />
-          <button
-            type="button"
-            onClick={onGroup}
-            className="flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-accent transition-colors hover:bg-accent-soft"
+      <div className="flex items-center gap-0.5 p-1">
+        <MarkButton label="Bold" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")}>
+          <span className="font-bold">B</span>
+        </MarkButton>
+        <MarkButton label="Italic" onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic")}>
+          <span className="italic">i</span>
+        </MarkButton>
+        <MarkButton label={state.hasLink ? "Remove link" : "Link"} active={state.hasLink || linkDraft !== null} onClick={toggleLink}>
+          <LinkIcon />
+        </MarkButton>
+        <div className="mx-0.5 h-4 w-px bg-border" aria-hidden />
+        {(["h1", "h2", "h3"] as const).map((level) => (
+          <MarkButton
+            key={level}
+            label={BLOCK_TYPE_LABELS[level]}
+            active={state.blockType === level}
+            onClick={() => applyBlockType(state.blockType === level ? "p" : level)}
           >
-            <GroupIcon />
-            Group into section
-          </button>
-        </>
+            <span className="text-[11px] font-semibold uppercase">{level}</span>
+          </MarkButton>
+        ))}
+        <MarkButton
+          label="Quote"
+          active={state.blockType === "quote"}
+          onClick={() => applyBlockType(state.blockType === "quote" ? "p" : "quote")}
+        >
+          <QuoteIcon />
+        </MarkButton>
+        <div className="mx-0.5 h-4 w-px bg-border" aria-hidden />
+        <TurnIntoMenu blockType={state.blockType} onApply={applyBlockType} />
+        {state.blockCount > 1 && (
+          <>
+            <div className="mx-0.5 h-4 w-px bg-border" aria-hidden />
+            <button
+              type="button"
+              onClick={onGroup}
+              className="flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-accent transition-colors hover:bg-accent-soft"
+            >
+              <GroupIcon />
+              Group into section
+            </button>
+          </>
+        )}
+      </div>
+
+      {linkDraft !== null && (
+        <div className="border-t border-border p-1.5">
+          <input
+            autoFocus
+            type="url"
+            placeholder="https://… (Enter to apply)"
+            aria-label="Link URL"
+            defaultValue={linkDraft}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                applyLink(e.currentTarget.value);
+              }
+              if (e.key === "Escape") {
+                setLinkDraft(null);
+                editor.focus();
+              }
+            }}
+            className="h-7 w-64 rounded-md border border-border bg-surface px-2 text-xs text-ink outline-none placeholder:text-ink-tertiary focus:border-accent"
+          />
+        </div>
       )}
     </div>
   );
@@ -213,17 +291,48 @@ function TurnIntoMenu({ blockType, onApply }: { blockType: BlockType; onApply: (
   );
 }
 
-function MarkButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
+function MarkButton({
+  label,
+  onClick,
+  active,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <button
       type="button"
       aria-label={label}
+      aria-pressed={active}
       title={label}
       onClick={onClick}
-      className="flex size-7 items-center justify-center rounded-md text-sm text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
+      className={`flex size-7 items-center justify-center rounded-md text-sm transition-colors hover:bg-surface-hover hover:text-ink ${
+        active ? "bg-accent-soft text-accent" : "text-ink-secondary"
+      }`}
     >
       {children}
     </button>
+  );
+}
+
+function LinkIcon() {
+  return (
+    <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
+      <path d="M6.5 9.5l3-3" strokeLinecap="round" />
+      <path d="M7.5 4.75L9 3.25a2.65 2.65 0 013.75 3.75L11.25 8.5" strokeLinecap="round" />
+      <path d="M8.5 11.25L7 12.75a2.65 2.65 0 01-3.75-3.75L4.75 7.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function QuoteIcon() {
+  return (
+    <svg viewBox="0 0 16 16" className="size-4" fill="currentColor" aria-hidden>
+      <path d="M3 9.5c0-2.6 1.5-4.6 3.8-5.5l.5 1c-1.4.7-2.2 1.7-2.4 2.8.2-.1.5-.15.8-.15 1 0 1.8.8 1.8 1.85S6.7 11.5 5.6 11.5C4.1 11.5 3 10.7 3 9.5zm6 0c0-2.6 1.5-4.6 3.8-5.5l.5 1c-1.4.7-2.2 1.7-2.4 2.8.2-.1.5-.15.8-.15 1 0 1.8.8 1.8 1.85s-.8 2-1.9 2C10.1 11.5 9 10.7 9 9.5z" />
+    </svg>
   );
 }
 

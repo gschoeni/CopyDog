@@ -11,6 +11,8 @@ export interface TextRun {
   bold?: boolean;
   italic?: boolean;
   code?: boolean;
+  /** inline anchor destination */
+  link?: string;
 }
 
 export function parseInline(markdown: string): TextRun[] {
@@ -27,6 +29,15 @@ export function parseInline(markdown: string): TextRun[] {
 
   while (i < markdown.length) {
     const rest = markdown.slice(i);
+
+    // inline anchor: [text](url) — link text may carry escaped brackets
+    const anchor = rest.match(/^\[((?:\\.|[^\]\\])+)\]\(([^)\s]*)\)/);
+    if (anchor) {
+      flush();
+      runs.push({ text: unescapeInline(anchor[1]!), link: anchor[2]! || "#" });
+      i += anchor[0].length;
+      continue;
+    }
 
     const code = rest.match(/^`([^`]+)`/);
     if (code) {
@@ -78,6 +89,9 @@ export function parseInline(markdown: string): TextRun[] {
 export function serializeInline(runs: TextRun[]): string {
   return runs
     .map((run) => {
+      if (run.link !== undefined) {
+        return `[${run.text.replace(/([\]\\])/g, "\\$1")}](${run.link || "#"})`;
+      }
       let text = run.code ? run.text : escapePlain(run.text);
       if (run.code) return `\`${text}\``;
       if (run.bold && run.italic) text = `***${text}***`;
@@ -89,7 +103,7 @@ export function serializeInline(runs: TextRun[]): string {
 }
 
 function escapePlain(text: string): string {
-  return text.replace(/([*`\\])/g, "\\$1");
+  return text.replace(/([*`[\\])/g, "\\$1");
 }
 
 function unescapeInline(text: string): string {

@@ -88,6 +88,44 @@ test("turn-into: highlighted text changes block type from the toolbar", async ({
   ).toBeVisible();
 });
 
+test("toolbar: quick headings, quote, and links on highlighted text", async ({ page }) => {
+  await setupTwoSections(page, `Tools ${Date.now()}`);
+  const editor = page.getByRole("textbox", { name: "Page copy" });
+  const toolbar = page.getByRole("toolbar", { name: "Selection tools" });
+
+  // H2 quick button
+  await page.getByText("Hero body line.").click({ clickCount: 3 });
+  await toolbar.getByRole("button", { name: "Heading 2" }).click();
+  await expect(editor.getByRole("heading", { level: 2, name: "Hero body line." })).toBeVisible();
+
+  // quote
+  await page.getByText("Hero body line.").click({ clickCount: 3 });
+  await toolbar.getByRole("button", { name: "Quote" }).click();
+  await expect(editor.locator("blockquote", { hasText: "Hero body line." })).toBeVisible();
+
+  // link: select a word in the features body, apply a URL
+  await page.getByText("Feature body line.").click({ clickCount: 3 });
+  await toolbar.getByRole("button", { name: "Link", exact: true }).click();
+  await page.getByLabel("Link URL").fill("https://copydog.app/docs");
+  await page.keyboard.press("Enter");
+  const anchor = editor.locator('a[href="https://copydog.app/docs"]');
+  await expect(anchor).toContainText("Feature body line.");
+
+  // everything persists through the markdown round-trip
+  await page.waitForTimeout(1000);
+  await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "Page copy" }).locator("blockquote")).toContainText("Hero body line.");
+  await expect(
+    page.getByRole("textbox", { name: "Page copy" }).locator('a[href="https://copydog.app/docs"]'),
+  ).toContainText("Feature body line.");
+
+  // removing the link
+  await page.getByText("Feature body line.").click({ clickCount: 3 });
+  await page.getByRole("toolbar", { name: "Selection tools" }).getByRole("button", { name: "Remove link" }).click();
+  await expect(page.getByRole("textbox", { name: "Page copy" }).locator("a")).toHaveCount(0);
+});
+
 test("section rail: ⊕ inserts a new section below and focuses it", async ({ page }) => {
   await setupTwoSections(page, `Rail ${Date.now()}`);
   const sections = page.locator("[data-section-slug]");
