@@ -43,6 +43,7 @@ import {
   $replaceSectionBlocks,
   $snapshotSections,
   $touchedBlockNodes,
+  registerEmptySectionBackspace,
   registerSectionTransforms,
   registerShiftEnterNewSection,
   type SectionSnapshot,
@@ -218,6 +219,7 @@ function DocEditorInner({
   useEffect(() => registerSectionTransforms(editor, makeSlug), [editor, makeSlug]);
   useEffect(() => registerMarkdownShortcuts(editor, [HEADING, UNORDERED_LIST]), [editor]);
   useEffect(() => registerShiftEnterNewSection(editor, makeSlug), [editor, makeSlug]);
+  useEffect(() => registerEmptySectionBackspace(editor), [editor]);
 
   useEffect(() => {
     if (autoFocus) editor.focus(undefined, { defaultSelection: "rootEnd" });
