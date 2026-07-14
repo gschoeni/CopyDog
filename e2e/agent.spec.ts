@@ -13,8 +13,7 @@ test("assistant rewrites a section through a tool call", async ({ page }) => {
 
   await page.getByPlaceholder("Acme landing page").fill(`Agent ${Date.now()}`);
   await page.getByRole("button", { name: "Create project" }).click();
-  await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/, { timeout: 20_000 });
-  await page.getByRole("link", { name: /Home/ }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
   await page.getByRole("textbox", { name: "Page copy" }).click();
   await page.keyboard.type("# Human headline");
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });

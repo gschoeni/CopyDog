@@ -13,8 +13,7 @@ async function setupTwoSections(page: Page, name: string) {
   await signIn(page);
   await page.getByPlaceholder("Acme landing page").fill(name);
   await page.getByRole("button", { name: "Create project" }).click();
-  await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/, { timeout: 20_000 });
-  await page.getByRole("link", { name: /Home/ }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
 
   await page.getByRole("textbox", { name: "Page copy" }).click();
   await page.keyboard.type("# Hero title");

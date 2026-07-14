@@ -22,18 +22,18 @@ test("two users: invite → publish → propose → merge → sync → adopt", a
   const projectName = `Collab ${Date.now()}`;
   await alice.page.getByPlaceholder("Acme landing page").fill(projectName);
   await alice.page.getByRole("button", { name: "Create project" }).click();
-  await expect(alice.page).toHaveURL(/\/projects\/[0-9a-f-]+$/, { timeout: 20_000 });
-  const projectUrl = alice.page.url();
+  await expect(alice.page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
+  const projectUrl = alice.page.url().replace(/\/pages\/home$/, "");
 
-  // invite Bob
+  // invite Bob from the editor sidebar
   await alice.page.getByLabel("Invite by email").fill(bobEmail);
-  await alice.page.getByRole("button", { name: "Invite" }).click();
+  await alice.page.keyboard.press("Enter");
   await expect(alice.page.getByText(bobEmail.split("@")[0]!)).toBeVisible({ timeout: 10_000 });
 
   // Alice writes hero copy and an alternate version
-  await alice.page.getByRole("link", { name: /Home/ }).click();
   await alice.page.getByRole("textbox", { name: "Page copy" }).click();
   await alice.page.keyboard.type("# Alice's headline");
+  await openSectionChrome(alice.page);
   const title = alice.page.getByLabel("Section title");
   await title.fill("Hero");
   await title.blur();
