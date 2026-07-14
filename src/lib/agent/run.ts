@@ -68,7 +68,13 @@ export async function runAgentTurn(
     }
   }
 
-  return { reply: "I made the changes — take a look.", mutated };
+  // ran out of rounds before the model produced a closing message
+  return {
+    reply: mutated
+      ? "I made the changes — take a look."
+      : "I couldn't finish that — try rephrasing or breaking it into smaller steps.",
+    mutated,
+  };
 }
 
 async function buildPageContext(ctx: ToolContext): Promise<string> {

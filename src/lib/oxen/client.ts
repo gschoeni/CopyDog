@@ -168,6 +168,14 @@ export class OxenClient {
     );
   }
 
+  /** Stages file removals in a workspace; they disappear on the next commit. */
+  async deleteWorkspaceFiles(repo: string, workspaceId: string, paths: string[]): Promise<void> {
+    if (paths.length === 0) return;
+    await this.request("DELETE", `${this.repoPath(repo)}/workspaces/${encodeURIComponent(workspaceId)}/files`, {
+      json: paths,
+    });
+  }
+
   /** Reads a staged (or base-commit) file from a workspace. */
   async readWorkspaceFile(repo: string, workspaceId: string, path: string): Promise<string> {
     const res = await this.rawRequest(

@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DocEditor, type DocEditorHandle } from "@/components/editor/doc-editor";
 import type { ContentSnapshot } from "@/components/editor/doc-structure";
 import { Button } from "@/components/ui/button";
-import { ImportIcon, SparklesIcon } from "@/components/ui/icons";
+import { ImportIcon, LinkIcon, SparklesIcon, UnlinkIcon } from "@/components/ui/icons";
 import type { Element } from "@/lib/copy/elements";
 import type { DocContent, DocSection } from "@/lib/content/doc";
 import { parseElementsMarkdown, serializeElements } from "@/lib/copy/markdown";
@@ -287,7 +287,9 @@ export function PageEditor({
 
       for (const slug of prevSections.keys()) {
         if (!nextSectionSlugs.has(slug)) {
-          metaRef.current.delete(slug);
+          // keep the meta: undo can resurrect this section, and it must come
+          // back with its versions/linked state intact, not as a newborn.
+          // doc.json only lists what's in the snapshot, so nothing leaks.
           const timer = contentTimers.current.get(`s:${slug}`);
           if (timer) {
             clearTimeout(timer);
@@ -325,7 +327,14 @@ export function PageEditor({
           continue;
         }
 
-        if (prev && !elementsEqual(prev.elements, entry.elements)) {
+        if (!prev) {
+          // resurrected by undo — re-save so the active version file matches
+          scheduleSectionSave(entry.slug, entry.elements);
+          structural = true;
+          continue;
+        }
+
+        if (!elementsEqual(prev.elements, entry.elements)) {
           scheduleSectionSave(entry.slug, entry.elements);
           // auto-title until manually renamed
           const prevDerived = deriveSectionTitle(prev.elements);
@@ -336,6 +345,15 @@ export function PageEditor({
               structural = true;
             }
           }
+        }
+      }
+
+      // runs that no longer exist must not save — a stale timer would
+      // recreate `run-N.md` for an out-of-range N
+      for (const [key, timer] of contentTimers.current) {
+        if (key.startsWith("r:") && Number(key.slice(2)) >= runOrdinal) {
+          clearTimeout(timer);
+          contentTimers.current.delete(key);
         }
       }
 
@@ -434,6 +452,11 @@ export function PageEditor({
     [scheduleStructureSave, rebuildViews],
   );
 
+  // version ops hit the server directly; a failure surfaces on the save badge
+  const guarded = useCallback((op: Promise<void>) => {
+    void op.catch(() => setSaveState("error"));
+  }, []);
+
   const deleteSection = useCallback((slug: string) => {
     docRef.current?.removeSection(slug);
   }, []);
@@ -516,7 +539,7 @@ export function PageEditor({
               meta.linked ? "text-accent" : "text-ink-tertiary"
             }`}
           >
-            <LinkedIcon linked={meta.linked} />
+            {meta.linked ? <LinkIcon /> : <UnlinkIcon />}
           </button>
           <VersionSwitcher
             projectId={projectId}
@@ -524,9 +547,9 @@ export function PageEditor({
             sectionSlug={slug}
             versions={meta.versions}
             activeVersion={meta.activeVersion}
-            onSwitch={(v) => void switchVersion(slug, v)}
-            onCreate={(label) => void createVersion(slug, label)}
-            onAdopt={(source) => void adoptTeammateVersion(slug, source)}
+            onSwitch={(v) => guarded(switchVersion(slug, v))}
+            onCreate={(label) => guarded(createVersion(slug, label))}
+            onAdopt={(source) => guarded(adoptTeammateVersion(slug, source))}
           />
           <SectionNotes projectId={projectId} pageSlug={pageSlug} sectionSlug={slug} />
           <button
@@ -561,7 +584,7 @@ export function PageEditor({
         </div>
       );
     },
-    [projectId, pageSlug, sections, renameSection, toggleLinked, switchVersion, createVersion, adoptTeammateVersion, moveSection, deleteSection],
+    [projectId, pageSlug, sections, renameSection, toggleLinked, guarded, switchVersion, createVersion, adoptTeammateVersion, moveSection, deleteSection],
   );
 
   return (
@@ -686,25 +709,6 @@ function elementsEqual(a: Element[], b: Element[]): boolean {
   return a.length === b.length && JSON.stringify(a) === JSON.stringify(b);
 }
 
-function LinkedIcon({ linked }: { linked: boolean }) {
-  return (
-    <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
-      {linked ? (
-        <>
-          <path d="M6.5 9.5l3-3" strokeLinecap="round" />
-          <path d="M7.5 4.75L9 3.25a2.65 2.65 0 013.75 3.75L11.25 8.5" strokeLinecap="round" />
-          <path d="M8.5 11.25L7 12.75a2.65 2.65 0 01-3.75-3.75L4.75 7.5" strokeLinecap="round" />
-        </>
-      ) : (
-        <>
-          <path d="M7.5 4.75L9 3.25a2.65 2.65 0 013.75 3.75L11.25 8.5" strokeLinecap="round" />
-          <path d="M8.5 11.25L7 12.75a2.65 2.65 0 01-3.75-3.75L4.75 7.5" strokeLinecap="round" />
-          <path d="M3.5 3.5l9 9" strokeLinecap="round" />
-        </>
-      )}
-    </svg>
-  );
-}
 
 function ModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewMode) => void }) {
   const options: { value: ViewMode; label: string }[] = [

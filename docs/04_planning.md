@@ -258,3 +258,52 @@ in a section (headings auto-split the doc). The agreed model (see
   the new section at the true end.
 
 Verified: lint, typecheck, 133 unit tests, production build, 27 e2e tests.
+
+## 2026-07-13 (later) — Post-refactor review: bugs, hardening, cleanup
+
+A three-way review (editor layer, server/data layer, dead-code sweep) after
+the loose-elements refactor. Everything below is fixed and covered by tests:
+
+**Bugs**
+
+- **Proposal actions weren't project-scoped** (high): `mergeProposalAction` /
+  `closeProposalAction` fetched the proposal by id only, so a member of two
+  projects could merge project B's proposal into project A's repo. Both now
+  filter on `project_id`.
+- **Undo after section delete corrupted versions** (high): deleting a section
+  dropped its metadata immediately, so Cmd+Z resurrected it as a "new" section
+  — original.md overwritten with the active version's content, version list
+  collapsed. Metadata now survives in memory; a resurrected section reclaims
+  its versions/linked state and re-saves its active copy.
+- **Orphaned content files**: nothing ever deleted files from Oxen. Added
+  `deleteWorkspaceFiles` to the client + stub (staged removals, mirroring
+  oxen-server's `DELETE /workspaces/{id}/files`), then: publish prunes
+  committed files no doc.json references (never staged ones — a just-written
+  file whose structure save is still debouncing must survive); import/sync
+  prune eagerly (the editor reloads after both); **proposal merges now
+  propagate deletions to main** (was: "removals stay invisible").
+- **Grouping a middle slice of a section reordered copy**: `[a,b,c]` group `b`
+  → `c` read before `b`. Head slices now insert the new section before the
+  source; middle slices split the trailing copy into its own section.
+- **Stale run-save timers**: deleting content that shrank the run count left
+  `r:N` timers alive that recreated `run-N.md`. Cleared on reconcile.
+- **Turn-into from a bulleted list** applied `$setBlocksType` to a selection
+  captured before `REMOVE_LIST_COMMAND` rebuilt the nodes; now re-reads.
+- Version switch/create/adopt failures were silent; they now surface on the
+  save badge. Publish's `section_versions` refresh no longer swallows DB
+  errors. The assistant no longer claims "I made the changes" when it ran out
+  of rounds without mutating. doc.json slugs are regex-validated (they become
+  Oxen file paths). Import extraction now escapes `[` so prose that looks
+  like `[text](url)` can't round-trip into a live link.
+
+**Cleanup**
+
+- Dead code removed (`findSectionKey`, `$topLevelBlockOf`); last "block"
+  naming renamed to element across copy/editor/import/wireframe modules;
+  stale old-model comments rewritten.
+- Shared `LinkIcon`/`UnlinkIcon`/`ChevronDownIcon` in `ui/icons.tsx` replace
+  three inline SVG duplicates.
+- Unused deps dropped: `@lexical/utils`, `postgres`.
+- Deferred findings recorded in the [backlog](06_backlog.md).
+
+Verified: lint, typecheck, 140 unit tests, build, 27 e2e tests.

@@ -227,8 +227,8 @@ function DocEditorInner({
     if (autoFocus) editor.focus(undefined, { defaultSelection: "rootEnd" });
   }, [editor, autoFocus]);
 
-  // emit the mount-time snapshot: a fresh page's fallback section needs
-  // metadata (and its seed save) before the user ever types
+  // emit the mount-time snapshot so the owner reconciles against what the
+  // editor actually built (normalization can differ from the initial content)
   const emittedInitial = useRef(false);
   useEffect(() => {
     if (emittedInitial.current) return;
@@ -543,14 +543,6 @@ function insertSectionAfter(editor: LexicalEditor, slug: string, makeSlug: () =>
 }
 
 /** Finds the SectionNode key for a slug (used by drag/drop of sections). */
-export function findSectionKey(editor: LexicalEditor, slug: string): string | null {
-  return editor.read(() => {
-    for (const node of editor.getEditorState()._nodeMap.values()) {
-      if ($isSectionNode(node) && node.getSlug() === slug) return node.getKey();
-    }
-    return null;
-  });
-}
 
 export function moveSectionBySlug(editor: LexicalEditor, slug: string, beforeSlug: string | null): void {
   editor.update(() => {

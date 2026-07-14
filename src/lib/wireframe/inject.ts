@@ -1,13 +1,13 @@
 import { parse, HTMLElement as ParsedElement } from "node-html-parser";
 
 import type { Element, ElementType } from "@/lib/copy/elements";
-import { renderBlock, renderInline } from "@/lib/copy/html";
+import { renderElement, renderInline } from "@/lib/copy/html";
 
 /**
  * Copy injection — substitutes a page's active copy into its wireframe.
  *
  * The wireframe carries `data-copy="{sectionSlug}"` on section containers
- * and `data-element="{type}"` on the elements copy flows into. Blocks match
+ * and `data-element="{type}"` on the elements copy flows into. Elements match
  * slots of their own kind in document order (any heading level matches a
  * heading slot); copy with no matching slot is appended to the section's
  * `[data-overflow]` container (or the section itself); slots left without
@@ -61,14 +61,14 @@ function injectSection(container: ParsedElement, elements: Element[]): void {
 
   if (overflow.length > 0) {
     const target = container.querySelector("[data-overflow]") ?? container;
-    target.innerHTML += overflow.map(renderBlock).join("");
+    target.innerHTML += overflow.map(renderElement).join("");
   }
 }
 
-function slotAccepts(slotType: string, blockType: ElementType): boolean {
-  if (slotType === blockType) return true;
+function slotAccepts(slotType: string, elementType: ElementType): boolean {
+  if (slotType === elementType) return true;
   // any heading fits any heading slot — the wireframe sets visual hierarchy
-  return HEADING_TYPES.has(slotType) && HEADING_TYPES.has(blockType);
+  return HEADING_TYPES.has(slotType) && HEADING_TYPES.has(elementType);
 }
 
 function fillSlot(slot: ParsedElement, element: Element): void {

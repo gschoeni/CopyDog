@@ -26,9 +26,6 @@ importers:
       '@lexical/selection':
         specifier: ^0.47.0
         version: 0.47.0(typescript@5.9.3)
-      '@lexical/utils':
-        specifier: ^0.47.0
-        version: 0.47.0(typescript@5.9.3)
       '@supabase/ssr':
         specifier: ^0.12.0
         version: 0.12.0(@supabase/supabase-js@2.110.2)
@@ -50,9 +47,6 @@ importers:
       node-html-parser:
         specifier: ^9.0.0
         version: 9.0.0
-      postgres:
-        specifier: ^3.4.9
-        version: 3.4.9
       react:
         specifier: ^19.2.7
         version: 19.2.7
@@ -6367,7 +6361,8 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  postgres@3.4.9: {}
+  postgres@3.4.9:
+    optional: true
 
   prelude-ls@1.2.1: {}
 

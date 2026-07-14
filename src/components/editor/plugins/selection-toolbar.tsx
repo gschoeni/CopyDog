@@ -22,19 +22,21 @@ import { ELEMENT_TYPE_LABELS, headingLevels } from "@/lib/copy/elements";
 import { $touchedElementNodes } from "../doc-structure";
 import { $createButtonNode, $isButtonNode } from "../nodes/button-node";
 import { $createEyebrowNode, $isEyebrowNode } from "../nodes/eyebrow-node";
+import { ChevronDownIcon, LinkIcon } from "@/components/ui/icons";
+
 import { $isSectionNode } from "../nodes/section-node";
 
 /**
  * The floating toolbar above a text selection: inline marks, a link,
- * quick block types (H1–H3, quote), the full turn-into menu, and — when
- * the selection touches more than one block — "Group into section".
+ * quick element types (H1–H3, quote), the full turn-into menu, and
+ * "Group into section" for whatever elements the selection touches.
  */
 export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | null }) {
   const [editor] = useLexicalComposerContext();
   const [state, setState] = useState<{
     top: number;
     left: number;
-    blockType: ElementType;
+    elementType: ElementType;
     elementCount: number;
     hasLink: boolean;
   } | null>(null);
@@ -67,20 +69,20 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
         .getNodes()
         .some((node) => $isLinkNode(node) || $isLinkNode(node.getParent()));
 
-      const anchorBlock = touched[0];
-      let blockType: ElementType = "p";
-      if (anchorBlock) {
-        if ($isHeadingNode(anchorBlock)) blockType = anchorBlock.getTag() as HeadingLevel;
-        else if ($isQuoteNode(anchorBlock)) blockType = "quote";
-        else if ($isEyebrowNode(anchorBlock)) blockType = "eyebrow";
-        else if ($isButtonNode(anchorBlock)) blockType = "button";
-        else if ($isListNode(anchorBlock)) blockType = "bullets";
+      const anchorElement = touched[0];
+      let elementType: ElementType = "p";
+      if (anchorElement) {
+        if ($isHeadingNode(anchorElement)) elementType = anchorElement.getTag() as HeadingLevel;
+        else if ($isQuoteNode(anchorElement)) elementType = "quote";
+        else if ($isEyebrowNode(anchorElement)) elementType = "eyebrow";
+        else if ($isButtonNode(anchorElement)) elementType = "button";
+        else if ($isListNode(anchorElement)) elementType = "bullets";
       }
 
       setState({
         top: rect.top - wrapperRect.top - 44,
         left: Math.max(0, rect.left - wrapperRect.left),
-        blockType,
+        elementType,
         elementCount: touched.length,
         hasLink,
       });
@@ -103,19 +105,22 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
     };
   }, [editor, refresh]);
 
-  const applyBlockType = useCallback(
+  const applyElementType = useCallback(
     (type: ElementType) => {
       if (type === "bullets") {
         editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
         return;
       }
       editor.update(() => {
-        const selection = $getSelection();
-        if (!$isRangeSelection(selection)) return;
-        const anchor = $touchedElementNodes(selection.getNodes())[0];
+        const initial = $getSelection();
+        if (!$isRangeSelection(initial)) return;
+        const anchor = $touchedElementNodes(initial.getNodes())[0];
         if (anchor && $isListNode(anchor)) {
           editor.dispatchCommand(REMOVE_LIST_COMMAND, undefined);
         }
+        // re-read: removing the list rebuilt the nodes under the selection
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection)) return;
         if (headingLevels.includes(type as HeadingLevel)) {
           $setBlocksType(selection, () => $createHeadingNode(type as HeadingLevel));
         } else if (type === "quote") {
@@ -181,21 +186,21 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
           <MarkButton
             key={level}
             label={ELEMENT_TYPE_LABELS[level]}
-            active={state.blockType === level}
-            onClick={() => applyBlockType(state.blockType === level ? "p" : level)}
+            active={state.elementType === level}
+            onClick={() => applyElementType(state.elementType === level ? "p" : level)}
           >
             <span className="text-[11px] font-semibold uppercase">{level}</span>
           </MarkButton>
         ))}
         <MarkButton
           label="Quote"
-          active={state.blockType === "quote"}
-          onClick={() => applyBlockType(state.blockType === "quote" ? "p" : "quote")}
+          active={state.elementType === "quote"}
+          onClick={() => applyElementType(state.elementType === "quote" ? "p" : "quote")}
         >
           <QuoteIcon />
         </MarkButton>
         <div className="mx-0.5 h-4 w-px bg-border" aria-hidden />
-        <TurnIntoMenu blockType={state.blockType} onApply={applyBlockType} />
+        <TurnIntoMenu elementType={state.elementType} onApply={applyElementType} />
         {state.elementCount >= 1 && (
           <>
             <div className="mx-0.5 h-4 w-px bg-border" aria-hidden />
@@ -243,7 +248,7 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
  * selection), and taking focus would drop the selection anyway. This menu
  * never takes focus — the selection survives, the conversion applies.
  */
-function TurnIntoMenu({ blockType, onApply }: { blockType: ElementType; onApply: (type: ElementType) => void }) {
+function TurnIntoMenu({ elementType, onApply }: { elementType: ElementType; onApply: (type: ElementType) => void }) {
   const [open, setOpen] = useState(false);
 
   // the toolbar unmounts whenever the selection changes, so `open` state
@@ -258,10 +263,8 @@ function TurnIntoMenu({ blockType, onApply }: { blockType: ElementType; onApply:
         onClick={() => setOpen((v) => !v)}
         className="flex h-7 items-center gap-1 rounded-md px-2 text-xs text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
       >
-        {ELEMENT_TYPE_LABELS[blockType]}
-        <svg viewBox="0 0 16 16" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-          <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        {ELEMENT_TYPE_LABELS[elementType]}
+        <ChevronDownIcon className="size-3" />
       </button>
       {open && (
         <div
@@ -274,15 +277,15 @@ function TurnIntoMenu({ blockType, onApply }: { blockType: ElementType; onApply:
               key={type}
               type="button"
               role="option"
-              aria-selected={type === blockType}
+              aria-selected={type === elementType}
               onClick={() => {
                 setOpen(false);
-                if (type !== blockType) onApply(type);
+                if (type !== elementType) onApply(type);
               }}
               className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
             >
               {ELEMENT_TYPE_LABELS[type]}
-              {type === blockType && <span className="text-accent">✓</span>}
+              {type === elementType && <span className="text-accent">✓</span>}
             </button>
           ))}
         </div>
@@ -318,15 +321,6 @@ function MarkButton({
   );
 }
 
-function LinkIcon() {
-  return (
-    <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
-      <path d="M6.5 9.5l3-3" strokeLinecap="round" />
-      <path d="M7.5 4.75L9 3.25a2.65 2.65 0 013.75 3.75L11.25 8.5" strokeLinecap="round" />
-      <path d="M8.5 11.25L7 12.75a2.65 2.65 0 01-3.75-3.75L4.75 7.5" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 function QuoteIcon() {
   return (

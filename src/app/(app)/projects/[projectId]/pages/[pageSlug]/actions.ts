@@ -16,6 +16,7 @@ import {
   readDoc,
   readSectionVersion,
   readSite,
+  replaceDoc,
   syncPageFromMain,
   writeDoc,
   writeElementsRun,
@@ -63,6 +64,8 @@ const saveStructureInput = z.object({
 export async function saveStructureAction(input: z.infer<typeof saveStructureInput>): Promise<{ ok: boolean }> {
   const { projectId, pageSlug, content } = saveStructureInput.parse(input);
   const { oxen, view } = await requireProjectAccess(projectId);
+  // plain write, no orphan pruning: the editor may resurrect deleted
+  // sections via undo, so their files must survive until publish prunes
   await writeDoc(oxen, view, pageSlug, { version: 2, content });
   return { ok: true };
 }
@@ -168,8 +171,15 @@ export async function publishAction(input: z.infer<typeof publishInput>): Promis
       }
     }
   }
-  await supabase.from("section_versions").delete().match({ project_id: project.id, author_id: user.id });
-  if (rows.length) await supabase.from("section_versions").insert(rows);
+  const { error: deleteError } = await supabase
+    .from("section_versions")
+    .delete()
+    .match({ project_id: project.id, author_id: user.id });
+  if (deleteError) throw new Error(`publish index refresh failed: ${deleteError.message}`);
+  if (rows.length) {
+    const { error: insertError } = await supabase.from("section_versions").insert(rows);
+    if (insertError) throw new Error(`publish index refresh failed: ${insertError.message}`);
+  }
 
   return { ok: true };
 }
@@ -386,7 +396,7 @@ export async function importPageAction(input: z.infer<typeof importPageInput>): 
       linked: true,
     });
   }
-  await writeDoc(oxen, view, pageSlug, { version: 2, content });
+  await replaceDoc(oxen, view, pageSlug, { version: 2, content });
 
   // lay it out
   const html = await generateWireframe(

@@ -21,7 +21,8 @@ interface StubWorkspace {
   name?: string;
   branchName: string;
   baseCommitId: string;
-  staged: Map<string, string>;
+  /** staged content by path; `null` marks a staged removal */
+  staged: Map<string, string | null>;
 }
 
 interface StubRepo {
@@ -215,8 +216,10 @@ export class OxenStub {
       const base = repo.commits.get(ws.baseCommitId)!;
       const added: { filename: string }[] = [];
       const modified: { filename: string }[] = [];
-      for (const [path] of ws.staged) {
-        (base.files.has(path) ? modified : added).push({ filename: path });
+      const removed: { filename: string }[] = [];
+      for (const [path, content] of ws.staged) {
+        if (content === null) removed.push({ filename: path });
+        else (base.files.has(path) ? modified : added).push({ filename: path });
       }
       return json({
         status: "success",
@@ -224,7 +227,7 @@ export class OxenStub {
           added_dirs: {},
           added_files: { entries: added },
           modified_files: { entries: modified },
-          removed_files: { entries: [] },
+          removed_files: { entries: removed },
         },
       });
     }
@@ -241,10 +244,26 @@ export class OxenStub {
       }
       if (req.method === "GET") {
         const staged = ws.staged.get(path);
-        const base = repo.commits.get(ws.baseCommitId)!.files.get(path);
-        const content = staged ?? base;
+        if (staged === null) throw new StubHttpError(404, `file not found: ${path}`);
+        const content = staged ?? repo.commits.get(ws.baseCommitId)!.files.get(path);
         if (content === undefined) throw new StubHttpError(404, `file not found: ${path}`);
         return new Response(content, { status: 200 });
+      }
+      if (req.method === "DELETE" && path === "") {
+        // stages removals; paths absent from both stage and base are reported back
+        const paths = (await req.json()) as string[];
+        const base = repo.commits.get(ws.baseCommitId)!;
+        const missing: string[] = [];
+        for (const p of paths) {
+          const staged = ws.staged.get(p);
+          if (staged === undefined && !base.files.has(p)) {
+            missing.push(p);
+            continue;
+          }
+          if (base.files.has(p)) ws.staged.set(p, null);
+          else ws.staged.delete(p); // never committed — unstage entirely
+        }
+        return json({ status: "success", paths: missing.length ? missing : paths }, missing.length ? 206 : 200);
       }
     }
 
@@ -257,7 +276,10 @@ export class OxenStub {
         throw new StubHttpError(422, "workspace is behind the target branch");
       }
       const baseFiles = new Map(repo.commits.get(ws.baseCommitId)!.files);
-      for (const [p, content] of ws.staged) baseFiles.set(p, content);
+      for (const [p, content] of ws.staged) {
+        if (content === null) baseFiles.delete(p);
+        else baseFiles.set(p, content);
+      }
       const commit = this.makeCommit(repo, [branchHead], body.message, body.author, body.email, baseFiles);
       repo.branches.set(branch, commit.id);
       // named workspaces persist and fast-forward to the new head

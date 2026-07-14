@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { ChevronDownIcon } from "@/components/ui/icons";
 import type { SectionVersionRef } from "@/lib/content/doc";
 import { createClient } from "@/lib/supabase/client";
 
@@ -189,8 +190,6 @@ export function VersionSwitcher({
 
 function ChevronDown() {
   return (
-    <svg viewBox="0 0 16 16" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-      <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <ChevronDownIcon className="size-3" />
   );
 }
