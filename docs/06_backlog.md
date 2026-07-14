@@ -35,3 +35,5 @@ In this file, write future ideas, links, and things we should explore.
 - **Rich text niceties**: links inside paragraphs, keyboard block menu (/).
 - **Block multi-select** (click handles with shift, like Notion) on top of the
   text-selection grouping that exists now.
+- **AI sectioning pass** — "section this page for me": proposes named,
+  linked sections from loose copy (assistant tool + pre-generation offer).
