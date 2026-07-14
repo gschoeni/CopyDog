@@ -371,7 +371,8 @@ function DocEditorInner({
                   sectionRects={sectionRects}
                   wrapperRef={wrapperRef}
                   onDropLine={setSectionDropLine}
-                  onOpen={() => setOpenHeaderSlug(rect.slug)}
+                  open={openHeaderSlug === rect.slug}
+                  onOpenChange={(open) => setOpenHeaderSlug(open ? rect.slug : null)}
                 />
               </div>
               {/* header strip: title · version · notes · delete — opens only
@@ -440,14 +441,16 @@ function SectionGrip({
   sectionRects,
   wrapperRef,
   onDropLine,
-  onOpen,
+  open,
+  onOpenChange,
 }: {
   slug: string;
   editor: LexicalEditor;
   sectionRects: SectionRect[];
   wrapperRef: React.RefObject<HTMLDivElement | null>;
   onDropLine: (top: number | null) => void;
-  onOpen: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const startDrag = (event: React.PointerEvent) => {
     event.preventDefault();
@@ -456,7 +459,8 @@ function SectionGrip({
 
     // pressing the handle reveals the section header; moving past the
     // threshold turns the press into a drag
-    onOpen();
+    const wasOpen = open;
+    onOpenChange(true);
     const startY = event.clientY;
     let dragging = false;
 
@@ -491,8 +495,13 @@ function SectionGrip({
       document.removeEventListener("pointerup", onUp);
       document.removeEventListener("keydown", onKey);
       onDropLine(null);
-      // a plain click (no drag) just opens the header — no reorder
-      if (!dragging || !commit || !("clientY" in e)) return;
+      // a plain click (no drag) toggles the header: opens it, or — if it
+      // was already open before this press — dismisses it again
+      if (!dragging) {
+        if (wasOpen && commit) onOpenChange(false);
+        return;
+      }
+      if (!commit || !("clientY" in e)) return;
       const gap = gapFor(e.clientY);
       if (!gap || gap.beforeSlug === slug) return;
       moveSectionBySlug(editor, slug, gap.beforeSlug);
