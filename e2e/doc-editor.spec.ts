@@ -216,3 +216,26 @@ test("sections reorder by dragging their header grip", async ({ page }) => {
   await page.reload();
   await expect(page.locator("[data-section-slug]").first()).toContainText("Features");
 });
+
+test("the rail handle toggles the section header: click to open, click to dismiss", async ({ page }) => {
+  await setupTwoSections(page, `Toggle ${Date.now()}`);
+
+  await openSectionChrome(page);
+  const rail = page.locator("[data-section-rail]").first();
+  const slug = await rail.getAttribute("data-section-rail");
+  const header = page.locator(`[data-section-header="${slug}"]`);
+  await expect(header).toHaveClass(/opacity-100/);
+
+  // second click on the same handle dismisses
+  await rail.getByRole("button", { name: "Section options" }).click();
+  await expect(header).toHaveClass(/opacity-0/);
+
+  // and it can come right back
+  await rail.getByRole("button", { name: "Section options" }).click();
+  await expect(header).toHaveClass(/opacity-100/);
+
+  // clicking into the copy still dismisses it (outside click)
+  await page.getByText("Hero body line.").click();
+  await expect(header).toHaveClass(/opacity-0/);
+});
+
