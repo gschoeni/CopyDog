@@ -1,9 +1,11 @@
 import { $isListNode } from "@lexical/list";
 import {
   $createParagraphNode,
+  $getNodeByKey,
   $getRoot,
   $getSelection,
   $isElementNode,
+  $isParagraphNode,
   $isRangeSelection,
   $isRootNode,
   COMMAND_PRIORITY_HIGH,
@@ -85,8 +87,11 @@ export function $replaceSectionElements(slug: string, elements: Element[]): bool
 
 /**
  * Keeps the document well-formed: sections that lose all their children
- * dissolve, and an empty root regains a paragraph to type in. (Loose
- * elements need no upkeep — they are the natural state of copy.)
+ * dissolve, an empty root regains a paragraph to type in, and empty
+ * paragraphs the caret has left are swept away. Empty lines never persist
+ * (serialization drops them), so keeping them on screen would show spacing
+ * that silently vanishes on reload — the caret's own line is the only
+ * empty one that may exist.
  */
 export function registerSectionTransforms(editor: LexicalEditor): () => void {
   const unregisterSection = editor.registerNodeTransform(SectionNode, (section) => {
@@ -95,10 +100,37 @@ export function registerSectionTransforms(editor: LexicalEditor): () => void {
     }
   });
 
-  const unregisterRoot = editor.registerUpdateListener(({ editorState }) => {
+  const unregisterSweep = editor.registerUpdateListener(({ editorState }) => {
+    const stale = editorState.read(() => {
+      const caretKeys = new Set<string>();
+      const selection = $getSelection();
+      if ($isRangeSelection(selection)) {
+        caretKeys.add(selection.anchor.getNode().getKey());
+        caretKeys.add(selection.focus.getNode().getKey());
+      }
+      const keys: string[] = [];
+      const sweep = (parent: ElementNode) => {
+        const children = parent.getChildren();
+        for (const child of children) {
+          if ($isSectionNode(child)) {
+            sweep(child);
+          } else if (
+            $isParagraphNode(child) &&
+            child.getChildrenSize() === 0 &&
+            !caretKeys.has(child.getKey()) &&
+            !($isRootNode(parent) && children.length === 1) // always somewhere to type
+          ) {
+            keys.push(child.getKey());
+          }
+        }
+      };
+      sweep($getRoot());
+      return keys;
+    });
     const empty = editorState.read(() => $getRoot().getChildrenSize() === 0);
-    if (!empty) return;
+    if (stale.length === 0 && !empty) return;
     editor.update(() => {
+      for (const key of stale) $getNodeByKey(key)?.remove();
       if ($getRoot().getChildrenSize() === 0) {
         $getRoot().append($createParagraphNode());
       }
@@ -107,7 +139,7 @@ export function registerSectionTransforms(editor: LexicalEditor): () => void {
 
   return () => {
     unregisterSection();
-    unregisterRoot();
+    unregisterSweep();
   };
 }
 
