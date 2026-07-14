@@ -221,25 +221,27 @@ body {
 
 .doc-editor .doc-section {
   position: relative;
-  padding: 0.15rem 0;
-  /* TOC navigation lands sections below the sticky app header with room
-     for the hover chrome strip */
+  /* a quiet box around grouped copy. The horizontal padding is cancelled
+     by an equal negative margin, so copy inside a section stays exactly
+     aligned with loose copy outside it — the border outsets into the
+     gutters instead of squeezing the text. Vertical rhythm matches an
+     element margin (0.35rem): no extra space between sections/elements. */
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 0.5rem 0.875rem;
+  margin: 0.35rem -0.875rem;
+  /* TOC navigation lands sections below the sticky app header */
   scroll-margin-top: 7.5rem;
 }
 
-/* sections hug their copy: the first/last blocks' own margins don't add
-   dead space above or below the section (and its extent bar) */
+/* sections hug their copy: the first/last elements' own margins don't
+   add dead space inside the box */
 .doc-editor .doc-section > :first-child {
   margin-top: 0;
 }
 
 .doc-editor .doc-section > :last-child {
   margin-bottom: 0;
-}
-
-.doc-editor .doc-section:not(:last-child) {
-  /* the inter-section gap is where the hover chrome lives */
-  margin-bottom: 2.75rem;
 }
 
 .copy-editor .editor-quote {

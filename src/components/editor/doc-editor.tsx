@@ -348,14 +348,6 @@ function DocEditorInner({
           }`;
           return (
             <div key={rect.slug}>
-              {/* extent rule: shows what belongs to the section */}
-              <div
-                aria-hidden
-                className={`absolute w-0.5 rounded-full bg-accent/35 transition-opacity duration-150 ${
-                  active ? "opacity-100" : "opacity-0"
-                }`}
-                style={{ top: rect.top + 4, height: Math.max(rect.height - 8, 12), left: 54 }}
-              />
               {/* left-rail controls: ⊕ add below · ⠿ drag, beside the copy */}
               <div
                 className={`absolute flex items-center ${reveal}`}
