@@ -6,7 +6,7 @@ These are the core features of the app, and how they need to function.
 
 A Google doc/notion style word document editor.
 
-* Ability to label things as H1-H6, paragraph, button/link/CTA, bulleted list, eyebrow, etc
+* Ability to label things as H1-H6, paragraph, button/link/CTA, bulleted list, numbered list, eyebrow, etc
 * Ability to organize blocks of elements into a section (ie. highlight multiple headlines, paragraphs, buttons etc into a section)
 * Make alternate versions of sections for different copy ideas
 * Ability to add notes/comments to your sections, copy, etc to keep random thoughts or feedback that are not copy themselves

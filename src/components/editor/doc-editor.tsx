@@ -12,7 +12,7 @@ import {
 } from "react";
 
 import { ListItemNode, ListNode } from "@lexical/list";
-import { HEADING, UNORDERED_LIST, registerMarkdownShortcuts } from "@lexical/markdown";
+import { HEADING, ORDERED_LIST, UNORDERED_LIST, registerMarkdownShortcuts } from "@lexical/markdown";
 import { LinkNode } from "@lexical/link";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
@@ -95,7 +95,7 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(function Do
     theme: {
       heading: { h1: "editor-h1", h2: "editor-h2", h3: "editor-h3", h4: "editor-h4", h5: "editor-h5", h6: "editor-h6" },
       paragraph: "editor-p",
-      list: { ul: "editor-ul", listitem: "editor-li" },
+      list: { ul: "editor-ul", ol: "editor-ol", listitem: "editor-li" },
       quote: "editor-quote",
       link: "editor-link",
       text: { bold: "font-semibold", italic: "italic", code: "editor-code" },
@@ -219,7 +219,7 @@ function DocEditorInner({
   }, [sectionRects]);
 
   useEffect(() => registerSectionTransforms(editor), [editor]);
-  useEffect(() => registerMarkdownShortcuts(editor, [HEADING, UNORDERED_LIST]), [editor]);
+  useEffect(() => registerMarkdownShortcuts(editor, [HEADING, UNORDERED_LIST, ORDERED_LIST]), [editor]);
   useEffect(() => registerShiftEnterNewElement(editor), [editor]);
   useEffect(() => registerEmptySectionBackspace(editor), [editor]);
 

@@ -19,6 +19,7 @@ export const elementSchema = z.discriminatedUnion("type", [
   /** call-to-action button/link */
   z.object({ type: z.literal("button"), label: z.string(), url: z.string() }),
   z.object({ type: z.literal("bullets"), items: z.array(z.string()) }),
+  z.object({ type: z.literal("numbered"), items: z.array(z.string()) }),
   /** pull quote / testimonial line */
   z.object({ type: z.literal("quote"), text: z.string() }),
 ]);
@@ -37,5 +38,6 @@ export const ELEMENT_TYPE_LABELS: Record<ElementType, string> = {
   eyebrow: "Eyebrow",
   button: "Button",
   bullets: "Bulleted list",
+  numbered: "Numbered list",
   quote: "Quote",
 };

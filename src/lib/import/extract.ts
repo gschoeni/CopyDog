@@ -96,7 +96,7 @@ function extractElements(container: ParsedElement): Element[] {
         .querySelectorAll("li")
         .map((li) => inlineMarkdownOf(li).trim())
         .filter(Boolean);
-      if (items.length) elements.push({ type: "bullets", items });
+      if (items.length) elements.push({ type: tag === "ol" ? "numbered" : "bullets", items });
     } else if (tag === "blockquote") {
       elements.push({ type: "quote", text: text.trim() });
     } else if (tag === "a") {
