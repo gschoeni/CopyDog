@@ -26,7 +26,8 @@ const HEADING_TYPES: ReadonlySet<string> = new Set(["h1", "h2", "h3", "h4", "h5"
 
 export function injectCopy(wireframeHtml: string, sections: SectionCopy[]): string {
   const root = parse(wireframeHtml);
-  const bySlug = new Map(sections.map((s) => [s.slug, s.elements]));
+  // blank lines are editor layout, not copy — they never reach the wireframe
+  const bySlug = new Map(sections.map((s) => [s.slug, s.elements.filter((el) => !(el.type === "p" && !el.text))]));
 
   for (const container of root.querySelectorAll("[data-copy]")) {
     const slug = container.getAttribute("data-copy");

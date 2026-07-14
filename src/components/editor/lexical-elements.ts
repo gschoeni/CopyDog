@@ -129,8 +129,8 @@ export function $elementsFrom(container: ElementNode): Element[] {
       continue;
     }
     if ($isParagraphNode(node)) {
-      const text = inlineOf(node);
-      if (text) blocks.push({ type: "p", text });
+      // empty paragraphs are real: blank lines are part of freeform copy
+      blocks.push({ type: "p", text: inlineOf(node) });
       continue;
     }
   }

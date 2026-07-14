@@ -77,3 +77,27 @@ test("wireframe renders linked sections only, with a nudge for the rest", async 
   await page.getByRole("tab", { name: "Split" }).click();
   await expect(page.getByText(/unlinked section.*won't appear/)).toBeVisible();
 });
+
+test("blank lines are freeform: multiple Enters persist across reload", async ({ page }) => {
+  await signIn(page);
+  await page.getByPlaceholder("Acme landing page").fill(`Blank ${Date.now()}`);
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
+
+  const editor = page.getByRole("textbox", { name: "Page copy" });
+  await editor.click();
+  await page.keyboard.type("top line");
+  for (let i = 0; i < 3; i++) await page.keyboard.press("Enter");
+  await page.keyboard.type("bottom line");
+
+  // top · blank · blank · bottom
+  await expect(editor.locator("> p")).toHaveCount(4);
+
+  await page.waitForTimeout(1200);
+  await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
+  await page.reload();
+  const reloaded = page.getByRole("textbox", { name: "Page copy" });
+  await expect(reloaded).toContainText("bottom line");
+  await expect(reloaded.locator("> p")).toHaveCount(4);
+});
+

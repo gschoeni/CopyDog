@@ -43,14 +43,14 @@ describe("lexical ⇄ elements", () => {
     expect(await roundTrip(elements)).toEqual(elements);
   });
 
-  it("drops empty paragraphs and empty list items", async () => {
+  it("keeps empty paragraphs (blank lines are content); drops empty lists", async () => {
     const editor = makeEditor();
     await new Promise<void>((resolve) =>
       editor.update(() => $populateFromElements([{ type: "p", text: "" }, { type: "bullets", items: [] }]), {
         onUpdate: resolve,
       }),
     );
-    expect(editor.read($extractElements)).toEqual([]);
+    expect(editor.read($extractElements)).toEqual([{ type: "p", text: "" }]);
   });
 
   it("editor output feeds straight into the markdown serializer", async () => {

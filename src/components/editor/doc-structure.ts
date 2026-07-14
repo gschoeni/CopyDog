@@ -1,11 +1,9 @@
 import { $isListNode } from "@lexical/list";
 import {
   $createParagraphNode,
-  $getNodeByKey,
   $getRoot,
   $getSelection,
   $isElementNode,
-  $isParagraphNode,
   $isRangeSelection,
   $isRootNode,
   COMMAND_PRIORITY_HIGH,
@@ -87,11 +85,9 @@ export function $replaceSectionElements(slug: string, elements: Element[]): bool
 
 /**
  * Keeps the document well-formed: sections that lose all their children
- * dissolve, an empty root regains a paragraph to type in, and empty
- * paragraphs the caret has left are swept away. Empty lines never persist
- * (serialization drops them), so keeping them on screen would show spacing
- * that silently vanishes on reload — the caret's own line is the only
- * empty one that may exist.
+ * dissolve, and an empty root regains a paragraph to type in. Empty
+ * paragraphs are left alone — blank lines are content in a freeform
+ * editor, and they round-trip through serialization (`<br>` chunks).
  */
 export function registerSectionTransforms(editor: LexicalEditor): () => void {
   const unregisterSection = editor.registerNodeTransform(SectionNode, (section) => {
@@ -100,37 +96,10 @@ export function registerSectionTransforms(editor: LexicalEditor): () => void {
     }
   });
 
-  const unregisterSweep = editor.registerUpdateListener(({ editorState }) => {
-    const stale = editorState.read(() => {
-      const caretKeys = new Set<string>();
-      const selection = $getSelection();
-      if ($isRangeSelection(selection)) {
-        caretKeys.add(selection.anchor.getNode().getKey());
-        caretKeys.add(selection.focus.getNode().getKey());
-      }
-      const keys: string[] = [];
-      const sweep = (parent: ElementNode) => {
-        const children = parent.getChildren();
-        for (const child of children) {
-          if ($isSectionNode(child)) {
-            sweep(child);
-          } else if (
-            $isParagraphNode(child) &&
-            child.getChildrenSize() === 0 &&
-            !caretKeys.has(child.getKey()) &&
-            !($isRootNode(parent) && children.length === 1) // always somewhere to type
-          ) {
-            keys.push(child.getKey());
-          }
-        }
-      };
-      sweep($getRoot());
-      return keys;
-    });
+  const unregisterRoot = editor.registerUpdateListener(({ editorState }) => {
     const empty = editorState.read(() => $getRoot().getChildrenSize() === 0);
-    if (stale.length === 0 && !empty) return;
+    if (!empty) return;
     editor.update(() => {
-      for (const key of stale) $getNodeByKey(key)?.remove();
       if ($getRoot().getChildrenSize() === 0) {
         $getRoot().append($createParagraphNode());
       }
@@ -139,7 +108,7 @@ export function registerSectionTransforms(editor: LexicalEditor): () => void {
 
   return () => {
     unregisterSection();
-    unregisterSweep();
+    unregisterRoot();
   };
 }
 
@@ -156,12 +125,7 @@ export function $insertSectionAfterSlug(slug: string, makeSlug: () => string): b
 /** Appends a fresh empty section at the document's end; caret moves into it. */
 export function $appendNewSection(makeSlug: () => string): void {
   const root = $getRoot();
-  // skip trailing empty loose lines: empty runs are dropped from snapshots,
-  // so a section appended after them would shift up on reload
-  let last = root.getLastChild();
-  while (last && !$isSectionNode(last) && last.getTextContent().trim() === "") {
-    last = last.getPreviousSibling();
-  }
+  const last = root.getLastChild();
   if (last) {
     $insertSectionAfterNode(last, makeSlug);
     return;

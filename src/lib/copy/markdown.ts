@@ -3,10 +3,12 @@ import type { Element, HeadingLevel } from "./elements";
 /**
  * Section markdown ⇄ Element[] — the canonical serialization.
  *
- * The dialect is plain CommonMark plus two deterministic conventions, so
- * files stay readable in any markdown tool:
+ * The dialect is plain CommonMark plus three deterministic conventions,
+ * so files stay readable in any markdown tool:
  *   - a paragraph that is exactly one link (`[Label](url)`) is a button
  *   - a paragraph preceded by an `<!--eyebrow-->` comment is an eyebrow
+ *   - a `<br>` chunk is an empty paragraph (blank lines are content in a
+ *     freeform editor, and markdown would otherwise collapse them)
  *
  * Round-trip safety: `parse(serialize(elements))` must equal `elements`.
  * Paragraph text that would be misread as structure (leading `#`, `- `,
@@ -14,6 +16,7 @@ import type { Element, HeadingLevel } from "./elements";
  */
 
 const EYEBROW_MARKER = "<!--eyebrow-->";
+const BLANK_MARKER = "<br>";
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;
 const BULLET_RE = /^-\s+(.*)$/;
 const QUOTE_RE = /^>\s?(.*)$/;
@@ -30,6 +33,11 @@ export function parseElementsMarkdown(markdown: string): Element[] {
 
   for (const chunk of chunks) {
     const lines = chunk.split("\n");
+
+    if (chunk === BLANK_MARKER) {
+      elements.push({ type: "p", text: "" });
+      continue;
+    }
 
     if (lines[0] === EYEBROW_MARKER) {
       const text = lines.slice(1).join(" ").trim();
@@ -85,7 +93,7 @@ export function serializeElements(elements: Element[]): string {
       case "quote":
         return `> ${escapeText(element.text)}`;
       case "p":
-        return escapeParagraph(element.text);
+        return element.text ? escapeParagraph(element.text) : BLANK_MARKER;
     }
   });
   return chunks.filter(Boolean).join("\n\n") + (chunks.length ? "\n" : "");
@@ -100,9 +108,9 @@ function escapeParagraph(text: string): string {
 
 function escapeText(text: string): string {
   // leading structure markers only — inline markdown (bold/italic) passes through
-  return text.replace(/^(#{1,6}\s|-\s|>\s?|<!--)/, "\\$1");
+  return text.replace(/^(#{1,6}\s|-\s|>\s?|<!--|<br>)/, "\\$1");
 }
 
 function unescapeText(text: string): string {
-  return text.replace(/^\\(\[|#{1,6}\s|-\s|>|<!--)/, "$1");
+  return text.replace(/^\\(\[|#{1,6}\s|-\s|>|<!--|<br>)/, "$1");
 }

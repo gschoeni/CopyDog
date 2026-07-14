@@ -121,4 +121,21 @@ describe("round-trip", () => {
   it.each(cases)("parse(serialize(x)) === x — %s", (_name, blocks) => {
     expect(parseElementsMarkdown(serializeElements(blocks))).toEqual(blocks);
   });
+
+  it("round-trips blank lines — empty paragraphs are content", () => {
+    const elements: Element[] = [
+      { type: "p", text: "Above." },
+      { type: "p", text: "" },
+      { type: "p", text: "" },
+      { type: "h2", text: "Below" },
+    ];
+    const markdown = serializeElements(elements);
+    expect(markdown).toBe("Above.\n\n<br>\n\n<br>\n\n## Below\n");
+    expect(parseElementsMarkdown(markdown)).toEqual(elements);
+  });
+
+  it("a paragraph that literally says <br> stays text, not a blank line", () => {
+    const elements: Element[] = [{ type: "p", text: "<br>" }];
+    expect(parseElementsMarkdown(serializeElements(elements))).toEqual(elements);
+  });
 });
