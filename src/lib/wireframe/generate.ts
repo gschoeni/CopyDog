@@ -77,10 +77,15 @@ export function selectGenerator(llm: LlmClient | null): WireframeGenerator[] {
 }
 
 export async function generateWireframe(generators: WireframeGenerator[], sections: SectionForLayout[]): Promise<string> {
+  // blank lines are editor layout, not copy — layouts see real elements only
+  const layoutSections = sections.map((s) => ({
+    ...s,
+    elements: s.elements.filter((el) => !(el.type === "p" && !el.text)),
+  }));
   let lastError: unknown;
   for (const generator of generators) {
     try {
-      return await generator.generate(sections);
+      return await generator.generate(layoutSections);
     } catch (err) {
       lastError = err;
     }

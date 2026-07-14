@@ -702,7 +702,12 @@ function sectionViews(snapshot: ContentSnapshot[], meta: Map<string, SectionMeta
 }
 
 function countLoose(snapshot: ContentSnapshot[]): number {
-  return snapshot.reduce((n, entry) => (entry.kind === "elements" ? n + entry.elements.length : n), 0);
+  // blank lines are layout, not copy — the wireframe nudge shouldn't count them
+  return snapshot.reduce(
+    (n, entry) =>
+      entry.kind === "elements" ? n + entry.elements.filter((el) => !(el.type === "p" && !el.text)).length : n,
+    0,
+  );
 }
 
 function elementsEqual(a: Element[], b: Element[]): boolean {

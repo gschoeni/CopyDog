@@ -122,7 +122,8 @@ describe("doc structure", () => {
 
     expect(slug).toBe("new-1");
     const snapshot = editor.read($snapshotContent);
-    expect(snapshot).toEqual([{ kind: "section", slug: "new-1", elements: loose }]);
+    // the continuation blank line below the new section is real content now
+    expect(snapshot).toEqual([{ kind: "section", slug: "new-1", elements: loose }, { kind: "elements", elements: [{ type: "p", text: "" }] }]);
     // the continuation paragraph is selected and ready
     editor.read(() => {
       const selection = $getSelection();
@@ -158,6 +159,7 @@ describe("doc structure", () => {
           { type: "h1", text: "Big claim" },
         ],
       },
+      { kind: "elements", elements: [{ type: "p", text: "" }] },
       {
         kind: "section",
         slug: "hero",
@@ -181,6 +183,7 @@ describe("doc structure", () => {
 
     expect(editor.read($snapshotContent)).toEqual([
       { kind: "section", slug: "new-1", elements: [{ type: "eyebrow", text: "NEW" }] },
+      { kind: "elements", elements: [{ type: "p", text: "" }] },
       {
         kind: "section",
         slug: "hero",
@@ -208,6 +211,7 @@ describe("doc structure", () => {
       { kind: "section", slug: "hero", elements: [{ type: "eyebrow", text: "NEW" }] },
       { kind: "section", slug: "new-1", elements: [{ type: "h1", text: "Big claim" }] },
       { kind: "section", slug: "new-2", elements: [{ type: "p", text: "Support copy." }] },
+      { kind: "elements", elements: [{ type: "p", text: "" }] },
     ]);
   });
 
@@ -232,9 +236,8 @@ describe("doc structure", () => {
     expect(snapshot.map((c) => c.kind)).toEqual(["elements", "section", "section"]);
     expect((snapshot[1] as { slug: string }).slug).toBe("new-1");
 
-    // from inside a section: lands after that section. Moving the caret
-    // out of new-1 (still empty) dissolves it — abandoned empty sections
-    // don't linger as empty boxes.
+    // from inside a section: lands after that section (the still-empty
+    // new-1 stays — sections persist until deliberately deleted)
     await update(editor, () => {
       $getRoot().getChildren().filter($isSectionNode)[1]!.selectEnd();
     });
@@ -244,6 +247,7 @@ describe("doc structure", () => {
     snapshot = editor.read($snapshotContent);
     expect(snapshot.map((c) => (c.kind === "section" ? (c as { slug: string }).slug : "loose"))).toEqual([
       "loose",
+      "new-1",
       "hero",
       "new-2",
     ]);
@@ -284,28 +288,26 @@ describe("doc structure", () => {
     ).toBe(false);
   });
 
-  it("sweeps empty paragraphs the caret has left — spacing never lies", async () => {
+  it("blank lines persist — freeform Enter presses survive the round trip", async () => {
     const { editor } = makeEditor();
     await update(editor, () =>
       $buildDocFromContent([
-        { kind: "elements", elements: [{ type: "p", text: "Above." }] },
+        { kind: "elements", elements: [{ type: "p", text: "Above." }, { type: "p", text: "" }, { type: "p", text: "" }] },
         { kind: "section", slug: "hero", elements: hero },
       ]),
     );
 
-    // an empty paragraph appears between the loose copy and the section
-    // (e.g. a grouping continuation); the caret sits in it — it stays
-    await update(editor, () => {
-      const para = $createParagraphNode();
-      $getRoot().getFirstChild()!.insertAfter(para);
-      para.select();
-    });
-    expect(editor.read(() => $getRoot().getChildrenSize())).toBe(3);
-
-    // the caret moves on — the empty line vanishes
+    // the caret is elsewhere; the blank lines stay exactly where they were
     await update(editor, () => {
       $getRoot().getFirstChild()!.selectEnd();
     });
-    expect(editor.read(() => $getRoot().getChildrenSize())).toBe(2);
+    expect(editor.read($snapshotContent)[0]).toEqual({
+      kind: "elements",
+      elements: [
+        { type: "p", text: "Above." },
+        { type: "p", text: "" },
+        { type: "p", text: "" },
+      ],
+    });
   });
 });

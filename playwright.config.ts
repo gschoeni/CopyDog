@@ -28,7 +28,8 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: "pnpm build && pnpm start --port 3132",
+      // isolated dist dir: building here must not clobber a running dev server's .next
+      command: "NEXT_DIST_DIR=.next-build pnpm build && NEXT_DIST_DIR=.next-build pnpm start --port 3132",
       url: "http://localhost:3132",
       // never reuse a foreign server: tests must run the production build
       reuseExistingServer: false,
