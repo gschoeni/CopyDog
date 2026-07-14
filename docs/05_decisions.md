@@ -95,3 +95,37 @@ live state survives.
 
 **Drags are pointer-based, not HTML5 DnD.** Smoother control over indicators,
 and actually drivable by tests.
+
+## 2026-07-13 — Pages are a mix of elements and sections (design correction)
+
+We originally required every element to live in a section. That was wrong:
+a page is an ordered mix of **elements** (H1–H6, paragraph, quote, bullets,
+eyebrow, CTA — formerly "blocks" in code; we are renaming code to match) and
+**sections** (deliberate, named groups of elements).
+
+**Loose by default.** Typing produces loose elements — messy, free-flowing
+copy, like a blank doc. Auto-sectioning on headings is removed. Sections form
+only deliberately: Group-into-section from a selection, the rail ⊕,
+Shift+Enter, or (future) an AI "section this page" pass.
+
+**Sections are the unit of structure.** Versions, notes, teammate adoption,
+the TOC, and the wireframe all remain section-scoped. Loose copy is one
+shared body stream: autosaved, published, and diffed in proposals, but not
+versioned and not on the map. Grouping is what unlocks the superpowers.
+
+**Sections are linked or unlinked to the wireframe.** Linked (the default on
+creation) means "layout-ready": generation lays out linked sections only.
+Unlinking keeps a section grouped, titled, and versioned but out of the
+wireframe (spare copy, drafts, notes-to-team). There is no "dissolve section"
+— unlink, delete, or copy elements out instead. The toggle lives in the
+section header strip with a quiet badge; unlinked sections get a hollow
+number in the TOC.
+
+**Generation nudges, never blocks.** Generate Wireframe proceeds with linked
+sections and quietly reports how many loose elements / unlinked sections
+won't appear.
+
+**Storage (v2 doc.json).** `sections[]` becomes an ordered `content[]` mixing
+`{kind:"section", …, linked}` and `{kind:"elements", slug}` entries; loose
+runs live at `pages/{page}/elements/{slug}.md`. v1 docs parse as all-section
+content — no migration needed.
