@@ -138,4 +138,18 @@ describe("round-trip", () => {
     const elements: Element[] = [{ type: "p", text: "<br>" }];
     expect(parseElementsMarkdown(serializeElements(elements))).toEqual(elements);
   });
+
+  it("round-trips numbered lists and re-numbers them canonically", () => {
+    const elements: Element[] = [{ type: "numbered", items: ["First **step**", "Second step"] }];
+    const markdown = serializeElements(elements);
+    expect(markdown).toBe("1. First **step**\n2. Second step\n");
+    expect(parseElementsMarkdown(markdown)).toEqual(elements);
+    // sloppy hand-numbering still parses as one list
+    expect(parseElementsMarkdown("3. a\n7. b\n")).toEqual([{ type: "numbered", items: ["a", "b"] }]);
+  });
+
+  it("a paragraph that starts like a numbered item stays a paragraph", () => {
+    const elements: Element[] = [{ type: "p", text: "1. not a list" }];
+    expect(parseElementsMarkdown(serializeElements(elements))).toEqual(elements);
+  });
 });

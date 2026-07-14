@@ -55,6 +55,8 @@ export function renderElement(element: Element): string {
       return `<a class="wf-button" href="#">${renderInline(element.label)}</a>`;
     case "bullets":
       return `<ul class="wf-list">${element.items.map((item) => `<li>${renderInline(item)}</li>`).join("")}</ul>`;
+    case "numbered":
+      return `<ol class="wf-list">${element.items.map((item) => `<li>${renderInline(item)}</li>`).join("")}</ol>`;
     case "quote":
       return `<blockquote class="wf-quote">${renderInline(element.text)}</blockquote>`;
   }

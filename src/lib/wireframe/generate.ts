@@ -20,8 +20,8 @@ Output rules:
   wf-media wf-avatar wf-pill wf-navbar wf-logo wf-nav-items wf-footer
 - Each copy section becomes: <section class="wf-section" data-copy="SECTION_SLUG"> … </section>
 - Inside a section, each copy element gets an EMPTY slot element with data-element="TYPE" where TYPE is one of:
-  h1 h2 h3 h4 h5 h6 p eyebrow button bullets quote. Slots must appear in a sensible visual order.
-  Use exactly one slot per copy element (count them). bullets slots are <ul class="wf-list" data-element="bullets"></ul>.
+  h1 h2 h3 h4 h5 h6 p eyebrow button bullets numbered quote. Slots must appear in a sensible visual order.
+  Use exactly one slot per copy element (count them). bullets slots are <ul class="wf-list" data-element="bullets"></ul>; numbered slots are <ol class="wf-list" data-element="numbered"></ol>.
   button slots are <a class="wf-button" data-element="button" href="#"></a> grouped inside <div class="wf-actions">.
 - Add one element with data-overflow per section (usually the main text column) so extra copy has a home.
 - Decorate freely with wf-media / wf-avatar / wf-pill placeholders (aria-hidden="true") to suggest imagery.

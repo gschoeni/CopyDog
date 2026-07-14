@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
-import { $isListNode, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND } from "@lexical/list";
+import { $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND } from "@lexical/list";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode } from "@lexical/rich-text";
 import { $setBlocksType } from "@lexical/selection";
@@ -76,7 +76,7 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
         else if ($isQuoteNode(anchorElement)) elementType = "quote";
         else if ($isEyebrowNode(anchorElement)) elementType = "eyebrow";
         else if ($isButtonNode(anchorElement)) elementType = "button";
-        else if ($isListNode(anchorElement)) elementType = "bullets";
+        else if ($isListNode(anchorElement)) elementType = anchorElement.getListType() === "number" ? "numbered" : "bullets";
       }
 
       setState({
@@ -107,8 +107,8 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
 
   const applyElementType = useCallback(
     (type: ElementType) => {
-      if (type === "bullets") {
-        editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
+      if (type === "bullets" || type === "numbered") {
+        editor.dispatchCommand(type === "numbered" ? INSERT_ORDERED_LIST_COMMAND : INSERT_UNORDERED_LIST_COMMAND, undefined);
         return;
       }
       editor.update(() => {

@@ -35,6 +35,7 @@ describe("lexical ⇄ elements", () => {
       { type: "h3", text: "Subhead" },
       { type: "p", text: "Body with **bold**, *italic*, and `code`." },
       { type: "bullets", items: ["First point", "Second **strong** point"] },
+      { type: "numbered", items: ["Sign up", "Write *good* copy", "Ship it"] },
       { type: "button", label: "Start free", url: "https://copydog.app" },
       { type: "quote", text: "The best copy tool we've used." },
       { type: "p", text: "Read [the docs](https://docs.x.dev) for more." },

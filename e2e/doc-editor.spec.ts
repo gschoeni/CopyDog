@@ -77,6 +77,20 @@ test("turn-into: highlighted text changes element type from the toolbar", async 
   await expect(
     page.getByRole("textbox", { name: "Page copy" }).getByRole("listitem").filter({ hasText: "Hero body line." }),
   ).toBeVisible();
+
+  // and from bullets straight to a numbered list — persists as "1. …"
+  await page.getByText("Hero body line.").click({ clickCount: 3 });
+  await toolbar.getByRole("button", { name: "Turn into" }).click();
+  await page.getByRole("option", { name: "Numbered list" }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Page copy" }).locator("ol").getByRole("listitem").filter({ hasText: "Hero body line." }),
+  ).toBeVisible();
+  await page.waitForTimeout(1000);
+  await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
+  await page.reload();
+  await expect(
+    page.getByRole("textbox", { name: "Page copy" }).locator("ol").getByRole("listitem").filter({ hasText: "Hero body line." }),
+  ).toBeVisible();
 });
 
 test("toolbar: quick headings, quote, and links on highlighted text", async ({ page }) => {

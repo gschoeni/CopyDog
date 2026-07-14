@@ -62,8 +62,9 @@ export function $appendElementsTo(element: ElementNode, blocks: Element[]): void
         element.append(button);
         break;
       }
-      case "bullets": {
-        const list = $createListNode("bullet");
+      case "bullets":
+      case "numbered": {
+        const list = $createListNode(block.type === "numbered" ? "number" : "bullet");
         for (const item of block.items) {
           const listItem = $createListItemNode();
           appendInline(listItem, item);
@@ -120,7 +121,7 @@ export function $elementsFrom(container: ElementNode): Element[] {
         .filter($isListItemNode)
         .map((item) => inlineOf(item))
         .filter(Boolean);
-      if (items.length) blocks.push({ type: "bullets", items });
+      if (items.length) blocks.push({ type: node.getListType() === "number" ? "numbered" : "bullets", items });
       continue;
     }
     if ($isQuoteNode(node)) {

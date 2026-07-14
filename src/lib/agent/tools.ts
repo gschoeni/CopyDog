@@ -40,7 +40,7 @@ export const AGENT_TOOLS: LlmTool[] = [
           markdown: {
             type: "string",
             description:
-              "the full new section copy as markdown: # h1-###### h6, paragraphs, - bullets, [CTA label](url) on its own line for buttons, <!--eyebrow--> line before a short overline",
+              "the full new section copy as markdown: # h1-###### h6, paragraphs, - bullets, 1. numbered lists, [CTA label](url) on its own line for buttons, <!--eyebrow--> line before a short overline",
           },
         },
         required: ["sectionSlug", "label", "markdown"],

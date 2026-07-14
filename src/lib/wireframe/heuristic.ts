@@ -32,7 +32,7 @@ const FOOTER = `<footer class="wf-footer" aria-hidden="true">
 function renderSection(section: SectionForLayout, index: number): string {
   const counts = countTypes(section.elements);
   const hasHero = (counts.h1 ?? 0) > 0 && index === 0;
-  const hasBullets = (counts.bullets ?? 0) > 0;
+  const hasBullets = (counts.bullets ?? 0) + (counts.numbered ?? 0) > 0;
   const isCta = (counts.button ?? 0) > 0 && section.elements.length <= 3;
 
   if (hasHero) return heroSection(section);
@@ -107,6 +107,9 @@ function slotsFor(elements: Element[], options: { media: boolean }): string {
         break;
       case "bullets":
         slots.push(`<ul class="wf-list" data-element="bullets"></ul>`);
+        break;
+      case "numbered":
+        slots.push(`<ol class="wf-list" data-element="numbered"></ol>`);
         break;
       case "quote":
         slots.push(`<blockquote class="wf-quote" data-element="quote"></blockquote>`);

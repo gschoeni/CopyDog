@@ -23,6 +23,7 @@ export interface SectionCopy {
 }
 
 const HEADING_TYPES: ReadonlySet<string> = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
+const LIST_TYPES: ReadonlySet<string> = new Set(["bullets", "numbered"]);
 
 export function injectCopy(wireframeHtml: string, sections: SectionCopy[]): string {
   const root = parse(wireframeHtml);
@@ -69,12 +70,15 @@ function injectSection(container: ParsedElement, elements: Element[]): void {
 function slotAccepts(slotType: string, elementType: ElementType): boolean {
   if (slotType === elementType) return true;
   // any heading fits any heading slot — the wireframe sets visual hierarchy
-  return HEADING_TYPES.has(slotType) && HEADING_TYPES.has(elementType);
+  if (HEADING_TYPES.has(slotType) && HEADING_TYPES.has(elementType)) return true;
+  // either list shape fits a list slot
+  return LIST_TYPES.has(slotType) && LIST_TYPES.has(elementType);
 }
 
 function fillSlot(slot: ParsedElement, element: Element): void {
   switch (element.type) {
     case "bullets":
+    case "numbered":
       slot.innerHTML = element.items.map((item) => `<li>${renderInline(item)}</li>`).join("");
       break;
     case "button":
