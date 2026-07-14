@@ -7,6 +7,7 @@ import {
   $isElementNode,
   $isRangeSelection,
   COMMAND_PRIORITY_HIGH,
+  KEY_BACKSPACE_COMMAND,
   KEY_ENTER_COMMAND,
   type ElementNode,
   type LexicalEditor,
@@ -192,6 +193,42 @@ export function registerShiftEnterNewSection(editor: LexicalEditor, makeSlug: ()
       if (!block || !$isSectionNode(section)) return false;
       event.preventDefault();
       return $insertSectionAfterSlug(section.getSlug(), makeSlug);
+    },
+    COMMAND_PRIORITY_HIGH,
+  );
+}
+
+/**
+ * Backspace in a section with no text left deletes the section and puts
+ * the caret at the end of the previous one (or the start of the next, for
+ * an empty first section). The last remaining section is never deleted.
+ */
+export function registerEmptySectionBackspace(editor: LexicalEditor): () => void {
+  return editor.registerCommand(
+    KEY_BACKSPACE_COMMAND,
+    (event) => {
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false;
+      const block = selection.anchor.getNode().getTopLevelElement();
+      const section = block?.getParent();
+      if (!$isSectionNode(section)) return false;
+      if (section.getTextContent().trim() !== "") return false;
+
+      const previous = section.getPreviousSibling();
+      const next = section.getNextSibling();
+      if ($isSectionNode(previous)) {
+        event?.preventDefault();
+        previous.selectEnd();
+        section.remove();
+        return true;
+      }
+      if ($isSectionNode(next)) {
+        event?.preventDefault();
+        next.selectStart();
+        section.remove();
+        return true;
+      }
+      return false;
     },
     COMMAND_PRIORITY_HIGH,
   );

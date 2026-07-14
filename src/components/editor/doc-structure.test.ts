@@ -8,6 +8,7 @@ import {
   $getRoot,
   $getSelection,
   $isRangeSelection,
+  KEY_BACKSPACE_COMMAND,
   KEY_ENTER_COMMAND,
   type LexicalEditor,
 } from "lexical";
@@ -20,6 +21,7 @@ import {
   $groupBlocksIntoSection,
   $snapshotSections,
   $touchedBlockNodes,
+  registerEmptySectionBackspace,
   registerSectionTransforms,
   registerShiftEnterNewSection,
 } from "./doc-structure";
@@ -219,6 +221,47 @@ describe("doc structure", () => {
       preventDefault: () => {},
     } as KeyboardEvent);
     expect(plain).toBe(false);
+  });
+
+  it("Backspace in an emptied section deletes it and lands in the previous one", async () => {
+    const { editor, makeSlug } = makeEditor();
+    registerEmptySectionBackspace(editor);
+    await update(editor, () =>
+      $buildDocFromSections(
+        [
+          { slug: "hero", blocks: hero },
+          { slug: "empty", blocks: [] },
+          { slug: "features", blocks: features },
+        ],
+        makeSlug,
+      ),
+    );
+    await update(editor, () => {
+      $getRoot().getChildren().filter($isSectionNode)[1]!.selectEnd();
+    });
+
+    const handled = editor.dispatchCommand(KEY_BACKSPACE_COMMAND, {
+      preventDefault: () => {},
+    } as KeyboardEvent);
+    expect(handled).toBe(true);
+
+    const snapshot = editor.read($snapshotSections);
+    expect(snapshot.map((s) => s.slug)).toEqual(["hero", "features"]);
+    editor.read(() => {
+      const selection = $getSelection();
+      const section = ($isRangeSelection(selection) ? selection.anchor.getNode() : null)
+        ?.getTopLevelElement()
+        ?.getParent();
+      expect($isSectionNode(section) && section.getSlug()).toBe("hero");
+    });
+
+    // a section with text is left to normal editing
+    await update(editor, () => {
+      $getRoot().getChildren().filter($isSectionNode)[1]!.selectEnd();
+    });
+    expect(
+      editor.dispatchCommand(KEY_BACKSPACE_COMMAND, { preventDefault: () => {} } as KeyboardEvent),
+    ).toBe(false);
   });
 
   it("groups blocks across sections into a new section and cleans up", async () => {
