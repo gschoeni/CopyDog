@@ -104,6 +104,29 @@ test("section rail: ⊕ inserts a new section below and focuses it", async ({ pa
   await expect(sections.nth(2)).toContainText("Features");
 });
 
+test("Shift+Enter and the phantom placeholder create sections", async ({ page }) => {
+  await setupTwoSections(page, `NewSec ${Date.now()}`);
+  const sections = page.locator("[data-section-slug]");
+
+  // caret in the first section → Shift+Enter opens a fresh section below it
+  await page.getByText("Hero body line.").click();
+  await page.waitForTimeout(200); // let the click's selection settle
+  await page.keyboard.press("Shift+Enter");
+  await expect(sections).toHaveCount(3, { timeout: 10_000 });
+  await page.keyboard.type("Born by shortcut.");
+  await expect(sections.nth(1)).toContainText("Born by shortcut.");
+  await expect(sections.first()).not.toContainText("Born by shortcut.");
+
+  // the phantom below the document: hover reveals it, click makes it real
+  const phantom = page.locator("[data-phantom-section]");
+  await phantom.hover();
+  await expect(phantom).toHaveClass(/hover:opacity-100/);
+  await phantom.click();
+  await expect(sections).toHaveCount(4, { timeout: 10_000 });
+  await page.keyboard.type("Born from the phantom.");
+  await expect(sections.nth(3)).toContainText("Born from the phantom.");
+});
+
 test("sections reorder by dragging their header grip", async ({ page }) => {
   await setupTwoSections(page, `SecDrag ${Date.now()}`);
   const sections = page.locator("[data-section-slug]");

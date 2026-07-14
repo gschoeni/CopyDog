@@ -1,7 +1,15 @@
 import { createHeadlessEditor } from "@lexical/headless";
 import { ListItemNode, ListNode } from "@lexical/list";
 import { HeadingNode, $createHeadingNode } from "@lexical/rich-text";
-import { $createParagraphNode, $createTextNode, $getRoot, type LexicalEditor } from "lexical";
+import {
+  $createParagraphNode,
+  $createTextNode,
+  $getRoot,
+  $getSelection,
+  $isRangeSelection,
+  KEY_ENTER_COMMAND,
+  type LexicalEditor,
+} from "lexical";
 import { describe, expect, it } from "vitest";
 
 import type { Block } from "@/lib/copy/blocks";
@@ -12,6 +20,7 @@ import {
   $snapshotSections,
   $touchedBlockNodes,
   registerSectionTransforms,
+  registerShiftEnterNewSection,
 } from "./doc-structure";
 import { ButtonNode } from "./nodes/button-node";
 import { EyebrowNode } from "./nodes/eyebrow-node";
@@ -164,6 +173,51 @@ describe("doc structure", () => {
     const snapshot = editor.read($snapshotSections);
     expect(snapshot).toHaveLength(1);
     expect(snapshot[0]!.blocks).toContainEqual({ type: "p", text: "stray paragraph" });
+  });
+
+  it("Shift+Enter starts a new empty section below the caret's section", async () => {
+    const { editor, makeSlug } = makeEditor();
+    registerShiftEnterNewSection(editor, makeSlug);
+    await update(editor, () =>
+      $buildDocFromSections(
+        [
+          { slug: "hero", blocks: hero },
+          { slug: "features", blocks: features },
+        ],
+        makeSlug,
+      ),
+    );
+    await update(editor, () => {
+      const first = $getRoot().getChildren().filter($isSectionNode)[0]!;
+      first.selectEnd();
+    });
+
+    const handled = editor.dispatchCommand(KEY_ENTER_COMMAND, {
+      shiftKey: true,
+      preventDefault: () => {},
+    } as KeyboardEvent);
+    expect(handled).toBe(true);
+
+    const snapshot = editor.read($snapshotSections);
+    expect(snapshot.map((s) => s.slug)).toEqual(["hero", "new-1", "features"]);
+    expect(snapshot[1]!.blocks).toEqual([]);
+
+    // the caret moved into the new section
+    editor.read(() => {
+      const selection = $getSelection();
+      expect($isRangeSelection(selection)).toBe(true);
+      const section = ($isRangeSelection(selection) ? selection.anchor.getNode() : null)
+        ?.getTopLevelElement()
+        ?.getParent();
+      expect($isSectionNode(section) && section.getSlug()).toBe("new-1");
+    });
+
+    // plain Enter is untouched
+    const plain = editor.dispatchCommand(KEY_ENTER_COMMAND, {
+      shiftKey: false,
+      preventDefault: () => {},
+    } as KeyboardEvent);
+    expect(plain).toBe(false);
   });
 
   it("groups blocks across sections into a new section and cleans up", async () => {

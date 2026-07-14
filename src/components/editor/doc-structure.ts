@@ -3,7 +3,11 @@ import { $isHeadingNode } from "@lexical/rich-text";
 import {
   $createParagraphNode,
   $getRoot,
+  $getSelection,
   $isElementNode,
+  $isRangeSelection,
+  COMMAND_PRIORITY_HIGH,
+  KEY_ENTER_COMMAND,
   type ElementNode,
   type LexicalEditor,
   type LexicalNode,
@@ -155,6 +159,42 @@ function $autoSplitSection(section: SectionNode, makeSlug: () => string): void {
 
 function isSectionHeadingNode(node: LexicalNode): boolean {
   return $isHeadingNode(node) && (node.getTag() === "h1" || node.getTag() === "h2");
+}
+
+/** Inserts a fresh empty section after the given one; caret moves into it. */
+export function $insertSectionAfterSlug(slug: string, makeSlug: () => string): boolean {
+  const section = $getRoot()
+    .getChildren()
+    .find((n): n is SectionNode => $isSectionNode(n) && n.getSlug() === slug);
+  if (!section) return false;
+  const next = $createSectionNode(makeSlug());
+  const paragraph = $createParagraphNode();
+  next.append(paragraph);
+  section.insertAfter(next);
+  paragraph.select();
+  return true;
+}
+
+/**
+ * Shift+Enter starts a new section below the one under the caret — the
+ * keyboard twin of the rail's ⊕. Registered above the rich-text handler,
+ * which would otherwise turn it into a soft line break.
+ */
+export function registerShiftEnterNewSection(editor: LexicalEditor, makeSlug: () => string): () => void {
+  return editor.registerCommand(
+    KEY_ENTER_COMMAND,
+    (event) => {
+      if (!event?.shiftKey) return false;
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection)) return false;
+      const block = selection.anchor.getNode().getTopLevelElement();
+      const section = block?.getParent();
+      if (!block || !$isSectionNode(section)) return false;
+      event.preventDefault();
+      return $insertSectionAfterSlug(section.getSlug(), makeSlug);
+    },
+    COMMAND_PRIORITY_HIGH,
+  );
 }
 
 /**

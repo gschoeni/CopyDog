@@ -37,10 +37,12 @@ import type { Block } from "@/lib/copy/blocks";
 import {
   $buildDocFromSections,
   $groupBlocksIntoSection,
+  $insertSectionAfterSlug,
   $replaceSectionBlocks,
   $snapshotSections,
   $touchedBlockNodes,
   registerSectionTransforms,
+  registerShiftEnterNewSection,
   type SectionSnapshot,
 } from "./doc-structure";
 import { ButtonNode } from "./nodes/button-node";
@@ -211,6 +213,7 @@ function DocEditorInner({
 
   useEffect(() => registerSectionTransforms(editor, makeSlug), [editor, makeSlug]);
   useEffect(() => registerMarkdownShortcuts(editor, [HEADING, UNORDERED_LIST]), [editor]);
+  useEffect(() => registerShiftEnterNewSection(editor, makeSlug), [editor, makeSlug]);
 
   useEffect(() => {
     if (autoFocus) editor.focus(undefined, { defaultSelection: "rootEnd" });
@@ -371,7 +374,9 @@ function DocEditorInner({
               {/* header strip: title · version · notes · delete — opens only
                   from the handle, dismisses on any outside click */}
               <div
-                className={`absolute left-14 right-0 flex items-center transition-opacity duration-150 ${
+                // z-20: the strip and its popovers must stack above the
+                // phantom-section affordance at the document's end
+                className={`absolute left-14 right-0 z-20 flex items-center transition-opacity duration-150 ${
                   openHeaderSlug === rect.slug ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
                 }`}
                 style={{ top: rect.top - 34 }}
@@ -393,6 +398,33 @@ function DocEditorInner({
           style={{ top: sectionDropLine - 1 }}
           data-section-drop-indicator
         />
+      )}
+
+      {/* phantom section: hovering below the document reveals a ghost you
+          can click to keep writing in a fresh section (UI only — nothing
+          exists until you click) */}
+      {sectionRects.length > 0 && (
+        <button
+          type="button"
+          aria-label="New section"
+          onClick={() => {
+            const last = sectionRects[sectionRects.length - 1]!;
+            insertSectionAfter(editor, last.slug, makeSlug);
+          }}
+          className="absolute left-16 right-0 flex h-14 items-center rounded-lg border border-dashed border-border-strong px-4 text-sm text-ink-tertiary opacity-0 transition-opacity duration-150 hover:opacity-100 hover:text-ink-secondary"
+          style={{
+            top: (() => {
+              const last = sectionRects[sectionRects.length - 1]!;
+              return last.top + last.height + 16;
+            })(),
+          }}
+          data-phantom-section
+        >
+          <span aria-hidden className="mr-2 text-lg leading-none">
+            +
+          </span>
+          New section
+        </button>
       )}
     </div>
   );
@@ -497,15 +529,7 @@ function SectionGrip({
 /** Inserts a fresh empty section below the given one and focuses it. */
 function insertSectionAfter(editor: LexicalEditor, slug: string, makeSlug: () => string): void {
   editor.update(() => {
-    const section = $getRoot()
-      .getChildren()
-      .find((n) => $isSectionNode(n) && n.getSlug() === slug);
-    if (!section) return;
-    const next = $createSectionNode(makeSlug());
-    const paragraph = $createParagraphNode();
-    next.append(paragraph);
-    section.insertAfter(next);
-    paragraph.select();
+    $insertSectionAfterSlug(slug, makeSlug);
   });
   editor.focus();
 }
