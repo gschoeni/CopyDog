@@ -165,3 +165,24 @@ won't appear.
 `{kind:"section", …, linked}` and `{kind:"elements", slug}` entries; loose
 runs live at `pages/{page}/elements/{slug}.md`. v1 docs parse as all-section
 content — no migration needed.
+
+## 2026-07-14 — Panels slim, they don't vanish
+
+Founder feedback: panel open/close felt ad-hoc and didn't use the icon
+language. Every edge surface now collapses to a **44px icon rail** instead of
+disappearing — the pages sidebar slims to page-initial dots (+ new page,
+proposals with an unread dot), the assistant slims to its sparkles glyph
+(pulse dot while a turn is running). Reopening is always one click on the
+same edge; nothing hides solely behind a toolbar toggle. Toggles use the
+standard panel-frame glyphs (PanelLeft/RightIcon) in each panel's header,
+widths animate, and rail/expanded state persists per project.
+
+Two structural rules came out of it: side panels are viewport-pinned
+(sticky below the chrome, internal scroll — the pages sidebar too, which
+previously scrolled away with the document), and slimmed panels stay
+**mounted** (CSS-hidden) so an in-flight assistant stream survives
+collapsing. The workbench and editor columns carry `min-w-0` so opening
+panels shrinks panes rather than pushing the page into horizontal scroll —
+e2e asserts the chat input is *fully* in the viewport (`ratio: 1`) with
+everything open at once. Mode toggle and the wireframe pane's controls
+(export, regenerate) moved to icons per the icons-over-text rule.

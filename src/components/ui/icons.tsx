@@ -110,3 +110,88 @@ export function ChevronDownIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+/** Panel frame with the left edge marked — toggle a left sidebar. */
+export function PanelLeftIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16" />
+    </Icon>
+  );
+}
+
+/** Panel frame with the right edge marked — toggle a right side panel. */
+export function PanelRightIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M15 4v16" />
+    </Icon>
+  );
+}
+
+/** Plus — add something new. */
+export function PlusIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </Icon>
+  );
+}
+
+/** Magic wand — regenerate the layout with AI. */
+export function WandIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="m15 4 5 5" />
+      <path d="M3 21 14 10" />
+      <path d="M6.5 3.5 7 5l1.5.5L7 6l-.5 1.5L6 6l-1.5-.5L6 5z" />
+      <path d="M19.5 12.5 20 14l1.5.5L20 15l-.5 1.5L19 15l-1.5-.5L19 14z" />
+    </Icon>
+  );
+}
+
+/** Arrow down onto a line — download / export a file. */
+export function DownloadIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M12 4v11" />
+      <path d="m7 11 5 5 5-5" />
+      <path d="M4 20h16" />
+    </Icon>
+  );
+}
+
+/** Text lines — the copy-only view mode. */
+export function CopyModeIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4 6h16" />
+      <path d="M4 11h16" />
+      <path d="M4 16h10" />
+    </Icon>
+  );
+}
+
+/** Two columns — the side-by-side view mode. */
+export function SplitModeIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M12 4v16" />
+    </Icon>
+  );
+}
+
+/** Layout blocks — the wireframe view mode. */
+export function WireframeModeIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="4" width="18" height="5" rx="1" />
+      <rect x="3" y="13" width="8" height="7" rx="1" />
+      <rect x="15" y="13" width="6" height="7" rx="1" />
+    </Icon>
+  );
+}

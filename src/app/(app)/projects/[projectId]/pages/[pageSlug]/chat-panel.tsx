@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { SparklesIcon } from "@/components/ui/icons";
 import { SidePanel } from "@/components/ui/side-panel";
 import type { ChatStreamEvent } from "@/lib/agent/events";
 import { createClient } from "@/lib/supabase/client";
@@ -27,17 +28,20 @@ interface LiveTurn {
 export function ChatPanel({
   projectId,
   pageSlug,
+  collapsed,
+  onToggle,
   onLiveMutation,
   onMutated,
-  onClose,
 }: {
   projectId: string;
   pageSlug: string;
+  /** slimmed to the icon rail — the panel stays mounted so a running turn survives */
+  collapsed: boolean;
+  onToggle: () => void;
   /** a tool changed the draft mid-turn — cheap refresh (no remount) so the wireframe evolves live */
   onLiveMutation: () => void;
   /** the turn finished with changes — full reload of the draft view */
   onMutated: () => void;
-  onClose: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [live, setLive] = useState<LiveTurn | null>(null);
@@ -46,6 +50,9 @@ export function ChatPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // history loads lazily, the first time the panel is actually open
+    if (collapsed && messages === null) return;
+    if (messages !== null) return;
     let cancelled = false;
     void (async () => {
       const supabase = createClient();
@@ -63,7 +70,8 @@ export function ChatPanel({
     return () => {
       cancelled = true;
     };
-  }, [projectId, pageSlug]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `messages` only gates the initial load
+  }, [projectId, pageSlug, collapsed]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -136,7 +144,15 @@ export function ChatPanel({
   );
 
   return (
-    <SidePanel label="Assistant" title="Assistant" badge="🐕" onClose={onClose}>
+    <SidePanel
+      label="Assistant"
+      title="Assistant"
+      badge="🐕"
+      icon={<SparklesIcon />}
+      active={busy}
+      collapsed={collapsed}
+      onToggle={onToggle}
+    >
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
         {messages === null ? (
           <p className="text-xs text-ink-tertiary">Loading…</p>

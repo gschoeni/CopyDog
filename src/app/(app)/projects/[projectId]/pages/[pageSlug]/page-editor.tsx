@@ -2,12 +2,22 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { DocEditor, type DocEditorHandle } from "@/components/editor/doc-editor";
 import type { ContentSnapshot } from "@/components/editor/doc-structure";
 import { Button } from "@/components/ui/button";
-import { ImportIcon, LinkIcon, SparklesIcon, UnlinkIcon } from "@/components/ui/icons";
+import {
+  CopyModeIcon,
+  DownloadIcon,
+  ImportIcon,
+  LinkIcon,
+  SparklesIcon,
+  SplitModeIcon,
+  UnlinkIcon,
+  WandIcon,
+  WireframeModeIcon,
+} from "@/components/ui/icons";
 import type { Element } from "@/lib/copy/elements";
 import type { DocContent, DocSection } from "@/lib/content/doc";
 import { parseElementsMarkdown, serializeElements } from "@/lib/copy/markdown";
@@ -589,7 +599,9 @@ export function PageEditor({
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    // min-w-0: this column must shrink when side panels open, never push
+    // the page into horizontal scroll
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {/* sticky under the app header (h-14): the toolbar stays reachable and
           gives split mode a fixed 6.5rem chrome offset to pin panes against */}
       <div className="sticky top-14 z-10 flex h-12 items-center justify-between gap-4 border-b border-border bg-bg/80 px-6 backdrop-blur">
@@ -679,26 +691,27 @@ export function PageEditor({
           />
         )}
 
-        {assistantOpen && (
-          <ChatPanel
-            projectId={projectId}
-            pageSlug={pageSlug}
-            onLiveMutation={() => {
-              setDirty(true);
-              // mid-turn: pull just the wireframe so the design evolves live
-              // without remounting the editor (which would kill the stream)
-              void readWireframeAction({ projectId, pageSlug }).then(({ html }) => {
-                if (html) setWireframe(html);
-              });
-            }}
-            onMutated={() => {
-              setDirty(true);
-              // the agent edited the draft server-side — reload the view
-              router.refresh();
-            }}
-            onClose={toggleAssistant}
-          />
-        )}
+        {/* always present: collapsed it's the slim rail on the right edge,
+            so the assistant is one click away in every mode */}
+        <ChatPanel
+          projectId={projectId}
+          pageSlug={pageSlug}
+          collapsed={!assistantOpen}
+          onToggle={toggleAssistant}
+          onLiveMutation={() => {
+            setDirty(true);
+            // mid-turn: pull just the wireframe so the design evolves live
+            // without remounting the editor (which would kill the stream)
+            void readWireframeAction({ projectId, pageSlug }).then(({ html }) => {
+              if (html) setWireframe(html);
+            });
+          }}
+          onMutated={() => {
+            setDirty(true);
+            // the agent edited the draft server-side — reload the view
+            router.refresh();
+          }}
+        />
       </div>
     </div>
   );
@@ -730,10 +743,10 @@ function elementsEqual(a: Element[], b: Element[]): boolean {
 
 
 function ModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewMode) => void }) {
-  const options: { value: ViewMode; label: string }[] = [
-    { value: "copy", label: "Copy" },
-    { value: "split", label: "Split" },
-    { value: "wireframe", label: "Wireframe" },
+  const options: { value: ViewMode; label: string; icon: ReactNode }[] = [
+    { value: "copy", label: "Copy", icon: <CopyModeIcon /> },
+    { value: "split", label: "Split", icon: <SplitModeIcon /> },
+    { value: "wireframe", label: "Wireframe", icon: <WireframeModeIcon /> },
   ];
   return (
     <div role="tablist" aria-label="View mode" className="flex shrink-0 rounded-lg border border-border bg-surface-sunken p-0.5">
@@ -742,12 +755,14 @@ function ModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewM
           key={option.value}
           role="tab"
           aria-selected={mode === option.value}
+          aria-label={option.label}
+          title={option.label}
           onClick={() => onChange(option.value)}
-          className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+          className={`flex items-center justify-center rounded-md px-2.5 py-1 transition-colors ${
             mode === option.value ? "bg-surface text-ink shadow-soft" : "text-ink-tertiary hover:text-ink-secondary"
           }`}
         >
-          {option.label}
+          {option.icon}
         </button>
       ))}
     </div>
@@ -790,16 +805,27 @@ function WireframePane({
                 {omittedNote}
               </p>
             )}
-            <a
-              href={exportHref}
-              download
-              className="pointer-events-auto inline-flex h-8 items-center rounded-md px-3 text-[13px] font-medium text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
-            >
-              Export HTML
-            </a>
-            <Button variant="secondary" size="sm" onClick={onGenerate} disabled={generating} className="pointer-events-auto">
-              {generating ? "Designing…" : "Regenerate layout"}
-            </Button>
+            <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-border bg-bg/80 p-0.5 shadow-soft backdrop-blur-sm">
+              <a
+                href={exportHref}
+                download
+                aria-label="Export HTML"
+                title="Export HTML"
+                className="flex size-8 items-center justify-center rounded-md text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
+              >
+                <DownloadIcon />
+              </a>
+              <button
+                type="button"
+                onClick={onGenerate}
+                disabled={generating}
+                aria-label="Regenerate layout"
+                title={generating ? "Designing…" : "Regenerate layout"}
+                className="flex size-8 items-center justify-center rounded-md text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink disabled:pointer-events-none"
+              >
+                <WandIcon className={generating ? "size-4 animate-pulse" : "size-4"} />
+              </button>
+            </div>
           </div>
           <div className="px-6 pb-16">
             <div

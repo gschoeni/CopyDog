@@ -21,7 +21,7 @@ test("assistant rewrites a section through a tool call", async ({ page }) => {
   await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
 
   // open the assistant and ask for a rewrite
-  await page.getByRole("button", { name: "Assistant" }).click();
+  await page.getByRole("button", { name: "Assistant", exact: true }).click();
   await page.getByLabel("Message the assistant").fill("Punch up this section");
   await page.getByRole("button", { name: "Send" }).click();
 
@@ -68,11 +68,11 @@ test("assistant redesigns a wireframe section through a tool call", async ({ pag
   await expect(wireframe.locator(".wf-split")).toHaveCount(0);
 
   // ask the assistant for a section redesign
-  await page.getByRole("button", { name: "Assistant" }).click();
+  await page.getByRole("button", { name: "Assistant", exact: true }).click();
 
   // the panel is pinned in the viewport BESIDE both panes — copy, wireframe,
   // and chat input all on screen at once, nothing wrapped below the fold
-  await expect(page.getByLabel("Message the assistant")).toBeInViewport();
+  await expect(page.getByLabel("Message the assistant")).toBeInViewport({ ratio: 1 });
   await expect(wireframe.getByRole("heading", { name: "Design me" })).toBeInViewport();
   await expect(page.getByRole("textbox", { name: "Page copy" })).toBeInViewport();
 

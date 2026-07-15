@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import { PanelLeftIcon, PlusIcon, ProposeIcon } from "@/components/ui/icons";
 import type { PageRef } from "@/lib/content/site";
 import { createClient } from "@/lib/supabase/client";
 
@@ -33,6 +34,21 @@ export function PagesSidebar({
   const router = useRouter();
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  // restore after hydration commit: SSR can't see localStorage (same
+  // pattern as the editor's per-project view-mode restore)
+  useEffect(() => {
+    const stored = localStorage.getItem(`copydog:sidebar:${projectId}`) === "1";
+    queueMicrotask(() => setCollapsed(stored));
+  }, [projectId]);
+
+  const toggle = () => {
+    setCollapsed((current) => {
+      localStorage.setItem(`copydog:sidebar:${projectId}`, current ? "0" : "1");
+      return !current;
+    });
+  };
 
   async function addPage(title: string) {
     if (!title.trim() || busy) return;
@@ -48,53 +64,129 @@ export function PagesSidebar({
   }
 
   return (
-    <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-surface-sunken/50 md:flex">
-      <div className="px-4 pb-2 pt-5">
-        <p className="truncate text-xs font-semibold uppercase tracking-[0.15em] text-ink-tertiary">{projectName}</p>
-      </div>
-      <nav className="flex-1 space-y-0.5 px-2">
-        {pages.map((page) => (
-          <Link
-            key={page.slug}
-            href={`/projects/${projectId}/pages/${page.slug}`}
-            aria-current={page.slug === activeSlug ? "page" : undefined}
-            className={`block rounded-md px-2 py-1.5 text-sm transition-colors ${
-              page.slug === activeSlug
-                ? "bg-surface font-medium text-ink shadow-soft"
-                : "text-ink-secondary hover:bg-surface-hover hover:text-ink"
-            }`}
-          >
-            {page.title}
-          </Link>
-        ))}
-        {adding ? (
-          <input
-            autoFocus
-            placeholder="Page name"
-            disabled={busy}
-            aria-label="New page name"
-            className="mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm outline-none focus:border-accent"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void addPage(e.currentTarget.value);
-              if (e.key === "Escape") setAdding(false);
-            }}
-            onBlur={(e) => {
-              if (e.currentTarget.value.trim()) void addPage(e.currentTarget.value);
-              else setAdding(false);
-            }}
-          />
-        ) : (
+    <aside
+      aria-label="Project sidebar"
+      className={`sticky top-14 hidden h-[calc(100dvh-3.5rem)] shrink-0 flex-col self-start overflow-hidden border-r border-border bg-surface-sunken/50 transition-[width] duration-200 ease-out md:flex ${
+        collapsed ? "w-11" : "w-56"
+      }`}
+    >
+      {collapsed ? (
+        <div className="flex min-h-0 flex-1 flex-col items-center gap-1 py-2">
           <button
             type="button"
-            onClick={() => setAdding(true)}
-            className="mt-1 block w-full rounded-md px-2 py-1.5 text-left text-sm text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+            onClick={toggle}
+            aria-label="Open project sidebar"
+            aria-expanded={false}
+            title={projectName}
+            className="flex size-8 items-center justify-center rounded-md text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
           >
-            + New page
+            <PanelLeftIcon />
           </button>
-        )}
-      </nav>
+          <div aria-hidden className="my-1 h-px w-5 bg-border" />
+          <nav aria-label="Pages" className="flex min-h-0 flex-col items-center gap-1 overflow-y-auto">
+            {pages.map((page) => (
+              <Link
+                key={page.slug}
+                href={`/projects/${projectId}/pages/${page.slug}`}
+                aria-current={page.slug === activeSlug ? "page" : undefined}
+                aria-label={page.title}
+                title={page.title}
+                className={`flex size-8 shrink-0 items-center justify-center rounded-md text-xs font-medium transition-colors ${
+                  page.slug === activeSlug
+                    ? "bg-surface text-ink shadow-soft"
+                    : "text-ink-tertiary hover:bg-surface-hover hover:text-ink"
+                }`}
+              >
+                {(page.title.trim()[0] ?? "?").toUpperCase()}
+              </Link>
+            ))}
+          </nav>
+          <button
+            type="button"
+            onClick={() => {
+              // adding needs the full sidebar — open it with the input ready
+              toggle();
+              setAdding(true);
+            }}
+            aria-label="New page"
+            title="New page"
+            className="flex size-8 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+          >
+            <PlusIcon />
+          </button>
+          <div className="flex-1" />
+          <Link
+            href={`/projects/${projectId}/proposals`}
+            aria-label={openProposals > 0 ? `Proposals (${openProposals} open)` : "Proposals"}
+            title={openProposals > 0 ? `Proposals (${openProposals} open)` : "Proposals"}
+            className="relative flex size-8 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+          >
+            <ProposeIcon />
+            {openProposals > 0 && (
+              <span aria-hidden className="absolute right-1 top-1 size-1.5 rounded-full bg-accent" />
+            )}
+          </Link>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between gap-2 pb-2 pl-4 pr-2 pt-3">
+            <p className="truncate text-xs font-semibold uppercase tracking-[0.15em] text-ink-tertiary">{projectName}</p>
+            <button
+              type="button"
+              onClick={toggle}
+              aria-label="Collapse project sidebar"
+              aria-expanded
+              title="Collapse sidebar"
+              className="flex size-7 shrink-0 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+            >
+              <PanelLeftIcon />
+            </button>
+          </div>
+          <nav aria-label="Pages" className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2">
+            {pages.map((page) => (
+              <Link
+                key={page.slug}
+                href={`/projects/${projectId}/pages/${page.slug}`}
+                aria-current={page.slug === activeSlug ? "page" : undefined}
+                className={`block truncate rounded-md px-2 py-1.5 text-sm transition-colors ${
+                  page.slug === activeSlug
+                    ? "bg-surface font-medium text-ink shadow-soft"
+                    : "text-ink-secondary hover:bg-surface-hover hover:text-ink"
+                }`}
+              >
+                {page.title}
+              </Link>
+            ))}
+            {adding ? (
+              <input
+                autoFocus
+                placeholder="Page name"
+                disabled={busy}
+                aria-label="New page name"
+                className="mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm outline-none focus:border-accent"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void addPage(e.currentTarget.value);
+                  if (e.key === "Escape") setAdding(false);
+                }}
+                onBlur={(e) => {
+                  if (e.currentTarget.value.trim()) void addPage(e.currentTarget.value);
+                  else setAdding(false);
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                className="mt-1 block w-full rounded-md px-2 py-1.5 text-left text-sm text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+              >
+                + New page
+              </button>
+            )}
+          </nav>
 
-      <SidebarCollaboration projectId={projectId} initialMembers={initialMembers} openProposals={openProposals} />
+          <SidebarCollaboration projectId={projectId} initialMembers={initialMembers} openProposals={openProposals} />
+        </>
+      )}
     </aside>
   );
 }
