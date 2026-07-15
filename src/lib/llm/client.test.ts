@@ -59,3 +59,90 @@ describe("LlmClient", () => {
     ).rejects.toBeInstanceOf(LlmError);
   });
 });
+
+function sseResponse(events: string[]): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const encoder = new TextEncoder();
+      for (const event of events) controller.enqueue(encoder.encode(event));
+      controller.close();
+    },
+  });
+  return new Response(body, { headers: { "Content-Type": "text/event-stream" } });
+}
+
+describe("LlmClient.chatStream", () => {
+  it("streams content deltas and assembles the full message", async () => {
+    let requestedStream: unknown;
+    const client = new LlmClient({
+      apiKey: "test-key",
+      fetchImpl: fetchStub(async (req) => {
+        requestedStream = ((await req.json()) as Record<string, unknown>).stream;
+        return sseResponse([
+          `data: {"model":"m","choices":[{"delta":{"content":"Hel"}}]}\n\n`,
+          `data: {"choices":[{"delta":{"content":"lo"}}]}\n\ndata: {"choices":[{"delta":{"content":" there"}}]}\n\n`,
+          `data: [DONE]\n\n`,
+        ]);
+      }),
+    });
+
+    const deltas: string[] = [];
+    const result = await client.chatStream(
+      { model: "m", messages: [{ role: "user", content: "hi" }] },
+      (text) => deltas.push(text),
+    );
+
+    expect(requestedStream).toBe(true);
+    expect(deltas).toEqual(["Hel", "lo", " there"]);
+    expect(result.content).toBe("Hello there");
+    expect(result.toolCalls).toEqual([]);
+  });
+
+  it("assembles tool calls from indexed argument fragments", async () => {
+    const client = new LlmClient({
+      apiKey: "test-key",
+      fetchImpl: fetchStub(() =>
+        sseResponse([
+          `data: {"model":"m","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"design_section","arguments":"{\\"sec"}}]}}]}\n\n`,
+          `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"tionSlug\\":\\"hero\\"}"}}]}}]}\n\n`,
+          `data: [DONE]\n\n`,
+        ]),
+      ),
+    });
+
+    const result = await client.chatStream({ model: "m", messages: [{ role: "user", content: "hi" }] }, () => {});
+
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0]).toMatchObject({ id: "call_1", function: { name: "design_section" } });
+    expect(JSON.parse(result.toolCalls[0]!.function.arguments)).toEqual({ sectionSlug: "hero" });
+  });
+
+  it("handles events split across network chunks", async () => {
+    const whole = `data: {"model":"m","choices":[{"delta":{"content":"split across chunks"}}]}\n\n`;
+    const client = new LlmClient({
+      apiKey: "test-key",
+      fetchImpl: fetchStub(() => sseResponse([whole.slice(0, 25), whole.slice(25)])),
+    });
+
+    const result = await client.chatStream({ model: "m", messages: [{ role: "user", content: "hi" }] }, () => {});
+    expect(result.content).toBe("split across chunks");
+  });
+
+  it("falls back to plain JSON responses (providers that ignore stream)", async () => {
+    const client = new LlmClient({
+      apiKey: "test-key",
+      fetchImpl: fetchStub(() =>
+        Response.json({ model: "m", choices: [{ message: { content: "not streamed" } }] }),
+      ),
+    });
+
+    const deltas: string[] = [];
+    const result = await client.chatStream(
+      { model: "m", messages: [{ role: "user", content: "hi" }] },
+      (text) => deltas.push(text),
+    );
+
+    expect(result.content).toBe("not streamed");
+    expect(deltas).toEqual(["not streamed"]);
+  });
+});
