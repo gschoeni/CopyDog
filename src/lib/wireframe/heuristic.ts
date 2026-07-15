@@ -34,8 +34,11 @@ function renderSection(section: SectionForLayout, index: number): string {
   const hasHero = (counts.h1 ?? 0) > 0 && index === 0;
   const hasBullets = (counts.bullets ?? 0) + (counts.numbered ?? 0) > 0;
   const isCta = (counts.button ?? 0) > 0 && section.elements.length <= 3;
+  const cardHeadings = (counts.h3 ?? 0) >= 2 ? "h3" : (counts.h4 ?? 0) >= 2 ? "h4" : null;
 
   if (hasHero) return heroSection(section);
+  if ((counts.quote ?? 0) > 0) return testimonialSection(section);
+  if (cardHeadings) return cardGridSection(section, cardHeadings);
   if (hasBullets) return splitSection(section);
   if (isCta) return ctaSection(section);
   return contentSection(section);
@@ -62,11 +65,59 @@ function splitSection(section: SectionForLayout): string {
 </section>`;
 }
 
-/** Compact centered call-to-action band. */
+/** Compact centered call-to-action band on a tinted background. */
 function ctaSection(section: SectionForLayout): string {
-  return `<section class="wf-section" data-copy="${section.slug}">
+  return `<section class="wf-section wf-section-tint" data-copy="${section.slug}">
   <div class="wf-container wf-center">
     ${slotsFor(section.elements, { media: false })}
+  </div>
+</section>`;
+}
+
+/** Centered quote with an avatar byline placeholder. */
+function testimonialSection(section: SectionForLayout): string {
+  return `<section class="wf-section wf-section-tint" data-copy="${section.slug}">
+  <div class="wf-container wf-center" data-overflow>
+    ${slotsFor(section.elements, { media: false })}
+    <div class="wf-avatar-row" aria-hidden="true"><span class="wf-avatar"></span><span class="wf-pill"></span></div>
+  </div>
+</section>`;
+}
+
+/**
+ * Repeated h3/h4 + support copy becomes a grid of cards: everything before
+ * the first card heading is the intro, each heading starts a card.
+ */
+function cardGridSection(section: SectionForLayout, heading: "h3" | "h4"): string {
+  const firstCard = section.elements.findIndex((el) => el.type === heading);
+  const intro = section.elements.slice(0, firstCard);
+  const rest = section.elements.slice(firstCard);
+
+  const cards: Element[][] = [];
+  for (const element of rest) {
+    if (element.type === heading || cards.length === 0) cards.push([]);
+    cards[cards.length - 1]!.push(element);
+  }
+  const grid = cards.length === 2 ? "wf-grid-2" : cards.length >= 4 ? "wf-grid-4" : "wf-grid-3";
+
+  const introHtml = intro.length
+    ? `<div class="wf-center wf-stack" data-overflow>
+      ${slotsFor(intro, { media: false })}
+    </div>`
+    : `<div data-overflow></div>`;
+
+  return `<section class="wf-section" data-copy="${section.slug}">
+  <div class="wf-container wf-stack">
+    ${introHtml}
+    <div class="${grid}">
+      ${cards
+        .map(
+          (card) => `<div class="wf-card">
+        ${slotsFor(card, { media: false })}
+      </div>`,
+        )
+        .join("\n      ")}
+    </div>
   </div>
 </section>`;
 }

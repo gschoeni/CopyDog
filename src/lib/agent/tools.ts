@@ -160,7 +160,7 @@ async function updateWireframe(args: z.infer<typeof wireframeArgs>, ctx: ToolCon
   );
 
   const html = await generateWireframe(
-    [new LlmGenerator(ctx.llm, args.instruction), new HeuristicGenerator()],
+    [new LlmGenerator(ctx.llm, { instruction: args.instruction }), new HeuristicGenerator()],
     sections,
   );
   await writeWireframe(ctx.oxen, ctx.view, ctx.pageSlug, html);

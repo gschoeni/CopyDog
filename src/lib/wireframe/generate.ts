@@ -3,30 +3,13 @@ import { serializeElements } from "@/lib/copy/markdown";
 
 import { generateWireframeHeuristic, type SectionForLayout } from "./heuristic";
 import { sanitizeWireframeHtml } from "./sanitize";
+import { DESIGN_SYSTEM_SPEC } from "./spec";
 
 /**
  * Wireframe generation. With an LLM available it designs layout; without
  * one (or on any failure) the rule-based generator answers instead. Either
  * way the result is sanitized and every section keeps its data-copy slot.
  */
-
-const DESIGN_SYSTEM_SPEC = `You generate greyscale wireframes in CopyDog's design system.
-
-Output rules:
-- Output ONLY an HTML fragment. No markdown fences, no <html>/<head>/<body>, no <style>, no <script>.
-- Allowed tags: section div header footer nav main aside figure h1-h6 p a span ul ol li blockquote strong em code
-- Allowed classes (nothing else): wf-section wf-container wf-center wf-split wf-grid-3 wf-stack wf-actions
-  wf-eyebrow wf-h1 wf-h2 wf-h3 wf-h4 wf-h5 wf-h6 wf-p wf-list wf-quote wf-button wf-button-secondary
-  wf-media wf-avatar wf-pill wf-navbar wf-logo wf-nav-items wf-footer
-- Each copy section becomes: <section class="wf-section" data-copy="SECTION_SLUG"> … </section>
-- Inside a section, each copy element gets an EMPTY slot element with data-element="TYPE" where TYPE is one of:
-  h1 h2 h3 h4 h5 h6 p eyebrow button bullets numbered quote. Slots must appear in a sensible visual order.
-  Use exactly one slot per copy element (count them). bullets slots are <ul class="wf-list" data-element="bullets"></ul>; numbered slots are <ol class="wf-list" data-element="numbered"></ol>.
-  button slots are <a class="wf-button" data-element="button" href="#"></a> grouped inside <div class="wf-actions">.
-- Add one element with data-overflow per section (usually the main text column) so extra copy has a home.
-- Decorate freely with wf-media / wf-avatar / wf-pill placeholders (aria-hidden="true") to suggest imagery.
-- Start with a wf-navbar header and end with a wf-footer, both aria-hidden="true" decoration.
-- Vary layouts: hero centered, alternating wf-split sections, wf-grid-3 for feature triplets, a compact centered CTA.`;
 
 export interface WireframeGenerator {
   generate(sections: SectionForLayout[]): Promise<string>;
@@ -41,8 +24,12 @@ export class HeuristicGenerator implements WireframeGenerator {
 export class LlmGenerator implements WireframeGenerator {
   constructor(
     private readonly llm: LlmClient,
-    /** optional layout direction, e.g. from the chat agent */
-    private readonly instruction?: string,
+    private readonly options: {
+      /** layout direction, e.g. from the chat agent */
+      instruction?: string;
+      /** the page's current wireframe — redesigns start from it instead of a blank slate */
+      currentHtml?: string;
+    } = {},
   ) {}
 
   async generate(sections: SectionForLayout[]): Promise<string> {
@@ -50,15 +37,20 @@ export class LlmGenerator implements WireframeGenerator {
       .map((s) => `### Section slug: ${s.slug} (${s.title})\n${serializeElements(s.elements) || "(no copy yet)"}`)
       .join("\n\n");
 
-    const direction = this.instruction ? `\n\nLayout direction from the designer: ${this.instruction}` : "";
+    const direction = this.options.instruction
+      ? `\n\nLayout direction from the designer: ${this.options.instruction}`
+      : "";
+    const current = this.options.currentHtml
+      ? `\n\nThe page's current wireframe is below. Treat it as the starting point: keep sections the direction doesn't mention as they are, and redesign the ones it does.\n\n${this.options.currentHtml}`
+      : "";
     const result = await this.llm.chat({
       model: LLM_MODELS.wireframe,
-      maxTokens: 4000,
+      maxTokens: 8000,
       messages: [
         { role: "system", content: DESIGN_SYSTEM_SPEC },
         {
           role: "user",
-          content: `Design a wireframe for a page with this copy. Return the HTML fragment only.${direction}\n\n${copySummary}`,
+          content: `Design a wireframe for a page with this copy. Return the HTML fragment only.${direction}\n\n${copySummary}${current}`,
         },
       ],
     });

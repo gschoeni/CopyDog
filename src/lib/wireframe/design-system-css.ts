@@ -3,4 +3,387 @@
  * (injected <style> in the root layout) and the HTML export share one
  * source of truth. Swappable: everything is scoped under .wf-root.
  */
-export const WIREFRAME_CSS = "/* ------------------------------------------------------------------ */\n/* CopyDog greyscale wireframe design system                           */\n/*                                                                     */\n/* The wireframe is deliberately styleless: grey boxes, black type,    */\n/* one weight of chrome. It renders as light \"paper\" in both app       */\n/* themes — a wireframe is an artifact, not a UI surface.              */\n/* This module is swappable: everything is scoped under .wf-root and   */\n/* uses only wf-* classes.                                             */\n/* ------------------------------------------------------------------ */\n\n.wf-root {\n  --wf-bg: #ffffff;\n  --wf-ink: #1a1a1a;\n  --wf-ink-soft: #555555;\n  --wf-line: #e2e2e2;\n  --wf-fill: #f2f2f2;\n  --wf-fill-strong: #d9d9d9;\n\n  background: var(--wf-bg);\n  color: var(--wf-ink);\n  font-family: var(--font-sans);\n  line-height: 1.6;\n}\n\n/* layout ------------------------------------------------------------ */\n\n.wf-root .wf-section {\n  padding: 4.5rem 2rem;\n  border-bottom: 1px solid var(--wf-line);\n}\n\n.wf-root .wf-container {\n  max-width: 64rem;\n  margin: 0 auto;\n}\n\n.wf-root .wf-center {\n  text-align: center;\n}\n\n.wf-root .wf-center .wf-actions {\n  justify-content: center;\n}\n\n.wf-root .wf-split {\n  display: grid;\n  grid-template-columns: 1fr 1fr;\n  gap: 3rem;\n  align-items: center;\n}\n\n.wf-root .wf-grid-3 {\n  display: grid;\n  grid-template-columns: repeat(3, 1fr);\n  gap: 2rem;\n}\n\n.wf-root .wf-stack > * + * {\n  margin-top: 1rem;\n}\n\n.wf-root .wf-actions {\n  display: flex;\n  gap: 0.75rem;\n  margin-top: 1.75rem;\n}\n\n/* type -------------------------------------------------------------- */\n\n.wf-root .wf-eyebrow {\n  font-size: 0.75rem;\n  font-weight: 600;\n  letter-spacing: 0.18em;\n  text-transform: uppercase;\n  color: var(--wf-ink-soft);\n  margin-bottom: 0.9rem;\n}\n\n.wf-root .wf-h1 { font-size: 3rem; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 1.25rem; }\n.wf-root .wf-h2 { font-size: 2.125rem; line-height: 1.15; font-weight: 700; letter-spacing: -0.015em; margin-bottom: 1rem; }\n.wf-root .wf-h3 { font-size: 1.5rem; line-height: 1.25; font-weight: 650; margin-bottom: 0.75rem; }\n.wf-root .wf-h4, .wf-root .wf-h5, .wf-root .wf-h6 { font-size: 1.125rem; font-weight: 650; margin-bottom: 0.5rem; }\n\n.wf-root .wf-p {\n  color: var(--wf-ink-soft);\n  max-width: 40rem;\n  margin-bottom: 0.5rem;\n}\n\n.wf-root .wf-center .wf-p {\n  margin-inline: auto;\n}\n\n.wf-root .wf-list {\n  list-style: none;\n  padding: 0;\n  margin: 1rem 0 0;\n  color: var(--wf-ink-soft);\n}\n\n.wf-root .wf-list li {\n  position: relative;\n  padding-left: 1.6em;\n  margin-bottom: 0.6em;\n}\n\n.wf-root .wf-list li::before {\n  content: \"\";\n  position: absolute;\n  left: 0;\n  top: 0.42em;\n  width: 0.85em;\n  height: 0.85em;\n  border-radius: 999px;\n  background: var(--wf-fill-strong);\n}\n\n.wf-root ol.wf-list {\n  counter-reset: wf-item;\n}\n\n.wf-root ol.wf-list li {\n  counter-increment: wf-item;\n}\n\n.wf-root ol.wf-list li::before {\n  content: counter(wf-item) \".\";\n  top: 0;\n  width: auto;\n  height: auto;\n  border-radius: 0;\n  background: none;\n  font-weight: 600;\n  font-variant-numeric: tabular-nums;\n  color: var(--wf-ink-soft);\n}\n\n.wf-root .wf-quote {\n  border-left: 3px solid var(--wf-fill-strong);\n  padding: 0.4rem 0 0.4rem 1.2rem;\n  margin: 1.25rem 0;\n  font-size: 1.125rem;\n  font-style: italic;\n  color: var(--wf-ink-soft);\n  max-width: 40rem;\n}\n\n/* controls ---------------------------------------------------------- */\n\n.wf-root .wf-button {\n  display: inline-block;\n  padding: 0.7em 1.6em;\n  background: var(--wf-ink);\n  color: #ffffff;\n  border-radius: 0.4em;\n  font-weight: 550;\n  font-size: 0.9375rem;\n  text-decoration: none;\n}\n\n.wf-root .wf-button-secondary {\n  background: transparent;\n  color: var(--wf-ink);\n  border: 1px solid var(--wf-ink);\n}\n\n/* placeholders ------------------------------------------------------ */\n\n.wf-root .wf-media {\n  position: relative;\n  width: 100%;\n  aspect-ratio: 16 / 10;\n  background: var(--wf-fill);\n  border: 1px solid var(--wf-line);\n  border-radius: 0.5rem;\n  overflow: hidden;\n  margin-top: 2rem;\n}\n\n.wf-root .wf-media::before,\n.wf-root .wf-media::after {\n  content: \"\";\n  position: absolute;\n  inset: 0;\n  background: linear-gradient(to top right, transparent calc(50% - 0.5px), var(--wf-fill-strong), transparent calc(50% + 0.5px));\n}\n\n.wf-root .wf-media::after {\n  transform: scaleY(-1);\n}\n\n.wf-root .wf-avatar {\n  width: 3rem;\n  height: 3rem;\n  border-radius: 999px;\n  background: var(--wf-fill-strong);\n}\n\n.wf-root .wf-pill {\n  display: inline-block;\n  width: 4.5rem;\n  height: 0.7rem;\n  border-radius: 999px;\n  background: var(--wf-fill-strong);\n}\n\n.wf-root .wf-empty {\n  display: block;\n  min-height: 0.9em;\n  border-radius: 0.3em;\n  background: var(--wf-fill);\n}\n\n/* chrome ------------------------------------------------------------ */\n\n.wf-root .wf-navbar {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 2rem;\n  padding: 1.1rem 2rem;\n  border-bottom: 1px solid var(--wf-line);\n}\n\n.wf-root .wf-logo {\n  width: 6.5rem;\n  height: 1.1rem;\n  border-radius: 0.25rem;\n  background: var(--wf-ink);\n  opacity: 0.85;\n}\n\n.wf-root .wf-nav-items {\n  display: flex;\n  gap: 1rem;\n  align-items: center;\n}\n\n.wf-root .wf-footer {\n  padding: 2.5rem 2rem;\n  display: flex;\n  justify-content: space-between;\n  align-items: center;\n  gap: 2rem;\n}\n\n/* responsive -------------------------------------------------------- */\n\n@media (max-width: 720px) {\n  .wf-root .wf-split,\n  .wf-root .wf-grid-3 {\n    grid-template-columns: 1fr;\n  }\n  .wf-root .wf-h1 { font-size: 2.25rem; }\n  .wf-root .wf-section { padding: 3rem 1.25rem; }\n}\n";
+export const WIREFRAME_CSS = `/* ------------------------------------------------------------------ */
+/* CopyDog greyscale wireframe design system                           */
+/*                                                                     */
+/* The wireframe is deliberately styleless: grey boxes, black type,    */
+/* one weight of chrome. It renders as light "paper" in both app       */
+/* themes — a wireframe is an artifact, not a UI surface.              */
+/* This module is swappable: everything is scoped under .wf-root and   */
+/* uses only wf-* classes.                                             */
+/* ------------------------------------------------------------------ */
+
+.wf-root {
+  --wf-bg: #ffffff;
+  --wf-ink: #1a1a1a;
+  --wf-ink-soft: #555555;
+  --wf-line: #e2e2e2;
+  --wf-fill: #f2f2f2;
+  --wf-fill-strong: #d9d9d9;
+
+  background: var(--wf-bg);
+  color: var(--wf-ink);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+}
+
+/* layout ------------------------------------------------------------ */
+
+.wf-root .wf-section {
+  padding: 4.5rem 2rem;
+  border-bottom: 1px solid var(--wf-line);
+}
+
+.wf-root .wf-section-tint {
+  background: var(--wf-fill);
+}
+
+.wf-root .wf-container {
+  max-width: 64rem;
+  margin: 0 auto;
+}
+
+.wf-root .wf-center {
+  text-align: center;
+}
+
+.wf-root .wf-center .wf-actions {
+  justify-content: center;
+}
+
+.wf-root .wf-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3rem;
+  align-items: center;
+}
+
+.wf-root .wf-split-reverse > :first-child {
+  order: 2;
+}
+
+.wf-root .wf-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
+}
+
+.wf-root .wf-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+}
+
+.wf-root .wf-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+}
+
+.wf-root .wf-stack > * + * {
+  margin-top: 1rem;
+}
+
+.wf-root .wf-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+}
+
+/* type -------------------------------------------------------------- */
+
+.wf-root .wf-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--wf-ink-soft);
+  margin-bottom: 0.9rem;
+}
+
+.wf-root .wf-h1 { font-size: 3rem; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 1.25rem; }
+.wf-root .wf-h2 { font-size: 2.125rem; line-height: 1.15; font-weight: 700; letter-spacing: -0.015em; margin-bottom: 1rem; }
+.wf-root .wf-h3 { font-size: 1.5rem; line-height: 1.25; font-weight: 650; margin-bottom: 0.75rem; }
+.wf-root .wf-h4, .wf-root .wf-h5, .wf-root .wf-h6 { font-size: 1.125rem; font-weight: 650; margin-bottom: 0.5rem; }
+
+.wf-root .wf-p {
+  color: var(--wf-ink-soft);
+  max-width: 40rem;
+  margin-bottom: 0.5rem;
+}
+
+.wf-root .wf-center .wf-p {
+  margin-inline: auto;
+}
+
+.wf-root .wf-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  color: var(--wf-ink-soft);
+}
+
+.wf-root .wf-list li {
+  position: relative;
+  padding-left: 1.6em;
+  margin-bottom: 0.6em;
+}
+
+.wf-root .wf-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.42em;
+  width: 0.85em;
+  height: 0.85em;
+  border-radius: 999px;
+  background: var(--wf-fill-strong);
+}
+
+.wf-root ol.wf-list {
+  counter-reset: wf-item;
+}
+
+.wf-root ol.wf-list li {
+  counter-increment: wf-item;
+}
+
+.wf-root ol.wf-list li::before {
+  content: counter(wf-item) ".";
+  top: 0;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--wf-ink-soft);
+}
+
+.wf-root .wf-quote {
+  border-left: 3px solid var(--wf-fill-strong);
+  padding: 0.4rem 0 0.4rem 1.2rem;
+  margin: 1.25rem 0;
+  font-size: 1.125rem;
+  font-style: italic;
+  color: var(--wf-ink-soft);
+  max-width: 40rem;
+}
+
+/* controls ---------------------------------------------------------- */
+
+.wf-root .wf-button {
+  display: inline-block;
+  padding: 0.7em 1.6em;
+  background: var(--wf-ink);
+  color: #ffffff;
+  border-radius: 0.4em;
+  font-weight: 550;
+  font-size: 0.9375rem;
+  text-decoration: none;
+}
+
+.wf-root .wf-button-secondary {
+  background: transparent;
+  color: var(--wf-ink);
+  border: 1px solid var(--wf-ink);
+}
+
+.wf-root .wf-form {
+  display: flex;
+  gap: 0.75rem;
+  max-width: 28rem;
+  margin-top: 1.75rem;
+}
+
+.wf-root .wf-form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 28rem;
+  margin-top: 1.75rem;
+}
+
+.wf-root .wf-center .wf-form,
+.wf-root .wf-center .wf-form-stack {
+  margin-inline: auto;
+}
+
+.wf-root .wf-input {
+  display: block;
+  flex: 1;
+  min-height: 2.9em;
+  border: 1px solid var(--wf-fill-strong);
+  border-radius: 0.4em;
+  background: var(--wf-bg);
+}
+
+/* cards ------------------------------------------------------------- */
+
+.wf-root .wf-card {
+  padding: 1.75rem;
+  border: 1px solid var(--wf-line);
+  border-radius: 0.6rem;
+  background: var(--wf-bg);
+}
+
+.wf-root .wf-card .wf-media {
+  margin-top: 0;
+  margin-bottom: 1.25rem;
+}
+
+.wf-root .wf-card .wf-h3,
+.wf-root .wf-card .wf-h4 {
+  margin-bottom: 0.4rem;
+}
+
+/* placeholders ------------------------------------------------------ */
+
+.wf-root .wf-media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: var(--wf-fill);
+  border: 1px solid var(--wf-line);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  margin-top: 2rem;
+}
+
+.wf-root .wf-media::before,
+.wf-root .wf-media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top right, transparent calc(50% - 0.5px), var(--wf-fill-strong), transparent calc(50% + 0.5px));
+}
+
+.wf-root .wf-media::after {
+  transform: scaleY(-1);
+}
+
+.wf-root .wf-section-tint .wf-media,
+.wf-root .wf-section-tint .wf-card {
+  background: var(--wf-bg);
+}
+
+.wf-root .wf-avatar {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  background: var(--wf-fill-strong);
+}
+
+.wf-root .wf-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-top: 1.5rem;
+}
+
+.wf-root .wf-center .wf-avatar-row {
+  justify-content: center;
+}
+
+.wf-root .wf-pill {
+  display: inline-block;
+  width: 4.5rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: var(--wf-fill-strong);
+}
+
+.wf-root .wf-logo-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 2.5rem;
+  margin-top: 2rem;
+  opacity: 0.75;
+}
+
+.wf-root .wf-logo-box {
+  width: 6rem;
+  height: 1.4rem;
+  border-radius: 0.25rem;
+  background: var(--wf-fill-strong);
+}
+
+.wf-root .wf-stat .wf-h2,
+.wf-root .wf-stat .wf-h3 {
+  font-size: 2.75rem;
+  line-height: 1;
+  margin-bottom: 0.35rem;
+}
+
+.wf-root .wf-faq-item {
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--wf-line);
+}
+
+.wf-root .wf-faq-item > :first-child {
+  margin-bottom: 0.35rem;
+}
+
+.wf-root .wf-empty {
+  display: block;
+  min-height: 0.9em;
+  border-radius: 0.3em;
+  background: var(--wf-fill);
+}
+
+/* chrome ------------------------------------------------------------ */
+
+.wf-root .wf-navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  padding: 1.1rem 2rem;
+  border-bottom: 1px solid var(--wf-line);
+}
+
+.wf-root .wf-logo {
+  width: 6.5rem;
+  height: 1.1rem;
+  border-radius: 0.25rem;
+  background: var(--wf-ink);
+  opacity: 0.85;
+}
+
+.wf-root .wf-nav-items {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.wf-root .wf-footer {
+  padding: 2.5rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
+}
+
+/* responsive -------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  .wf-root .wf-split,
+  .wf-root .wf-grid-2,
+  .wf-root .wf-grid-3 {
+    grid-template-columns: 1fr;
+  }
+  .wf-root .wf-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .wf-root .wf-split-reverse > :first-child {
+    order: 0;
+  }
+  .wf-root .wf-form {
+    flex-direction: column;
+  }
+  .wf-root .wf-h1 { font-size: 2.25rem; }
+  .wf-root .wf-section { padding: 3rem 1.25rem; }
+}
+`;
