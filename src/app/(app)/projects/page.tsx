@@ -43,7 +43,9 @@ export default async function ProjectsPage() {
           <div key={project.id} className="group relative">
             <Link
               href={`/projects/${project.id}`}
-              className="block rounded-lg border border-border bg-surface p-5 shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-raised"
+              // h-full: the wrapper is the grid item that stretches to the
+              // row; the card must fill it so all cards share one height
+              className="block h-full min-h-28 rounded-lg border border-border bg-surface p-5 shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-raised"
             >
               <h2 className="pr-8 font-medium tracking-tight group-hover:text-accent">{project.name}</h2>
               <p className="mt-1 text-xs text-ink-tertiary">
