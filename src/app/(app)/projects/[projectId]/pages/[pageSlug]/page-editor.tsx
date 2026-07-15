@@ -12,7 +12,6 @@ import {
   DownloadIcon,
   ImportIcon,
   LinkIcon,
-  SparklesIcon,
   SplitModeIcon,
   UnlinkIcon,
   WandIcon,
@@ -624,16 +623,8 @@ export function PageEditor({
           <Button variant="ghost" size="icon" onClick={() => setImporting(true)} aria-label="Import…" title="Import…">
             <ImportIcon />
           </Button>
-          <Button
-            variant={assistantOpen ? "secondary" : "ghost"}
-            size="icon"
-            onClick={toggleAssistant}
-            aria-pressed={assistantOpen}
-            aria-label="Assistant"
-            title="Assistant"
-          >
-            <SparklesIcon />
-          </Button>
+          {/* the assistant's only affordance is its right-edge rail — one
+              home, no duplicate sparkles in the toolbar */}
           <PublishControls projectId={projectId} pageSlug={pageSlug} dirty={dirty} onPublished={() => setDirty(false)} />
           <ModeToggle mode={mode} onChange={changeMode} />
         </div>

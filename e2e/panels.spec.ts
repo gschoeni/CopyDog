@@ -40,7 +40,6 @@ test("sidebar and assistant collapse to icon rails and back", async ({ page }) =
   await expect(page.getByLabel("Message the assistant")).toBeHidden();
   await expect(openAssistant).toBeVisible();
 
-  // the toolbar sparkles button drives the same state
-  await page.getByRole("button", { name: "Assistant", exact: true }).click();
-  await expect(page.getByLabel("Message the assistant")).toBeInViewport({ ratio: 1 });
+  // the rail is the assistant's ONE home — no duplicate toolbar toggle
+  await expect(page.getByRole("button", { name: "Assistant", exact: true })).toHaveCount(0);
 });
