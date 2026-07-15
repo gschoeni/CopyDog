@@ -186,3 +186,20 @@ panels shrinks panes rather than pushing the page into horizontal scroll —
 e2e asserts the chat input is *fully* in the viewport (`ratio: 1`) with
 everything open at once. Mode toggle and the wireframe pane's controls
 (export, regenerate) moved to icons per the icons-over-text rule.
+
+## 2026-07-14 — Subpages: the sitemap is a tree
+
+`site.json` pages now nest (`children`, additive — v1 flat files parse
+unchanged). Nesting is purely structural: content stays flat at
+`pages/{slug}/` and slugs stay unique site-wide, so versioning, publish,
+proposals, and the wireframe are untouched by reorganizing navigation.
+Moves are sibling-anchored (`parentSlug` + `beforeSlug`, cycle-guarded in
+`movePageNode`) rather than index-based — immune to concurrent-shift bugs.
+
+The sidebar renders the tree with fold chevrons (persisted per project),
+and every row reveals a grip and an ⊕ on hover: grip drags are
+pointer-based (house rule) with three drop zones per row — top edge =
+before, bottom edge = after, middle = nest inside — shown as an accent
+line at the target depth or a soft highlight on the future parent. Drops
+apply optimistically, then `movePageAction` persists and the server tree
+reconciles. ⊕ opens an inline "Page name" input as a child row.

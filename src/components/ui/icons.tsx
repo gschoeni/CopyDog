@@ -131,6 +131,20 @@ export function PanelRightIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Six-dot grip — a drag handle. */
+export function GripIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="9" cy="5.5" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="5.5" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="12" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="12" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="18.5" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="18.5" r="1.15" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
 /** Plus — add something new. */
 export function PlusIcon(props: SVGProps<SVGSVGElement>) {
   return (

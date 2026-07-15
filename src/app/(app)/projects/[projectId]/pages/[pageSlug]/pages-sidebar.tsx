@@ -2,13 +2,21 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 
-import { PanelLeftIcon, PlusIcon, ProposeIcon } from "@/components/ui/icons";
-import type { PageRef } from "@/lib/content/site";
+import { ChevronDownIcon, GripIcon, PanelLeftIcon, PlusIcon, ProposeIcon } from "@/components/ui/icons";
+import { flattenPages, movePageNode, type PageRef } from "@/lib/content/site";
 import { createClient } from "@/lib/supabase/client";
 
-import { addPageAction } from "./actions";
+import { addPageAction, movePageAction } from "./actions";
 
 export interface SidebarMember {
   userId: string;
@@ -31,9 +39,6 @@ export function PagesSidebar({
   initialMembers: SidebarMember[];
   openProposals: number;
 }) {
-  const router = useRouter();
-  const [adding, setAdding] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
   // restore after hydration commit: SSR can't see localStorage (same
@@ -49,19 +54,6 @@ export function PagesSidebar({
       return !current;
     });
   };
-
-  async function addPage(title: string) {
-    if (!title.trim() || busy) return;
-    setBusy(true);
-    try {
-      const { slug } = await addPageAction({ projectId, title: title.trim() });
-      setAdding(false);
-      // no refresh needed: the pushed route server-renders fresh site.json
-      router.push(`/projects/${projectId}/pages/${slug}`);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <aside
@@ -84,7 +76,7 @@ export function PagesSidebar({
           </button>
           <div aria-hidden className="my-1 h-px w-5 bg-border" />
           <nav aria-label="Pages" className="flex min-h-0 flex-col items-center gap-1 overflow-y-auto">
-            {pages.map((page) => (
+            {flattenPages(pages).map(({ page }) => (
               <Link
                 key={page.slug}
                 href={`/projects/${projectId}/pages/${page.slug}`}
@@ -103,11 +95,7 @@ export function PagesSidebar({
           </nav>
           <button
             type="button"
-            onClick={() => {
-              // adding needs the full sidebar — open it with the input ready
-              toggle();
-              setAdding(true);
-            }}
+            onClick={toggle}
             aria-label="New page"
             title="New page"
             className="flex size-8 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
@@ -142,52 +130,298 @@ export function PagesSidebar({
               <PanelLeftIcon />
             </button>
           </div>
-          <nav aria-label="Pages" className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2">
-            {pages.map((page) => (
-              <Link
-                key={page.slug}
-                href={`/projects/${projectId}/pages/${page.slug}`}
-                aria-current={page.slug === activeSlug ? "page" : undefined}
-                className={`block truncate rounded-md px-2 py-1.5 text-sm transition-colors ${
-                  page.slug === activeSlug
-                    ? "bg-surface font-medium text-ink shadow-soft"
-                    : "text-ink-secondary hover:bg-surface-hover hover:text-ink"
-                }`}
-              >
-                {page.title}
-              </Link>
-            ))}
-            {adding ? (
-              <input
-                autoFocus
-                placeholder="Page name"
-                disabled={busy}
-                aria-label="New page name"
-                className="mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm outline-none focus:border-accent"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void addPage(e.currentTarget.value);
-                  if (e.key === "Escape") setAdding(false);
-                }}
-                onBlur={(e) => {
-                  if (e.currentTarget.value.trim()) void addPage(e.currentTarget.value);
-                  else setAdding(false);
-                }}
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setAdding(true)}
-                className="mt-1 block w-full rounded-md px-2 py-1.5 text-left text-sm text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
-              >
-                + New page
-              </button>
-            )}
-          </nav>
-
+          <PageTree projectId={projectId} pages={pages} activeSlug={activeSlug} />
           <SidebarCollaboration projectId={projectId} initialMembers={initialMembers} openProposals={openProposals} />
         </>
       )}
     </aside>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* The page tree: nested pages, drag-to-reorder, add-subpage inline    */
+/* ------------------------------------------------------------------ */
+
+type DropTarget = { slug: string; kind: "before" | "after" | "into" };
+
+const INDENT = 14;
+
+/**
+ * Pages as a draggable tree. Rows reveal a grip (drag) and a ⊕ (add
+ * subpage) on hover; subtrees fold on the chevron. Dragging is
+ * pointer-based (house rule — smooth and testable): the drop zone within
+ * a row decides the move — top edge = before, bottom edge = after,
+ * middle = nest inside. Moves apply optimistically, then persist.
+ */
+function PageTree({ projectId, pages, activeSlug }: { projectId: string; pages: PageRef[]; activeSlug: string }) {
+  const router = useRouter();
+
+  // optimistic tree while a move round-trips; cleared when props catch up
+  // (React's "adjust state when props change" render-time pattern)
+  const [override, setOverride] = useState<PageRef[] | null>(null);
+  const [prevPages, setPrevPages] = useState(pages);
+  if (prevPages !== pages) {
+    setPrevPages(pages);
+    setOverride(null);
+  }
+  const tree = override ?? pages;
+
+  const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(`copydog:pages-folded:${projectId}`) ?? "[]") as string[];
+      queueMicrotask(() => setFolded(new Set(stored)));
+    } catch {
+      // unreadable state is just "nothing folded"
+    }
+  }, [projectId]);
+  const setFoldedPersistent = useCallback(
+    (next: Set<string>) => {
+      setFolded(next);
+      localStorage.setItem(`copydog:pages-folded:${projectId}`, JSON.stringify([...next]));
+    },
+    [projectId],
+  );
+  const toggleFold = useCallback(
+    (slug: string) => {
+      const next = new Set(folded);
+      if (!next.delete(slug)) next.add(slug);
+      setFoldedPersistent(next);
+    },
+    [folded, setFoldedPersistent],
+  );
+
+  // where the "new page" input lives: null = closed, parent null = top level
+  const [adding, setAdding] = useState<{ parent: string | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const addPage = useCallback(
+    async (title: string, parent: string | null) => {
+      if (!title.trim() || busy) return;
+      setBusy(true);
+      try {
+        const { slug } = await addPageAction({ projectId, title: title.trim(), parentSlug: parent ?? undefined });
+        setAdding(null);
+        // no refresh needed: the pushed route server-renders fresh site.json
+        router.push(`/projects/${projectId}/pages/${slug}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [projectId, busy, router],
+  );
+
+  const addSubpage = useCallback(
+    (parent: string) => {
+      // the input renders as a child row — make sure the subtree is open
+      if (folded.has(parent)) {
+        const next = new Set(folded);
+        next.delete(parent);
+        setFoldedPersistent(next);
+      }
+      setAdding({ parent });
+    },
+    [folded, setFoldedPersistent],
+  );
+
+  /* --- drag state --- */
+  const rowRefs = useRef(new Map<string, HTMLElement>());
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [drop, setDrop] = useState<DropTarget | null>(null);
+  const dropRef = useRef<DropTarget | null>(null);
+
+  const parentBySlug = useMemo(() => {
+    const map = new Map<string, string | null>();
+    const walk = (nodes: PageRef[], parent: string | null) => {
+      for (const node of nodes) {
+        map.set(node.slug, parent);
+        walk(node.children ?? [], node.slug);
+      }
+    };
+    walk(tree, null);
+    return map;
+  }, [tree]);
+
+  const startDrag = useCallback(
+    (slug: string) => (event: ReactPointerEvent) => {
+      event.preventDefault();
+      const moving = flattenPages(tree).find(({ page }) => page.slug === slug)?.page;
+      if (!moving) return;
+      const subtree = new Set(flattenPages([moving]).map(({ page }) => page.slug));
+      setDragging(slug);
+
+      const onMove = (e: PointerEvent) => {
+        let target: DropTarget | null = null;
+        for (const [rowSlug, el] of rowRefs.current) {
+          if (subtree.has(rowSlug)) continue; // never drop a page into itself
+          const rect = el.getBoundingClientRect();
+          if (e.clientY < rect.top || e.clientY > rect.bottom) continue;
+          const t = (e.clientY - rect.top) / rect.height;
+          target = { slug: rowSlug, kind: t < 0.3 ? "before" : t > 0.7 ? "after" : "into" };
+          break;
+        }
+        dropRef.current = target;
+        setDrop(target);
+      };
+
+      const finish = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", finish);
+        document.body.style.removeProperty("cursor");
+        const target = dropRef.current;
+        dropRef.current = null;
+        setDragging(null);
+        setDrop(null);
+        if (!target) return;
+
+        const parent = target.kind === "into" ? target.slug : (parentBySlug.get(target.slug) ?? null);
+        let before: string | null = null;
+        if (target.kind === "before") before = target.slug;
+        if (target.kind === "after") {
+          const siblings = parent === null ? tree : (flattenPages(tree).find(({ page }) => page.slug === parent)?.page.children ?? []);
+          const at = siblings.findIndex((p) => p.slug === target.slug);
+          before = siblings[at + 1]?.slug ?? null;
+        }
+
+        const next = structuredClone(tree);
+        if (!movePageNode(next, slug, parent, before)) return;
+        setOverride(next);
+        if (target.kind === "into" && folded.has(target.slug)) {
+          const openParent = new Set(folded);
+          openParent.delete(target.slug);
+          setFoldedPersistent(openParent);
+        }
+        void movePageAction({ projectId, slug, parentSlug: parent, beforeSlug: before }).then(() => router.refresh());
+      };
+
+      document.body.style.cursor = "grabbing";
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", finish);
+    },
+    [tree, parentBySlug, folded, setFoldedPersistent, projectId, router],
+  );
+
+  const renderRows = (nodes: PageRef[], depth: number): ReactNode =>
+    nodes.map((page) => {
+      const children = page.children ?? [];
+      const isFolded = folded.has(page.slug);
+      const isDrop = drop?.slug === page.slug;
+      return (
+        <div key={page.slug}>
+          <div
+            ref={(el) => {
+              if (el) rowRefs.current.set(page.slug, el);
+              else rowRefs.current.delete(page.slug);
+            }}
+            data-page-row={page.slug}
+            className={`group relative flex items-center gap-0.5 rounded-md pr-1 transition-colors ${
+              dragging === page.slug ? "opacity-40" : ""
+            } ${isDrop && drop.kind === "into" ? "bg-accent-soft" : ""} ${
+              page.slug === activeSlug && !(isDrop && drop.kind === "into") ? "bg-surface shadow-soft" : ""
+            }`}
+            style={{ paddingLeft: depth * INDENT }}
+          >
+            {isDrop && drop.kind !== "into" && (
+              <span
+                aria-hidden
+                className={`pointer-events-none absolute right-1 z-10 h-0.5 rounded-full bg-accent ${
+                  drop.kind === "before" ? "-top-px" : "-bottom-px"
+                }`}
+                style={{ left: depth * INDENT + 8 }}
+              />
+            )}
+            <button
+              type="button"
+              aria-label={`Drag ${page.title}`}
+              title="Drag to reorder — drop on a page to nest"
+              onPointerDown={startDrag(page.slug)}
+              className="flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-ink-tertiary/70 opacity-0 transition-opacity hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              <GripIcon className="size-3.5" />
+            </button>
+            {children.length > 0 ? (
+              <button
+                type="button"
+                aria-label={isFolded ? `Expand ${page.title}` : `Fold ${page.title}`}
+                aria-expanded={!isFolded}
+                onClick={() => toggleFold(page.slug)}
+                className="flex size-5 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+              >
+                <ChevronDownIcon className={`size-3 transition-transform ${isFolded ? "-rotate-90" : ""}`} />
+              </button>
+            ) : (
+              <span aria-hidden className="size-5 shrink-0" />
+            )}
+            <Link
+              href={`/projects/${projectId}/pages/${page.slug}`}
+              aria-current={page.slug === activeSlug ? "page" : undefined}
+              draggable={false}
+              className={`min-w-0 flex-1 truncate rounded-md py-1.5 pr-1 text-sm transition-colors ${
+                page.slug === activeSlug ? "font-medium text-ink" : "text-ink-secondary hover:text-ink"
+              }`}
+            >
+              {page.title}
+            </Link>
+            <button
+              type="button"
+              aria-label={`Add subpage inside ${page.title}`}
+              title="Add subpage"
+              onClick={() => addSubpage(page.slug)}
+              className="flex size-5 shrink-0 items-center justify-center rounded text-ink-tertiary opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              <PlusIcon className="size-3.5" />
+            </button>
+          </div>
+          {!isFolded && renderRows(children, depth + 1)}
+          {adding?.parent === page.slug && <AddPageInput depth={depth + 1} busy={busy} onSubmit={(t) => addPage(t, page.slug)} onCancel={() => setAdding(null)} />}
+        </div>
+      );
+    });
+
+  return (
+    <nav aria-label="Pages" className={`min-h-0 flex-1 space-y-px overflow-y-auto px-2 ${dragging ? "select-none" : ""}`}>
+      {renderRows(tree, 0)}
+      {adding?.parent === null && <AddPageInput depth={0} busy={busy} onSubmit={(t) => addPage(t, null)} onCancel={() => setAdding(null)} />}
+      <button
+        type="button"
+        onClick={() => setAdding({ parent: null })}
+        className="mt-1 block w-full rounded-md px-2 py-1.5 text-left text-sm text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+      >
+        + New page
+      </button>
+    </nav>
+  );
+}
+
+function AddPageInput({
+  depth,
+  busy,
+  onSubmit,
+  onCancel,
+}: {
+  depth: number;
+  busy: boolean;
+  onSubmit: (title: string) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div style={{ paddingLeft: depth * INDENT + 8 }}>
+      <input
+        autoFocus
+        placeholder="Page name"
+        disabled={busy}
+        aria-label="New page name"
+        className="my-0.5 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm outline-none focus:border-accent"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onSubmit(e.currentTarget.value);
+          if (e.key === "Escape") onCancel();
+        }}
+        onBlur={(e) => {
+          if (e.currentTarget.value.trim()) onSubmit(e.currentTarget.value);
+          else onCancel();
+        }}
+      />
+    </div>
   );
 }
 
