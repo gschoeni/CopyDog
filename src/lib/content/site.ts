@@ -62,6 +62,16 @@ export function findPage(pages: PageRef[], slug: string): PageRef | undefined {
   return flattenPages(pages).find(({ page }) => page.slug === slug)?.page;
 }
 
+/** The root→page chain of refs for a slug (breadcrumbs), or null when absent. */
+export function pagePath(pages: PageRef[], slug: string): PageRef[] | null {
+  for (const page of pages) {
+    if (page.slug === slug) return [page];
+    const rest = page.children ? pagePath(page.children, slug) : null;
+    if (rest) return [page, ...rest];
+  }
+  return null;
+}
+
 /** Detaches the slug's node (subtree included) from the tree; returns it. */
 function detachPage(pages: PageRef[], slug: string): PageRef | null {
   const index = pages.findIndex((page) => page.slug === slug);

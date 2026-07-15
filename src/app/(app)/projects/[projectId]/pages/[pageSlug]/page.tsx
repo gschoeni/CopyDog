@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { requireProjectAccess } from "@/lib/content/access";
-import { findPage } from "@/lib/content/site";
+import { pagePath } from "@/lib/content/site";
 import {
   hasUnpublishedChanges,
   readDoc,
@@ -36,8 +36,8 @@ export default async function PageEditorRoute({
   const { oxen, view, project } = access;
 
   const site = await readSite(oxen, view);
-  const page = findPage(site.pages, pageSlug);
-  if (!page) notFound();
+  const path = pagePath(site.pages, pageSlug);
+  if (!path) notFound();
 
   const supabase = await createClient();
   const doc = await readDoc(oxen, view, pageSlug);
@@ -87,7 +87,7 @@ export default async function PageEditorRoute({
         projectId={project.id}
         projectName={project.name}
         pageSlug={pageSlug}
-        pageTitle={page.title}
+        pagePath={path.map(({ slug, title }) => ({ slug, title }))}
         initialContent={content}
         initialWireframe={wireframe}
         initialDirty={dirty}

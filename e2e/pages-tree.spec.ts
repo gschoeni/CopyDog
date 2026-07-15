@@ -56,6 +56,10 @@ test("subpages nest and drag-reorder in the sidebar tree", async ({ page }) => {
   await page.getByLabel("New page name").press("Enter");
   await expect(page).toHaveURL(/\/pages\/team$/, { timeout: 15_000 });
   await expect.poll(() => rowOrder(page)).toEqual(["home", "about", "team", "pricing"]);
+  // breadcrumbs walk the full nesting chain — the ancestor navigates
+  const crumbs = page.getByRole("navigation", { name: "Breadcrumbs" });
+  await expect(crumbs.getByRole("link", { name: "About" })).toBeVisible();
+  await expect(crumbs).toContainText("Team");
   // About grew a fold chevron; folding hides the subtree
   await page.getByRole("button", { name: "Fold About" }).click();
   await expect.poll(() => rowOrder(page)).toEqual(["home", "about", "pricing"]);

@@ -203,3 +203,11 @@ before, bottom edge = after, middle = nest inside — shown as an accent
 line at the target depth or a soft highlight on the future parent. Drops
 apply optimistically, then `movePageAction` persists and the server tree
 reconciles. ⊕ opens an inline "Page name" input as a child row.
+
+**Tree legibility refinement (same day, founder feedback).** Depth is drawn
+with nested guide hairlines dropping from each parent's anchor, not with
+padding math: every row's anchor states its nature at rest (chevron =
+parent, dot = leaf), highlight pills hug their own level, and top-level
+pages sit flush left. Hover controls (grip, ⊕) live on the row's right —
+iOS-reorder style — so titles never shift. Breadcrumbs walk the full
+sitemap chain (`pagePath`): ancestors navigate, the current page is text.

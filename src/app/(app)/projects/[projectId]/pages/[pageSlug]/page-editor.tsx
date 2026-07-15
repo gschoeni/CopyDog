@@ -67,7 +67,8 @@ export interface PageEditorProps {
   projectId: string;
   projectName: string;
   pageSlug: string;
-  pageTitle: string;
+  /** root→page sitemap chain for this page — the breadcrumb trail */
+  pagePath: { slug: string; title: string }[];
   initialContent: PageContentItem[];
   initialWireframe: string | null;
   initialDirty: boolean;
@@ -99,7 +100,7 @@ export function PageEditor({
   projectId,
   projectName,
   pageSlug,
-  pageTitle,
+  pagePath,
   initialContent,
   initialWireframe,
   initialDirty,
@@ -604,7 +605,7 @@ export function PageEditor({
       {/* sticky under the app header (h-14): the toolbar stays reachable and
           gives split mode a fixed 6.5rem chrome offset to pin panes against */}
       <div className="sticky top-14 z-10 flex h-12 items-center justify-between gap-4 border-b border-border bg-bg/80 px-6 backdrop-blur">
-        <nav className="min-w-0 truncate text-xs text-ink-tertiary">
+        <nav aria-label="Breadcrumbs" className="min-w-0 truncate text-xs text-ink-tertiary">
           <Link href="/projects" className="hover:text-ink">
             Projects
           </Link>
@@ -612,8 +613,19 @@ export function PageEditor({
           <Link href={`/projects/${projectId}`} className="hover:text-ink">
             {projectName}
           </Link>
-          <span className="mx-1.5">/</span>
-          <span className="text-ink-secondary">{pageTitle}</span>
+          {/* the full nesting chain: ancestors navigate, the page itself is where you are */}
+          {pagePath.map((crumb, i) => (
+            <span key={crumb.slug}>
+              <span className="mx-1.5">/</span>
+              {i < pagePath.length - 1 ? (
+                <Link href={`/projects/${projectId}/pages/${crumb.slug}`} className="hover:text-ink">
+                  {crumb.title}
+                </Link>
+              ) : (
+                <span className="text-ink-secondary">{crumb.title}</span>
+              )}
+            </span>
+          ))}
         </nav>
         <p aria-live="polite" className={`hidden shrink-0 text-xs sm:block ${saveState === "error" ? "text-danger" : "text-ink-tertiary"}`}>
           {statusLabel}

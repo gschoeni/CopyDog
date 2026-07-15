@@ -144,8 +144,6 @@ export function PagesSidebar({
 
 type DropTarget = { slug: string; kind: "before" | "after" | "into" };
 
-const INDENT = 14;
-
 /**
  * Pages as a draggable tree. Rows reveal a grip (drag) and a ⊕ (add
  * subpage) on hover; subtrees fold on the chevron. Dragging is
@@ -301,11 +299,12 @@ function PageTree({ projectId, pages, activeSlug }: { projectId: string; pages: 
     [tree, parentBySlug, folded, setFoldedPersistent, projectId, router],
   );
 
-  const renderRows = (nodes: PageRef[], depth: number): ReactNode =>
+  const renderRows = (nodes: PageRef[]): ReactNode =>
     nodes.map((page) => {
       const children = page.children ?? [];
       const isFolded = folded.has(page.slug);
       const isDrop = drop?.slug === page.slug;
+      const addingHere = adding?.parent === page.slug;
       return (
         <div key={page.slug}>
           <div
@@ -314,49 +313,45 @@ function PageTree({ projectId, pages, activeSlug }: { projectId: string; pages: 
               else rowRefs.current.delete(page.slug);
             }}
             data-page-row={page.slug}
-            className={`group relative flex items-center gap-0.5 rounded-md pr-1 transition-colors ${
+            className={`group relative flex items-center gap-1 rounded-md pl-1 pr-0.5 transition-colors ${
               dragging === page.slug ? "opacity-40" : ""
-            } ${isDrop && drop.kind === "into" ? "bg-accent-soft" : ""} ${
-              page.slug === activeSlug && !(isDrop && drop.kind === "into") ? "bg-surface shadow-soft" : ""
+            } ${
+              isDrop && drop.kind === "into"
+                ? "bg-accent-soft ring-1 ring-inset ring-accent/50"
+                : page.slug === activeSlug
+                  ? "bg-surface shadow-soft"
+                  : "hover:bg-surface-hover/60"
             }`}
-            style={{ paddingLeft: depth * INDENT }}
           >
             {isDrop && drop.kind !== "into" && (
               <span
                 aria-hidden
-                className={`pointer-events-none absolute right-1 z-10 h-0.5 rounded-full bg-accent ${
+                className={`pointer-events-none absolute left-1 right-1 z-10 h-0.5 rounded-full bg-accent ${
                   drop.kind === "before" ? "-top-px" : "-bottom-px"
                 }`}
-                style={{ left: depth * INDENT + 8 }}
               />
             )}
-            <button
-              type="button"
-              aria-label={`Drag ${page.title}`}
-              title="Drag to reorder — drop on a page to nest"
-              onPointerDown={startDrag(page.slug)}
-              className="flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-ink-tertiary/70 opacity-0 transition-opacity hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
-            >
-              <GripIcon className="size-3.5" />
-            </button>
+            {/* the row's anchor tells its nature at rest: parents fold, leaves dot */}
             {children.length > 0 ? (
               <button
                 type="button"
                 aria-label={isFolded ? `Expand ${page.title}` : `Fold ${page.title}`}
                 aria-expanded={!isFolded}
                 onClick={() => toggleFold(page.slug)}
-                className="flex size-5 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+                className="flex size-4 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
               >
                 <ChevronDownIcon className={`size-3 transition-transform ${isFolded ? "-rotate-90" : ""}`} />
               </button>
             ) : (
-              <span aria-hidden className="size-5 shrink-0" />
+              <span aria-hidden className="flex size-4 shrink-0 items-center justify-center">
+                <span className="size-[5px] rounded-full bg-ink-tertiary/40" />
+              </span>
             )}
             <Link
               href={`/projects/${projectId}/pages/${page.slug}`}
               aria-current={page.slug === activeSlug ? "page" : undefined}
               draggable={false}
-              className={`min-w-0 flex-1 truncate rounded-md py-1.5 pr-1 text-sm transition-colors ${
+              className={`min-w-0 flex-1 truncate py-1.5 text-sm transition-colors ${
                 page.slug === activeSlug ? "font-medium text-ink" : "text-ink-secondary hover:text-ink"
               }`}
             >
@@ -364,24 +359,39 @@ function PageTree({ projectId, pages, activeSlug }: { projectId: string; pages: 
             </Link>
             <button
               type="button"
+              aria-label={`Drag ${page.title}`}
+              title="Drag to reorder — drop on a page to nest"
+              onPointerDown={startDrag(page.slug)}
+              className="flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-ink-tertiary/80 opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              <GripIcon className="size-3.5" />
+            </button>
+            <button
+              type="button"
               aria-label={`Add subpage inside ${page.title}`}
               title="Add subpage"
               onClick={() => addSubpage(page.slug)}
-              className="flex size-5 shrink-0 items-center justify-center rounded text-ink-tertiary opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+              className="flex size-5 shrink-0 items-center justify-center rounded text-ink-tertiary/80 opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
             >
               <PlusIcon className="size-3.5" />
             </button>
           </div>
-          {!isFolded && renderRows(children, depth + 1)}
-          {adding?.parent === page.slug && <AddPageInput depth={depth + 1} busy={busy} onSubmit={(t) => addPage(t, page.slug)} onCancel={() => setAdding(null)} />}
+          {((children.length > 0 && !isFolded) || addingHere) && (
+            /* subtree in a guided gutter: the hairline drops from the parent's
+               anchor, so nesting reads at a glance and highlights hug their level */
+            <div className="ml-[11px] space-y-px border-l border-border pl-1.5">
+              {!isFolded && renderRows(children)}
+              {addingHere && <AddPageInput busy={busy} onSubmit={(t) => addPage(t, page.slug)} onCancel={() => setAdding(null)} />}
+            </div>
+          )}
         </div>
       );
     });
 
   return (
     <nav aria-label="Pages" className={`min-h-0 flex-1 space-y-px overflow-y-auto px-2 ${dragging ? "select-none" : ""}`}>
-      {renderRows(tree, 0)}
-      {adding?.parent === null && <AddPageInput depth={0} busy={busy} onSubmit={(t) => addPage(t, null)} onCancel={() => setAdding(null)} />}
+      {renderRows(tree)}
+      {adding?.parent === null && <AddPageInput busy={busy} onSubmit={(t) => addPage(t, null)} onCancel={() => setAdding(null)} />}
       <button
         type="button"
         onClick={() => setAdding({ parent: null })}
@@ -394,34 +404,30 @@ function PageTree({ projectId, pages, activeSlug }: { projectId: string; pages: 
 }
 
 function AddPageInput({
-  depth,
   busy,
   onSubmit,
   onCancel,
 }: {
-  depth: number;
   busy: boolean;
   onSubmit: (title: string) => void;
   onCancel: () => void;
 }) {
   return (
-    <div style={{ paddingLeft: depth * INDENT + 8 }}>
-      <input
-        autoFocus
-        placeholder="Page name"
-        disabled={busy}
-        aria-label="New page name"
-        className="my-0.5 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm outline-none focus:border-accent"
-        onKeyDown={(e) => {
-          if (e.key === "Enter") onSubmit(e.currentTarget.value);
-          if (e.key === "Escape") onCancel();
-        }}
-        onBlur={(e) => {
-          if (e.currentTarget.value.trim()) onSubmit(e.currentTarget.value);
-          else onCancel();
-        }}
-      />
-    </div>
+    <input
+      autoFocus
+      placeholder="Page name"
+      disabled={busy}
+      aria-label="New page name"
+      className="my-0.5 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm outline-none focus:border-accent"
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onSubmit(e.currentTarget.value);
+        if (e.key === "Escape") onCancel();
+      }}
+      onBlur={(e) => {
+        if (e.currentTarget.value.trim()) onSubmit(e.currentTarget.value);
+        else onCancel();
+      }}
+    />
   );
 }
 

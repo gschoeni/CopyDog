@@ -5,6 +5,7 @@ import {
   flattenPages,
   insertPageNode,
   movePageNode,
+  pagePath,
   parseSiteFile,
   serializeSiteFile,
   type PageRef,
@@ -51,6 +52,12 @@ describe("site tree", () => {
   it("finds pages at any depth", () => {
     expect(findPage(tree(), "early-days")?.title).toBe("Early days");
     expect(findPage(tree(), "missing")).toBeUndefined();
+  });
+
+  it("traces the root→page path for breadcrumbs", () => {
+    expect(pagePath(tree(), "early-days")?.map((p) => p.slug)).toEqual(["about", "history", "early-days"]);
+    expect(pagePath(tree(), "home")?.map((p) => p.slug)).toEqual(["home"]);
+    expect(pagePath(tree(), "missing")).toBeNull();
   });
 
   it("reorders within the same parent (before a later sibling)", () => {
