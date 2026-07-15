@@ -36,7 +36,7 @@ export default defineConfig({
       timeout: 180_000,
       env: {
         OXEN_BASE_URL: "http://localhost:3232",
-        OXEN_TOKEN: "e2e-token",
+        OXEN_API_KEY: "e2e-token",
         OXEN_NAMESPACE: "e2e",
         // lets the URL-import e2e fetch the stub's fixture page
         ALLOW_LOCAL_IMPORT: "1",

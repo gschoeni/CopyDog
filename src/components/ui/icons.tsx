@@ -131,6 +131,19 @@ export function PanelRightIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Trash can — delete something for good. */
+export function TrashIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4 7h16" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />
+      <path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" />
+    </Icon>
+  );
+}
+
 /** Six-dot grip — a drag handle. */
 export function GripIcon(props: SVGProps<SVGSVGElement>) {
   return (

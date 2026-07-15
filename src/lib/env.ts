@@ -8,10 +8,9 @@ import { z } from "zod";
 
 const serverEnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  OXEN_TOKEN: z.string().min(1),
+  /** ONE Oxen key: authenticates the content store (repos) AND Oxen.ai inference. */
+  OXEN_API_KEY: z.string().min(1),
   OXEN_NAMESPACE: z.string().min(1),
-  /** Oxen.ai inference key; optional until LLM features are exercised. */
-  OXEN_API_KEY: z.string().optional(),
   /** Override to point at a local/self-hosted oxen-server. */
   OXEN_BASE_URL: z.string().url().optional(),
   /** Override the inference endpoint (e2e uses the stub server). */

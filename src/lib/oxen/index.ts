@@ -7,7 +7,7 @@ import { OxenClient } from "./client";
 export function getOxenClient(): OxenClient {
   const env = serverEnv();
   return new OxenClient({
-    token: env.OXEN_TOKEN,
+    token: env.OXEN_API_KEY,
     namespace: env.OXEN_NAMESPACE,
     baseUrl: env.OXEN_BASE_URL,
   });

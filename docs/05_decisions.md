@@ -211,3 +211,28 @@ parent, dot = leaf), highlight pills hug their own level, and top-level
 pages sit flush left. Hover controls (grip, ⊕) live on the row's right —
 iOS-reorder style — so titles never shift. Breadcrumbs walk the full
 sitemap chain (`pagePath`): ancestors navigate, the current page is text.
+
+## 2026-07-15 — Production Oxen (hub.oxen.ai) and one key
+
+**One Oxen credential.** `OXEN_TOKEN` is gone; `OXEN_API_KEY` authenticates
+both the content store (repos API) and Oxen.ai inference. `OXEN_NAMESPACE`
+is the hub username/org. Dev now runs against production hub by default;
+uncommenting `OXEN_BASE_URL` in `.env.local` points back at a local
+oxen-server.
+
+**Repos are born with their content.** Hub refuses workspaces on a
+commitless branch (`no_commits_on_branch`), so provisioning seeds
+site.json + the Home doc via `RepoNew.files` in the create call — the root
+commit exists before anything else touches the repo. The local stub
+mirrors this. (The old create-then-workspace-commit dance only worked
+because local servers auto-created an initial commit.)
+
+**Branch names in tail-match routes keep their slashes.** The workspace
+commit route is `/merge/{branch:.*}` — actix hands the tail over raw, so
+`draft/{user}` must be percent-encoded per segment, never as `%2F`.
+
+**Projects are deletable, owner-only, DB-first.** The projects grid grew a
+hover trash + confirm dialog. The action deletes the Postgres row through
+RLS first (only the owner's delete removes anything — a non-owner can
+never trigger repo deletion), then best-effort deletes the Oxen repo; all
+project tables cascade.

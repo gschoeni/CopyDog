@@ -19,7 +19,7 @@ export class OxenError extends Error {
 }
 
 export interface OxenClientConfig {
-  /** OxenHub API token (`OXEN_TOKEN`). */
+  /** Oxen API token (`OXEN_API_KEY`). */
   token: string;
   /** Namespace repos live under (`OXEN_NAMESPACE`). */
   namespace: string;
@@ -50,7 +50,18 @@ export class OxenClient {
 
   async createRepo(
     name: string,
-    options: { description?: string; isPublic?: boolean; user: CommitAuthor },
+    options: {
+      description?: string;
+      isPublic?: boolean;
+      user: CommitAuthor;
+      /**
+       * Seed files, committed as the repo's root commit. Without them the
+       * new repo's main has NO commits — and a commitless branch can't host
+       * workspaces (hub rejects with no_commits_on_branch), so any repo
+       * that will be edited must be born with its initial content.
+       */
+      files?: { path: string; contents: string }[];
+    },
   ): Promise<OxenRepository> {
     const data = await this.request<{ repository: OxenRepository }>("POST", `/api/repos`, {
       json: {
@@ -59,6 +70,7 @@ export class OxenClient {
         description: options.description,
         is_public: options.isPublic ?? false,
         user: options.user,
+        files: options.files?.map((file) => ({ ...file, user: options.user })),
       },
     });
     return data.repository;
@@ -214,7 +226,9 @@ export class OxenClient {
   ): Promise<OxenCommit> {
     const data = await this.request<{ commit: OxenCommit }>(
       "POST",
-      `${this.repoPath(repo)}/workspaces/${encodeURIComponent(workspaceId)}/merge/${encodeURIComponent(branch)}`,
+      // branch is a tail-match ({branch:.*}) on the server: slashes must stay
+      // literal — encoding them as %2F reads as a different branch name
+      `${this.repoPath(repo)}/workspaces/${encodeURIComponent(workspaceId)}/merge/${encodePath(branch)}`,
       {
         json: {
           message: options.message,

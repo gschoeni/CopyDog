@@ -99,7 +99,12 @@ export class OxenStub {
   }
 
   private async createRepo(req: Request): Promise<Response> {
-    const body = (await req.json()) as { namespace: string; name: string; user: { name: string; email: string } };
+    const body = (await req.json()) as {
+      namespace: string;
+      name: string;
+      user: { name: string; email: string };
+      files?: { path: string; contents: string }[];
+    };
     if (this.repos.has(body.name)) throw new StubHttpError(400, `repo exists: ${body.name}`);
     const repo: StubRepo = {
       namespace: body.namespace,
@@ -108,7 +113,9 @@ export class OxenStub {
       commits: new Map(),
       workspaces: new Map(),
     };
-    const initial = this.makeCommit(repo, [], "Initialized repo", body.user.name, body.user.email, new Map());
+    // seed files land in the root commit, mirroring hub's RepoNew.files
+    const seeded = new Map((body.files ?? []).map((file) => [file.path, file.contents]));
+    const initial = this.makeCommit(repo, [], "Initialized repo", body.user.name, body.user.email, seeded);
     repo.branches.set("main", initial.id);
     this.repos.set(body.name, repo);
     return json({

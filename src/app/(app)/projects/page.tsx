@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { createClient } from "@/lib/supabase/server";
 
+import { DeleteProjectButton } from "./delete-project-button";
 import { NewProjectForm } from "./new-project-form";
 
 export const metadata = { title: "Projects" };
@@ -37,21 +38,25 @@ export default async function ProjectsPage() {
       <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <NewProjectForm firstProject={projects.length === 0} />
         {projects.map((project) => (
-          <Link
-            key={project.id}
-            href={`/projects/${project.id}`}
-            className="group rounded-lg border border-border bg-surface p-5 shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-raised"
-          >
-            <h2 className="font-medium tracking-tight group-hover:text-accent">{project.name}</h2>
-            <p className="mt-1 text-xs text-ink-tertiary">
-              Created{" "}
-              {new Date(project.created_at).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </p>
-          </Link>
+          // relative group wrapper: the delete button floats over the card,
+          // beside the link rather than nested inside it
+          <div key={project.id} className="group relative">
+            <Link
+              href={`/projects/${project.id}`}
+              className="block rounded-lg border border-border bg-surface p-5 shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-raised"
+            >
+              <h2 className="pr-8 font-medium tracking-tight group-hover:text-accent">{project.name}</h2>
+              <p className="mt-1 text-xs text-ink-tertiary">
+                Created{" "}
+                {new Date(project.created_at).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </p>
+            </Link>
+            <DeleteProjectButton projectId={project.id} name={project.name} />
+          </div>
         ))}
       </div>
     </div>

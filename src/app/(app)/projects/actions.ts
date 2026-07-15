@@ -57,3 +57,43 @@ export async function createProject(
   revalidatePath("/projects");
   redirect(`/projects/${projectId}`);
 }
+
+const deleteInput = z.uuid();
+
+export type DeleteProjectResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Deletes a project for everyone: the Postgres rows (members, chat, comments,
+ * proposals all cascade) and the Oxen repo with every version of the content.
+ * The row goes first THROUGH RLS — only the owner's delete removes anything,
+ * so a non-owner can never trigger the repo deletion. A repo that fails to
+ * delete afterwards is an orphan on the hub, not a broken project.
+ */
+export async function deleteProjectAction(input: string): Promise<DeleteProjectResult> {
+  const projectId = deleteInput.parse(input);
+  const supabase = await createClient();
+
+  const { data: deleted, error } = await supabase
+    .from("projects")
+    .delete()
+    .eq("id", projectId)
+    .select("oxen_repo");
+  if (error) {
+    console.error("project delete failed", { projectId, error });
+    return { ok: false, error: "Couldn't delete the project. Please try again." };
+  }
+  const repo = deleted?.[0]?.oxen_repo as string | undefined;
+  if (!repo) {
+    // RLS let the statement through but deleted nothing: not the owner
+    return { ok: false, error: "Only the project's owner can delete it." };
+  }
+
+  try {
+    await getOxenClient().deleteRepo(repo);
+  } catch (err) {
+    console.error("project row deleted but repo cleanup failed", { repo, err });
+  }
+
+  revalidatePath("/projects");
+  return { ok: true };
+}
