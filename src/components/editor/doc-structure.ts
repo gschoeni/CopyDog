@@ -122,21 +122,6 @@ export function $insertSectionAfterSlug(slug: string, makeSlug: () => string): b
   return true;
 }
 
-/** Appends a fresh empty section at the document's end; caret moves into it. */
-export function $appendNewSection(makeSlug: () => string): void {
-  const root = $getRoot();
-  const last = root.getLastChild();
-  if (last) {
-    $insertSectionAfterNode(last, makeSlug);
-    return;
-  }
-  const section = $createSectionNode(makeSlug());
-  const paragraph = $createParagraphNode();
-  section.append(paragraph);
-  root.append(section);
-  paragraph.select();
-}
-
 function $insertSectionAfterNode(node: LexicalNode, makeSlug: () => string): void {
   const next = $createSectionNode(makeSlug());
   const paragraph = $createParagraphNode();
