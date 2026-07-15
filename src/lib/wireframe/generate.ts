@@ -1,6 +1,7 @@
 import { LLM_MODELS, LlmClient } from "@/lib/llm/client";
 import { serializeElements } from "@/lib/copy/markdown";
 
+import { stripCodeFences } from "./edit";
 import { generateWireframeHeuristic, type SectionForLayout } from "./heuristic";
 import { sanitizeWireframeHtml } from "./sanitize";
 import { DESIGN_SYSTEM_SPEC } from "./spec";
@@ -83,10 +84,6 @@ export async function generateWireframe(generators: WireframeGenerator[], sectio
     }
   }
   throw lastError instanceof Error ? lastError : new Error("wireframe generation failed");
-}
-
-function stripCodeFences(text: string): string {
-  return text.replace(/^```(?:html)?\s*/i, "").replace(/```\s*$/, "");
 }
 
 function coversAllSections(html: string, sections: SectionForLayout[]): boolean {
