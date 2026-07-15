@@ -41,38 +41,89 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  // Scripted chat-completions endpoint so agent e2e runs offline: the first
-  // call in a conversation rewrites the first section; the follow-up call
-  // (after tool results) replies with text.
+  // Scripted chat-completions endpoint so agent e2e runs offline. Scenarios:
+  //  - a section-layout request ("Design ONE wireframe section") answers with
+  //    a split-layout fragment for the requested slug
+  //  - a user message mentioning layout ("split"/"design"/"layout") triggers a
+  //    design_section tool call; anything else triggers rewrite_section
+  //  - after tool results, a closing text reply
+  // Streams SSE when the client asks for it (the real client always does).
   if (req.url === "/chat/completions" && req.method === "POST") {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk as Buffer);
     const body = JSON.parse(Buffer.concat(chunks).toString()) as {
-      messages: { role: string; content?: unknown }[];
+      stream?: boolean;
+      messages: { role: string; content?: unknown; tool_calls?: { function?: { name?: string } }[] }[];
     };
     const hadToolResult = body.messages.some((m) => m.role === "tool");
+    const calledTools = body.messages.flatMap((m) => (m.tool_calls ?? []).map((c) => c.function?.name));
     const context = JSON.stringify(body.messages);
+    const lastUser = [...body.messages].reverse().find((m) => m.role === "user");
+    const lastUserText = typeof lastUser?.content === "string" ? lastUser.content : JSON.stringify(lastUser?.content ?? "");
     const slugMatch = context.match(/slug: ([a-z0-9-]+)/);
+    const slug = slugMatch?.[1] ?? "hero";
 
-    const message = hadToolResult
-      ? { content: "Done — I rewrote it with a stronger promise. (stub)" }
-      : {
-          content: null,
-          tool_calls: [
-            {
-              id: "call_stub_1",
-              type: "function",
-              function: {
-                name: "rewrite_section",
-                arguments: JSON.stringify({
-                  sectionSlug: slugMatch?.[1] ?? "hero",
-                  label: "Agent take",
-                  markdown: "# Rewritten by the assistant\n\nStub copy that proves the loop.\n",
-                }),
-              },
+    let message: { content: string | null; tool_calls?: unknown[] };
+    if (lastUserText.includes("Design ONE wireframe section")) {
+      const target = lastUserText.match(/data-copy="([a-z0-9-]+)"/)?.[1] ?? slug;
+      message = {
+        content: `<section class="wf-section" data-copy="${target}"><div class="wf-container wf-split"><div class="wf-stack" data-overflow><h1 class="wf-h1" data-element="h1"></h1></div><div class="wf-media" aria-hidden="true"></div></div></section>`,
+      };
+    } else if (hadToolResult) {
+      const wasDesign = calledTools.includes("design_section");
+      message = {
+        content: wasDesign
+          ? "Done — the section is a split with media beside the copy. (stub)"
+          : "Done — I rewrote it with a stronger promise. (stub)",
+      };
+    } else if (/split|design|layout/i.test(lastUserText)) {
+      message = {
+        content: null,
+        tool_calls: [
+          {
+            id: "call_stub_design",
+            type: "function",
+            function: {
+              name: "design_section",
+              arguments: JSON.stringify({ sectionSlug: slug, instruction: "make it a split with media beside the copy" }),
             },
-          ],
-        };
+          },
+        ],
+      };
+    } else {
+      message = {
+        content: null,
+        tool_calls: [
+          {
+            id: "call_stub_1",
+            type: "function",
+            function: {
+              name: "rewrite_section",
+              arguments: JSON.stringify({
+                sectionSlug: slug,
+                label: "Agent take",
+                markdown: "# Rewritten by the assistant\n\nStub copy that proves the loop.\n",
+              }),
+            },
+          },
+        ],
+      };
+    }
+
+    if (body.stream) {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      if (message.content) {
+        // two chunks so the client's incremental assembly is exercised
+        const mid = Math.ceil(message.content.length / 2);
+        res.write(`data: ${JSON.stringify({ model: "stub-model", choices: [{ delta: { content: message.content.slice(0, mid) } }] })}\n\n`);
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: message.content.slice(mid) } }] })}\n\n`);
+      }
+      for (const call of message.tool_calls ?? []) {
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, ...(call as object) }] } }] })}\n\n`);
+      }
+      res.end("data: [DONE]\n\n");
+      return;
+    }
 
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ model: "stub-model", choices: [{ message }] }));

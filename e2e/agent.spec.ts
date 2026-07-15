@@ -43,3 +43,37 @@ test("assistant rewrites a section through a tool call", async ({ page }) => {
   await expect(page.getByText("Punch up this section")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText("I rewrote it with a stronger promise")).toBeVisible();
 });
+
+/**
+ * The wireframe-design loop: the assistant redesigns one section through
+ * design_section (streamed over the real route), and the wireframe pane
+ * live-updates to the new layout without touching the copy.
+ */
+test("assistant redesigns a wireframe section through a tool call", async ({ page }) => {
+  await signIn(page);
+
+  await page.getByPlaceholder("Acme landing page").fill(`Agent design ${Date.now()}`);
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
+  await page.getByRole("textbox", { name: "Page copy" }).click();
+  await writeSection(page, ["# Design me", "Copy that wants a layout."], 1);
+  await page.waitForTimeout(1000);
+  await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
+
+  // start from a generated wireframe (heuristic centered hero — no wf-split)
+  await page.getByRole("tab", { name: "Split" }).click();
+  await page.getByRole("button", { name: "Generate wireframe from sections" }).click();
+  const wireframe = page.locator(".wf-root").last();
+  await expect(wireframe.getByRole("heading", { name: "Design me" })).toBeVisible({ timeout: 20_000 });
+  await expect(wireframe.locator(".wf-split")).toHaveCount(0);
+
+  // ask the assistant for a section redesign
+  await page.getByRole("button", { name: "Assistant" }).click();
+  await page.getByLabel("Message the assistant").fill("Make this section a split layout");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  // scripted design_section runs; the wireframe becomes a split, copy intact
+  await expect(page.getByText("the section is a split")).toBeVisible({ timeout: 20_000 });
+  await expect(wireframe.locator(".wf-split")).toHaveCount(1, { timeout: 20_000 });
+  await expect(wireframe.getByRole("heading", { name: "Design me" })).toBeVisible();
+});

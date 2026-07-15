@@ -1,7 +1,7 @@
 import { readDoc, readElementsRun, readSectionVersion, readWireframe } from "@/lib/content/store";
 import { LLM_MODELS, type LlmMessage } from "@/lib/llm/client";
 
-import { AGENT_TOOLS, executeTool, type ToolContext } from "./tools";
+import { AGENT_TOOLS, executeTool, toolActivityLabel, type ToolContext } from "./tools";
 
 /**
  * The agent loop: give the model the page's current copy + wireframe and
@@ -43,10 +43,17 @@ export interface AgentTurn {
   mutated: boolean;
 }
 
+/** Live progress from a running turn, for streaming UIs. */
+export type AgentEvent =
+  | { type: "delta"; text: string }
+  | { type: "status"; label: string }
+  | { type: "mutated" };
+
 export async function runAgentTurn(
   ctx: ToolContext,
   history: { role: "user" | "assistant"; content: string }[],
   userMessage: string,
+  onEvent?: (event: AgentEvent) => void,
 ): Promise<AgentTurn> {
   const pageContext = await buildPageContext(ctx);
   const messages: LlmMessage[] = [
@@ -56,39 +63,43 @@ export async function runAgentTurn(
   ];
 
   let mutated = false;
+  const replyParts: string[] = [];
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const result = await ctx.llm.chat({
-      model: LLM_MODELS.copy,
-      messages,
-      tools: AGENT_TOOLS,
-      maxTokens: 4000,
-    });
+    const options = { model: LLM_MODELS.copy, messages, tools: AGENT_TOOLS, maxTokens: 4000 };
+    // narration between tool calls streams too — the turn reads as one reply
+    const result = onEvent
+      ? await ctx.llm.chatStream(options, (text) => onEvent({ type: "delta", text }))
+      : await ctx.llm.chat(options);
+
+    if (result.content) replyParts.push(result.content);
 
     if (result.toolCalls.length === 0) {
-      return { reply: result.content || "Done.", mutated };
+      return { reply: replyParts.join("\n\n") || "Done.", mutated };
     }
 
     messages.push({ role: "assistant", content: result.content || null, tool_calls: result.toolCalls });
     for (const call of result.toolCalls) {
+      onEvent?.({ type: "status", label: toolActivityLabel(call.function.name, call.function.arguments) });
       let outcome;
       try {
         outcome = await executeTool(call.function.name, call.function.arguments, ctx);
       } catch (err) {
         outcome = { result: `Tool failed: ${err instanceof Error ? err.message : "unknown error"}`, mutated: false };
       }
-      mutated = mutated || outcome.mutated;
+      if (outcome.mutated) {
+        mutated = true;
+        onEvent?.({ type: "mutated" });
+      }
       messages.push({ role: "tool", content: outcome.result, tool_call_id: call.id });
     }
   }
 
   // ran out of rounds before the model produced a closing message
-  return {
-    reply: mutated
-      ? "I made the changes — take a look."
-      : "I couldn't finish that — try rephrasing or breaking it into smaller steps.",
-    mutated,
-  };
+  const fallback = mutated
+    ? "I made the changes — take a look."
+    : "I couldn't finish that — try rephrasing or breaking it into smaller steps.";
+  return { reply: replyParts.concat(fallback).join("\n\n"), mutated };
 }
 
 async function buildPageContext(ctx: ToolContext): Promise<string> {

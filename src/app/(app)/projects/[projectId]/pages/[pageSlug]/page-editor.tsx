@@ -20,6 +20,7 @@ import {
   createVersionAction,
   generateWireframeAction,
   readVersionAction,
+  readWireframeAction,
   saveElementsRunAction,
   saveSectionAction,
   saveStructureAction,
@@ -679,6 +680,14 @@ export function PageEditor({
           <ChatPanel
             projectId={projectId}
             pageSlug={pageSlug}
+            onLiveMutation={() => {
+              setDirty(true);
+              // mid-turn: pull just the wireframe so the design evolves live
+              // without remounting the editor (which would kill the stream)
+              void readWireframeAction({ projectId, pageSlug }).then(({ html }) => {
+                if (html) setWireframe(html);
+              });
+            }}
             onMutated={() => {
               setDirty(true);
               // the agent edited the draft server-side — reload the view
