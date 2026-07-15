@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { docSections } from "@/lib/content/doc";
-import { ensureDraftView, readDoc, readSectionVersion, writeDoc, writeSectionVersion, type DraftView } from "@/lib/content/store";
+import {
+  ensureDraftView,
+  readDoc,
+  readSectionVersion,
+  readWireframe,
+  writeDoc,
+  writeSectionVersion,
+  writeWireframe,
+  type DraftView,
+} from "@/lib/content/store";
 import { LlmClient } from "@/lib/llm/client";
 import { OxenClient } from "@/lib/oxen/client";
 import { provisionProjectRepo } from "@/lib/oxen/provision";
@@ -104,6 +113,104 @@ describe("runAgentTurn", () => {
     ]);
     const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm }, [], "Brainstorm hero angles");
     expect(turn).toEqual({ reply: "Three angles: speed, trust, delight.", mutated: false });
+  });
+
+  it("design_section swaps one section's layout and leaves the rest alone", async () => {
+    const original = `<header class="wf-navbar" aria-hidden="true"></header>
+<section class="wf-section" data-copy="hero"><div class="wf-container wf-center"><h1 class="wf-h1" data-element="h1"></h1></div></section>
+<footer class="wf-footer" aria-hidden="true"></footer>`;
+    await writeWireframe(oxen, view, "home", original);
+
+    const { llm, requests } = scriptedLlm([
+      {
+        model: "m",
+        choices: [
+          {
+            message: {
+              content: null,
+              tool_calls: [
+                {
+                  id: "call_1",
+                  type: "function",
+                  function: {
+                    name: "design_section",
+                    arguments: JSON.stringify({ sectionSlug: "hero", instruction: "split, image on the left" }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      // the section-layout request answers with the new fragment
+      {
+        model: "m",
+        choices: [
+          {
+            message: {
+              content: `<section class="wf-section" data-copy="hero"><div class="wf-container wf-split wf-split-reverse"><div class="wf-stack" data-overflow><h1 class="wf-h1" data-element="h1"></h1></div><div class="wf-media" aria-hidden="true"></div></div></section>`,
+            },
+          },
+        ],
+      },
+      { model: "m", choices: [{ message: { content: "Hero is a split now, image left." } }] },
+    ]);
+
+    const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm }, [], "image on the left of the hero");
+
+    expect(turn.mutated).toBe(true);
+    const wireframe = await readWireframe(oxen, view, "home");
+    expect(wireframe).toContain("wf-split-reverse");
+    expect(wireframe).toContain("wf-navbar"); // chrome untouched
+    expect(wireframe?.match(/data-copy="hero"/g)).toHaveLength(1);
+
+    // the agent saw the current wireframe in its context
+    expect(JSON.stringify(requests[0]!.messages)).toContain("wf-navbar");
+    // and the section designer saw the current section + instruction
+    const layoutRequest = JSON.stringify(requests[1]!.messages);
+    expect(layoutRequest).toContain("image on the left");
+    expect(layoutRequest).toContain("wf-center");
+  });
+
+  it("redesign_page starts from the current wireframe", async () => {
+    await writeWireframe(oxen, view, "home", `<section class="wf-section" data-copy="hero"><h1 class="wf-h1" data-element="h1"></h1></section>`);
+    const { llm, requests } = scriptedLlm([
+      {
+        model: "m",
+        choices: [
+          {
+            message: {
+              content: null,
+              tool_calls: [
+                {
+                  id: "call_1",
+                  type: "function",
+                  function: { name: "redesign_page", arguments: JSON.stringify({ instruction: "add rhythm" }) },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        model: "m",
+        choices: [
+          {
+            message: {
+              content: `<section class="wf-section wf-section-tint" data-copy="hero"><div class="wf-container wf-center" data-overflow><h1 class="wf-h1" data-element="h1"></h1></div></section>`,
+            },
+          },
+        ],
+      },
+      { model: "m", choices: [{ message: { content: "Tinted the hero band." } }] },
+    ]);
+
+    const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm }, [], "give the page more rhythm");
+
+    expect(turn.mutated).toBe(true);
+    expect(await readWireframe(oxen, view, "home")).toContain("wf-section-tint");
+    // the page generator was shown the current wireframe as its starting point
+    expect(JSON.stringify(requests[1]!.messages)).toContain("starting point");
   });
 
   it("survives a failing tool and still answers", async () => {

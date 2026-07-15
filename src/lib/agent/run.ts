@@ -1,28 +1,42 @@
-import { readDoc, readElementsRun, readSectionVersion } from "@/lib/content/store";
+import { readDoc, readElementsRun, readSectionVersion, readWireframe } from "@/lib/content/store";
 import { LLM_MODELS, type LlmMessage } from "@/lib/llm/client";
 
 import { AGENT_TOOLS, executeTool, type ToolContext } from "./tools";
 
 /**
- * The agent loop: give the model the page's current copy and the tools,
- * let it act (max a few rounds), and return what it said plus whether it
- * changed anything (so the UI can reload the draft).
+ * The agent loop: give the model the page's current copy + wireframe and
+ * the tools, let it act (max a few rounds), and return what it said plus
+ * whether it changed anything (so the UI can reload the draft).
  */
 
-const MAX_ROUNDS = 5;
+const MAX_ROUNDS = 8;
 
-const SYSTEM_PROMPT = `You are CopyDog's writing and layout assistant — a seasoned copywriter and wireframe designer.
+/** Beyond this the wireframe context is cut — enough for any sane page. */
+const WIREFRAME_CONTEXT_LIMIT = 20_000;
 
-You help with website copy (rewrites, alternatives, new sections) and greyscale wireframe layout. You act
-through tools; everything you change lands in the user's private draft, never the team's copy.
+const SYSTEM_PROMPT = `You are CopyDog's writing and layout assistant — a seasoned copywriter and wireframe designer
+who has worked at Apple, Notion, and Figma. You design clean greyscale wireframes and write copy that earns its place.
 
-Guidelines:
-- When asked to change copy, use rewrite_section to create a NEW version with a short descriptive label —
-  never describe changes without making them.
-- When asked about layout, use update_wireframe with a precise instruction.
-- Copy markdown dialect: #–###### headings, paragraphs, "- " bullets, "1. " numbered lists, [Label](url) alone on a line is a CTA
-  button, an "<!--eyebrow-->" line marks the next line as a short overline.
-- Keep replies short and concrete: say what you did and why it works. No filler.`;
+You act through tools; everything you change lands in the user's private draft, never the team's copy.
+
+Designing wireframes:
+- Section-scoped requests ("make the hero a split", "put the image on the left", "card grid for features")
+  → design_section for that one section. It's the default move; it leaves the rest of the page alone.
+- Page-scoped requests ("lay the page out", "more rhythm", "feels monotonous") → redesign_page.
+- You can see the current wireframe HTML below — read it before deciding, describe layouts in its terms
+  (split, grid of cards, tinted band, logo strip, stats, FAQ rows), and vary patterns between sections.
+- Building from nothing: when the page is empty and the user describes a site ("landing page for a dog-walking
+  startup"), create the sections with add_section — real starter copy, one section per band of the page
+  (hero, social proof, features, how it works, testimonial, CTA…) — then one redesign_page to lay it all out.
+  Don't ask permission section by section; deliver a first draft they can react to.
+
+Writing copy:
+- rewrite_section creates a NEW version with a short descriptive label — never describe changes without
+  making them. The original is always preserved.
+- Copy markdown dialect: #–###### headings, paragraphs, "- " bullets, "1. " numbered lists, [Label](url)
+  alone on a line is a CTA button, an "<!--eyebrow-->" line marks the next line as a short overline.
+
+Keep replies short and concrete: say what you did and why it works. No filler.`;
 
 export interface AgentTurn {
   reply: string;
@@ -80,7 +94,7 @@ export async function runAgentTurn(
 async function buildPageContext(ctx: ToolContext): Promise<string> {
   const doc = await readDoc(ctx.oxen, ctx.view, ctx.pageSlug);
   if (doc.content.length === 0) {
-    return `Current page "${ctx.pageSlug}" is empty.`;
+    return `Current page "${ctx.pageSlug}" is empty — no copy, no wireframe. Build it when asked.`;
   }
   const parts = await Promise.all(
     doc.content.map(async (entry) => {
@@ -94,5 +108,15 @@ async function buildPageContext(ctx: ToolContext): Promise<string> {
       return `### ${entry.title} (section slug: ${entry.slug}, active version: ${entry.activeVersion}${linkNote})\n${markdown || "(empty)"}`;
     }),
   );
-  return `Current copy on page "${ctx.pageSlug}":\n\n${parts.join("\n\n")}`;
+
+  const wireframe = (await readWireframe(ctx.oxen, ctx.view, ctx.pageSlug)) ?? "";
+  const wireframePart = wireframe
+    ? `\n\nCurrent wireframe on page "${ctx.pageSlug}" (copy is injected into the data-element slots at render time):\n\n${truncate(wireframe, WIREFRAME_CONTEXT_LIMIT)}`
+    : `\n\nThe page has no wireframe yet.`;
+
+  return `Current copy on page "${ctx.pageSlug}":\n\n${parts.join("\n\n")}${wireframePart}`;
+}
+
+function truncate(text: string, limit: number): string {
+  return text.length <= limit ? text : `${text.slice(0, limit)}\n<!-- …truncated -->`;
 }
