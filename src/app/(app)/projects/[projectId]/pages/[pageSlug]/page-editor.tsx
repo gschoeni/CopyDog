@@ -589,7 +589,9 @@ export function PageEditor({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-2.5">
+      {/* sticky under the app header (h-14): the toolbar stays reachable and
+          gives split mode a fixed 6.5rem chrome offset to pin panes against */}
+      <div className="sticky top-14 z-10 flex h-12 items-center justify-between gap-4 border-b border-border bg-bg/80 px-6 backdrop-blur">
         <nav className="min-w-0 truncate text-xs text-ink-tertiary">
           <Link href="/projects" className="hover:text-ink">
             Projects
@@ -759,7 +761,15 @@ function WireframePane({
 }) {
   const omittedNote = describeOmitted(omitted);
   return (
-    <div className={`relative min-w-0 flex-1 overflow-y-auto bg-surface-sunken ${bordered ? "border-l border-border" : ""}`}>
+    <div
+      className={`relative min-w-0 flex-1 overflow-y-auto bg-surface-sunken ${
+        bordered
+          ? // split: pin to the viewport below the chrome and scroll internally,
+            // independent of the copy pane (which scrolls with the window)
+            "sticky top-[6.5rem] h-[calc(100dvh-6.5rem)] self-start border-l border-border"
+          : ""
+      }`}
+    >
       {preview ? (
         <>
           <div className="pointer-events-none sticky top-0 z-10 flex items-center justify-end gap-2 p-3">

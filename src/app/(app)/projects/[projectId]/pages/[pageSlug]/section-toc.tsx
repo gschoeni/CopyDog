@@ -26,7 +26,7 @@ export function SectionToc({
 
   return (
     <div className={`hidden shrink-0 pt-[4.5rem] md:block ${compact ? "w-11 pl-2" : "w-52 pl-5 pr-1"}`}>
-      <nav aria-label="Sections" className="sticky top-[4.5rem] max-h-[calc(100dvh-6rem)] overflow-y-auto pb-8">
+      <nav aria-label="Sections" className="sticky top-[7.5rem] max-h-[calc(100dvh-8.5rem)] overflow-y-auto pb-8">
         {compact ? (
           <div className="mb-2 flex justify-center" title="On this page" aria-hidden>
             <TocIcon />
