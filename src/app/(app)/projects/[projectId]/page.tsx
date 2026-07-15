@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 
 import { requireProjectAccess } from "@/lib/content/access";
+import { flattenPages } from "@/lib/content/site";
 import { readSite } from "@/lib/content/store";
 
 import { FirstPageForm } from "./first-page-form";
@@ -21,7 +22,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
   }
 
   const site = await readSite(access.oxen, access.view);
-  const first = site.pages[0];
+  const first = flattenPages(site.pages)[0]?.page;
   if (first) {
     redirect(`/projects/${access.project.id}/pages/${first.slug}`);
   }

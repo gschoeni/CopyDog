@@ -6,10 +6,12 @@ import { parseDocFile, serializeDocFile, type DocFile } from "./doc";
 import {
   SITE_FILE_PATH,
   elementsRunPath,
+  flattenPages,
   pageDocPath,
   pageWireframePath,
   parseSiteFile,
   sectionVersionPath,
+  serializeSiteFile,
   type SiteFile,
 } from "./site";
 
@@ -44,6 +46,10 @@ export async function ensureDraftView(oxen: OxenClient, repo: string, userId: st
 
 export async function readSite(oxen: OxenClient, view: DraftView): Promise<SiteFile> {
   return parseSiteFile(await oxen.readWorkspaceFile(view.repo, view.workspaceId, SITE_FILE_PATH));
+}
+
+export async function writeSite(oxen: OxenClient, view: DraftView, site: SiteFile): Promise<void> {
+  await oxen.writeWorkspaceFile(view.repo, view.workspaceId, SITE_FILE_PATH, serializeSiteFile(site));
 }
 
 export async function readDoc(oxen: OxenClient, view: DraftView, pageSlug: string): Promise<DocFile> {
@@ -189,7 +195,7 @@ async function pruneOrphanContent(oxen: OxenClient, view: DraftView): Promise<vo
   const site = await readSite(oxen, view);
   const referenced = new Set<string>();
   const prunablePages = new Set<string>();
-  for (const page of site.pages) {
+  for (const { page } of flattenPages(site.pages)) {
     referenced.add(pageDocPath(page.slug));
     referenced.add(pageWireframePath(page.slug));
     try {

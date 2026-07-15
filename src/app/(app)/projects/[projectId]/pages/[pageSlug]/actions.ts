@@ -16,6 +16,7 @@ import {
   readDoc,
   readSectionVersion,
   readSite,
+  writeSite,
   readWireframe,
   replaceDoc,
   syncPageFromMain,
@@ -25,7 +26,7 @@ import {
   writeWireframe,
 } from "@/lib/content/store";
 import { createClient } from "@/lib/supabase/server";
-import { SITE_FILE_PATH, serializeSiteFile } from "@/lib/content/site";
+import { flattenPages, insertPageNode, movePageNode } from "@/lib/content/site";
 import { parseElementsMarkdown } from "@/lib/copy/markdown";
 import { getLlmClient } from "@/lib/llm";
 import { generateWireframe, selectGenerator } from "@/lib/wireframe/generate";
@@ -157,7 +158,7 @@ export async function publishAction(input: z.infer<typeof publishInput>): Promis
   // refresh this user's published-versions index from their doc files
   const site = await readSite(oxen, view);
   const rows: Record<string, unknown>[] = [];
-  for (const page of site.pages) {
+  for (const { page } of flattenPages(site.pages)) {
     const doc = await readDoc(oxen, view, page.slug);
     for (const section of docSections(doc)) {
       for (const version of section.versions) {
@@ -422,10 +423,12 @@ export async function generateWireframeAction(
 const addPageInput = z.object({
   projectId: z.uuid(),
   title: z.string().trim().min(1).max(80),
+  /** nest the new page under this one; omit for a top-level page */
+  parentSlug: slugSchema.optional(),
 });
 
 export async function addPageAction(input: z.infer<typeof addPageInput>): Promise<{ slug: string }> {
-  const { projectId, title } = addPageInput.parse(input);
+  const { projectId, title, parentSlug } = addPageInput.parse(input);
   const { oxen, view } = await requireProjectAccess(projectId);
 
   const site = await readSite(oxen, view);
@@ -433,12 +436,38 @@ export async function addPageAction(input: z.infer<typeof addPageInput>): Promis
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "page";
+  // slugs are page directories — unique across the whole tree
+  const taken = new Set(flattenPages(site.pages).map(({ page }) => page.slug));
   let slug = base;
-  for (let n = 2; site.pages.some((p) => p.slug === slug); n++) slug = `${base}-${n}`;
+  for (let n = 2; taken.has(slug); n++) slug = `${base}-${n}`;
 
-  site.pages.push({ slug, title });
-  await oxen.writeWorkspaceFile(view.repo, view.workspaceId, SITE_FILE_PATH, serializeSiteFile(site));
+  if (!insertPageNode(site.pages, { slug, title }, parentSlug ?? null)) {
+    throw new Error(`parent page "${parentSlug}" not found`);
+  }
+  await writeSite(oxen, view, site);
   await writeDoc(oxen, view, slug, { version: 2, content: [] });
 
   return { slug };
+}
+
+const movePageInput = z.object({
+  projectId: z.uuid(),
+  slug: slugSchema,
+  /** new parent; null = top level */
+  parentSlug: slugSchema.nullable(),
+  /** sibling to land in front of; null = append */
+  beforeSlug: slugSchema.nullable(),
+});
+
+/** Reorders / renests a page (subtree included) in the caller's draft sitemap. */
+export async function movePageAction(input: z.infer<typeof movePageInput>): Promise<{ ok: boolean }> {
+  const { projectId, slug, parentSlug, beforeSlug } = movePageInput.parse(input);
+  const { oxen, view } = await requireProjectAccess(projectId);
+
+  const site = await readSite(oxen, view);
+  if (!movePageNode(site.pages, slug, parentSlug, beforeSlug)) {
+    return { ok: false };
+  }
+  await writeSite(oxen, view, site);
+  return { ok: true };
 }

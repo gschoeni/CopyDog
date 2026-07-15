@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { requireProjectAccess } from "@/lib/content/access";
+import { findPage } from "@/lib/content/site";
 import {
   hasUnpublishedChanges,
   readDoc,
@@ -35,7 +36,7 @@ export default async function PageEditorRoute({
   const { oxen, view, project } = access;
 
   const site = await readSite(oxen, view);
-  const page = site.pages.find((p) => p.slug === pageSlug);
+  const page = findPage(site.pages, pageSlug);
   if (!page) notFound();
 
   const supabase = await createClient();
