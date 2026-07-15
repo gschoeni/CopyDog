@@ -69,6 +69,13 @@ test("assistant redesigns a wireframe section through a tool call", async ({ pag
 
   // ask the assistant for a section redesign
   await page.getByRole("button", { name: "Assistant" }).click();
+
+  // the panel is pinned in the viewport BESIDE both panes — copy, wireframe,
+  // and chat input all on screen at once, nothing wrapped below the fold
+  await expect(page.getByLabel("Message the assistant")).toBeInViewport();
+  await expect(wireframe.getByRole("heading", { name: "Design me" })).toBeInViewport();
+  await expect(page.getByRole("textbox", { name: "Page copy" })).toBeInViewport();
+
   await page.getByLabel("Message the assistant").fill("Make this section a split layout");
   await page.getByRole("button", { name: "Send" }).click();
 

@@ -640,11 +640,14 @@ export function PageEditor({
         />
       )}
 
-      <div className={`min-h-0 flex-1 ${mode === "split" ? "grid grid-cols-2" : "flex"}`}>
+      {/* one flex row: content panes share the leftover width equally
+          (flex-1 basis-0) and any number of viewport-pinned side panels
+          (assistant today, more later) sit beside them without wrapping */}
+      <div className="flex min-h-0 flex-1">
         {/* hidden, not unmounted: the editor keeps its live state across
             mode switches. No overflow here — the window scrolls, so sticky
             binds to it. */}
-        <div ref={copyPaneRef} className={`min-w-0 flex-1 ${mode === "wireframe" ? "hidden" : ""}`}>
+        <div ref={copyPaneRef} className={`min-w-0 flex-1 basis-0 ${mode === "wireframe" ? "hidden" : ""}`}>
           <div className="flex min-h-full">
             <SectionToc sections={sections} compact={mode === "split"} onNavigate={scrollToSection} />
             <div className="min-w-0 flex-1">
@@ -771,7 +774,7 @@ function WireframePane({
   const omittedNote = describeOmitted(omitted);
   return (
     <div
-      className={`relative min-w-0 flex-1 overflow-y-auto bg-surface-sunken ${
+      className={`relative min-w-0 flex-1 basis-0 overflow-y-auto bg-surface-sunken ${
         bordered
           ? // split: pin to the viewport below the chrome and scroll internally,
             // independent of the copy pane (which scrolls with the window)

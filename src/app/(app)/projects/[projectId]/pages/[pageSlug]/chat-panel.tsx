@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { SidePanel } from "@/components/ui/side-panel";
 import type { ChatStreamEvent } from "@/lib/agent/events";
 import { createClient } from "@/lib/supabase/client";
 
@@ -135,24 +136,7 @@ export function ChatPanel({
   );
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-l border-border bg-surface" aria-label="Assistant">
-      <header className="flex items-center justify-between border-b border-border px-4 py-2.5">
-        <div className="flex items-baseline gap-1.5">
-          <h2 className="text-sm font-semibold tracking-tight">Assistant</h2>
-          <span aria-hidden className="text-xs text-ink-tertiary">
-            🐕
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close assistant"
-          className="flex size-7 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
-        >
-          ✕
-        </button>
-      </header>
-
+    <SidePanel label="Assistant" title="Assistant" badge="🐕" onClose={onClose}>
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
         {messages === null ? (
           <p className="text-xs text-ink-tertiary">Loading…</p>
@@ -216,6 +200,6 @@ export function ChatPanel({
           Send
         </Button>
       </form>
-    </aside>
+    </SidePanel>
   );
 }
