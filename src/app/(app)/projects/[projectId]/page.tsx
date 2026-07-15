@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 
-import { requireProjectAccess } from "@/lib/content/access";
+import { ContentStoreUnavailableError, requireProjectAccess } from "@/lib/content/access";
 import { flattenPages } from "@/lib/content/site";
 import { readSite } from "@/lib/content/store";
 
@@ -17,7 +17,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
   let access;
   try {
     access = await requireProjectAccess(projectId);
-  } catch {
+  } catch (err) {
+    if (err instanceof ContentStoreUnavailableError) throw err; // infra, not a 404
     notFound();
   }
 

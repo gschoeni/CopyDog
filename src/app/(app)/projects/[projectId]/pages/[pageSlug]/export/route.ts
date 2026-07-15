@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import type { NextRequest } from "next/server";
 
-import { requireProjectAccess } from "@/lib/content/access";
+import { ContentStoreUnavailableError, requireProjectAccess } from "@/lib/content/access";
 import { docSections } from "@/lib/content/doc";
 import { findPage } from "@/lib/content/site";
 import { readDoc, readSectionVersion, readSite, readWireframe } from "@/lib/content/store";
@@ -24,7 +24,8 @@ export async function GET(
   let access;
   try {
     access = await requireProjectAccess(projectId);
-  } catch {
+  } catch (err) {
+    if (err instanceof ContentStoreUnavailableError) throw err; // infra, not a 404
     notFound();
   }
   const { oxen, view, project } = access;

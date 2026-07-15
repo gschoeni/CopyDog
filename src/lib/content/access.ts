@@ -14,6 +14,19 @@ export interface ProjectAccess {
 }
 
 /**
+ * The content store (Oxen) is unreachable or missing this project's repo —
+ * an infrastructure problem, NOT a "page not found". Callers must let this
+ * propagate to the error boundary instead of collapsing it into a 404,
+ * which sends whoever's debugging down the wrong path entirely.
+ */
+export class ContentStoreUnavailableError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "ContentStoreUnavailableError";
+  }
+}
+
+/**
  * The one gate every content action goes through: authenticates the user,
  * loads the project through RLS (membership check), and ensures their
  * draft branch + workspace exist. Throws on any failure — callers treat
@@ -34,7 +47,17 @@ export async function requireProjectAccess(projectId: string): Promise<ProjectAc
   if (!project) throw new Error("project not found or not a member");
 
   const oxen = getOxenClient();
-  const view = await ensureDraftView(oxen, project.oxen_repo, user.id);
+  // membership is confirmed by now — anything failing below is the store,
+  // not the user: server down, or pointed at the wrong data directory
+  let view: DraftView;
+  try {
+    view = await ensureDraftView(oxen, project.oxen_repo, user.id);
+  } catch (err) {
+    throw new ContentStoreUnavailableError(
+      `Oxen content store failed for repo "${project.oxen_repo}": ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
 
   return {
     user: { id: user.id, email: user.email ?? null },

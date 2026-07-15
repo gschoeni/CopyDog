@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { requireProjectAccess } from "@/lib/content/access";
+import { ContentStoreUnavailableError, requireProjectAccess } from "@/lib/content/access";
 import { compareRevisions } from "@/lib/content/store";
 import { diffLines, type DiffLine } from "@/lib/diff";
 import { createClient } from "@/lib/supabase/server";
@@ -36,7 +36,8 @@ export default async function ProposalPage({
   let access;
   try {
     access = await requireProjectAccess(projectId);
-  } catch {
+  } catch (err) {
+    if (err instanceof ContentStoreUnavailableError) throw err; // infra, not a 404
     notFound();
   }
   const { oxen, project } = access;

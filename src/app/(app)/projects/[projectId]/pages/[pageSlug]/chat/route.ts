@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import type { ChatStreamEvent } from "@/lib/agent/events";
 import { runAgentTurn } from "@/lib/agent/run";
-import { requireProjectAccess } from "@/lib/content/access";
+import { ContentStoreUnavailableError, requireProjectAccess } from "@/lib/content/access";
 import { getLlmClient } from "@/lib/llm";
 import { createClient } from "@/lib/supabase/server";
 
@@ -31,7 +31,10 @@ export async function POST(
   let access;
   try {
     access = await requireProjectAccess(projectId);
-  } catch {
+  } catch (err) {
+    if (err instanceof ContentStoreUnavailableError) {
+      return Response.json({ error: "The content store is unreachable — is the Oxen server running?" }, { status: 503 });
+    }
     return Response.json({ error: "Not found" }, { status: 404 });
   }
   const { oxen, view, user } = access;

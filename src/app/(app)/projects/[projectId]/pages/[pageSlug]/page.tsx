@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { requireProjectAccess } from "@/lib/content/access";
+import { ContentStoreUnavailableError, requireProjectAccess } from "@/lib/content/access";
 import { pagePath } from "@/lib/content/site";
 import {
   hasUnpublishedChanges,
@@ -30,7 +30,8 @@ export default async function PageEditorRoute({
   let access;
   try {
     access = await requireProjectAccess(projectId);
-  } catch {
+  } catch (err) {
+    if (err instanceof ContentStoreUnavailableError) throw err; // infra, not a 404
     notFound();
   }
   const { oxen, view, project } = access;
