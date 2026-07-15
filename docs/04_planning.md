@@ -308,3 +308,32 @@ the loose-elements refactor. Everything below is fixed and covered by tests:
 - Deferred findings recorded in the [backlog](06_backlog.md).
 
 Verified: lint, typecheck, 140 unit tests, build, 27 e2e tests.
+
+## 2026-07-14 — The wireframe design agent (built on `agent/wireframe-designer`)
+
+The chat assistant became a real wireframe designer (decisions logged in
+[05_decisions.md](05_decisions.md)):
+
+- **Design system**: Relume-style expansion of the greyscale `wf-*` vocabulary
+  (cards, wf-grid-2/4, wf-split-reverse, tinted bands, forms/inputs, logo
+  strips, avatar rows, stats, FAQ rows), spec prompt moved to
+  `wireframe/spec.ts` with layout-pattern recipes; heuristic learned card
+  grids, testimonials, tinted CTAs.
+- **Incremental edits**: `wireframe/edit.ts` lists/upserts individual
+  `<section data-copy>` blocks; `design_section` redesigns one section,
+  `redesign_page` starts from the current wireframe (replaces
+  `update_wireframe`). The agent sees the current wireframe in context and can
+  build a whole page from scratch on an empty doc (add_section × N, then one
+  layout pass). MAX_ROUNDS 5 → 8.
+- **Streaming**: `LlmClient.chatStream` (SSE + JSON fallback), ndjson chat
+  route, live panel with tool-activity status lines; the wireframe pane
+  refreshes after each mutating tool via a soft `readWireframeAction` (full
+  `router.refresh()` at turn end so the editor remount can't kill the stream).
+- **Verified**: lint, typecheck, 162 unit tests, build, 30 e2e (new e2e:
+  assistant redesigns a section over the real streaming route against the
+  SSE-capable stub).
+
+**Blocked on a human**: the Oxen.ai account behind `OXEN_API_KEY` has no
+credits (`402 insufficient_credits` on a live smoke) — live LLM behavior is
+untested until it's topped up; everything degrades to heuristics per the
+LLM-optional decision.

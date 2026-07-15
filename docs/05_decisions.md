@@ -96,6 +96,42 @@ live state survives.
 **Drags are pointer-based, not HTML5 DnD.** Smoother control over indicators,
 and actually drivable by tests.
 
+## 2026-07-14 — The wireframe design agent
+
+**Section-scoped edits are the agent's default move.** v1's `update_wireframe`
+regenerated the whole page from copy + a one-line instruction — the LLM never
+saw the current layout, so "make the hero two-column" re-rolled every section.
+Now `design_section` regenerates exactly one `<section data-copy>` (spliced
+into the page by `wireframe/edit.ts`), and `redesign_page` feeds the current
+wireframe in as the starting point. The agent also gets the wireframe HTML in
+its context, so it can talk about the layout it's editing. Conversational
+iteration stays stable: what you didn't mention doesn't change.
+
+**Agent turns stream over ndjson, not a server action.** Server actions can't
+stream, so one route handler (`pages/[pageSlug]/chat`) emits
+`{delta|status|mutated|done|error}` lines. `LlmClient.chatStream` parses the
+OpenAI-compatible SSE (assembling tool-call argument fragments) and falls back
+transparently to plain JSON — which is how the e2e stub keeps working and how
+we survive providers that ignore `stream: true`.
+
+**Mid-turn mutations refresh the wireframe without remounting the editor.**
+`page.tsx` remounts `PageEditor` (fingerprint key) on `router.refresh()`,
+which would tear down the chat panel mid-stream. So `mutated` events do a
+cheap `readWireframeAction` → `setWireframe` (the design evolves live in the
+pane), and the full `router.refresh()` waits for `done`, after the reply is
+persisted.
+
+**Designing an unlinked section relinks it.** Asking the agent to lay a
+section out *is* "put this in the wireframe" — the tool flips `linked` back
+on and says so, rather than failing or silently designing an invisible
+section.
+
+**The wf-* vocabulary grew Relume-style; the sanitizer contract didn't move.**
+Cards, 2/4-column grids, reversed splits, tinted bands, forms/inputs, logo
+strips, avatar rows, stats, FAQ rows. The sanitizer already allows any
+`wf-[a-z0-9-]+` class, so the CSS module and the spec prompt are the only two
+places a new component touches; tags and attributes stay allowlisted.
+
 ## 2026-07-13 — Pages are a mix of elements and sections (design correction)
 
 We originally required every element to live in a section. That was wrong:
