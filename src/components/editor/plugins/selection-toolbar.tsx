@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
 import { $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND, REMOVE_LIST_COMMAND } from "@lexical/list";
@@ -18,6 +18,7 @@ import {
 
 import type { ElementType, HeadingLevel } from "@/lib/copy/elements";
 import { ELEMENT_TYPE_LABELS, headingLevels } from "@/lib/copy/elements";
+import type { PageLinkOption } from "@/lib/content/site";
 
 import { $touchedElementNodes } from "../doc-structure";
 import { $createButtonNode, $isButtonNode } from "../nodes/button-node";
@@ -31,7 +32,17 @@ import { $isSectionNode } from "../nodes/section-node";
  * quick element types (H1–H3, quote), the full turn-into menu, and
  * "Group into section" for whatever elements the selection touches.
  */
-export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | null }) {
+type LinkSuggestion =
+  | { kind: "page"; key: string; href: string; title: string; detail: string }
+  | { kind: "url"; key: string; href: string; title: string; detail: string };
+
+export function SelectionToolbarPlugin({
+  linkPages,
+  onGroup,
+}: {
+  linkPages: PageLinkOption[];
+  onGroup: () => string | null;
+}) {
   const [editor] = useLexicalComposerContext();
   const [state, setState] = useState<{
     top: number;
@@ -41,6 +52,7 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
     hasLink: boolean;
   } | null>(null);
   const [linkDraft, setLinkDraft] = useState<string | null>(null);
+  const [activeLinkSuggestion, setActiveLinkSuggestion] = useState(-1);
 
   const refresh = useCallback(() => {
     editor.getEditorState().read(() => {
@@ -142,6 +154,7 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
       editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
       setLinkDraft(null);
     } else {
+      setActiveLinkSuggestion(-1);
       setLinkDraft((draft) => (draft === null ? "" : null));
     }
   }, [editor, state?.hasLink]);
@@ -156,6 +169,18 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
       editor.focus();
     },
     [editor],
+  );
+
+  const linkSuggestions = useMemo(
+    () => (linkDraft === null ? [] : buildLinkSuggestions(linkPages, linkDraft)),
+    [linkDraft, linkPages],
+  );
+
+  const chooseLinkSuggestion = useCallback(
+    (suggestion: LinkSuggestion) => {
+      applyLink(suggestion.href);
+    },
+    [applyLink],
   );
 
   if (!state) return null;
@@ -217,29 +242,127 @@ export function SelectionToolbarPlugin({ onGroup }: { onGroup: () => string | nu
       </div>
 
       {linkDraft !== null && (
-        <div className="border-t border-border p-1.5">
+        <div className="w-80 border-t border-border p-1.5">
           <input
             autoFocus
-            type="url"
-            placeholder="https://… (Enter to apply)"
+            type="text"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={linkSuggestions.length > 0}
+            aria-controls="link-destination-suggestions"
+            aria-activedescendant={
+              activeLinkSuggestion >= 0 ? `link-destination-${activeLinkSuggestion}` : undefined
+            }
+            placeholder="Search pages or paste an http URL…"
             aria-label="Link URL"
-            defaultValue={linkDraft}
+            value={linkDraft}
+            onChange={(e) => {
+              setLinkDraft(e.currentTarget.value);
+              setActiveLinkSuggestion(e.currentTarget.value.trim() ? 0 : -1);
+            }}
             onKeyDown={(e) => {
+              if (e.key === "ArrowDown" && linkSuggestions.length > 0) {
+                e.preventDefault();
+                setActiveLinkSuggestion((index) => (index + 1) % linkSuggestions.length);
+                return;
+              }
+              if (e.key === "ArrowUp" && linkSuggestions.length > 0) {
+                e.preventDefault();
+                setActiveLinkSuggestion((index) =>
+                  index <= 0 ? linkSuggestions.length - 1 : index - 1,
+                );
+                return;
+              }
               if (e.key === "Enter") {
                 e.preventDefault();
-                applyLink(e.currentTarget.value);
+                const suggestion = linkSuggestions[activeLinkSuggestion];
+                if (suggestion) chooseLinkSuggestion(suggestion);
+                else applyLink(e.currentTarget.value);
               }
               if (e.key === "Escape") {
                 setLinkDraft(null);
                 editor.focus();
               }
             }}
-            className="h-7 w-64 rounded-md border border-border bg-surface px-2 text-xs text-ink outline-none placeholder:text-ink-tertiary focus:border-accent"
+            className="h-8 w-full rounded-md border border-border bg-surface px-2.5 text-xs text-ink outline-none placeholder:text-ink-tertiary focus:border-accent"
           />
+          {linkSuggestions.length > 0 && (
+            <div
+              id="link-destination-suggestions"
+              role="listbox"
+              aria-label="Link destinations"
+              className="mt-1 max-h-52 space-y-0.5 overflow-y-auto rounded-md border border-border bg-surface p-1 shadow-soft"
+            >
+              {linkSuggestions.map((suggestion, index) => (
+                <button
+                  key={suggestion.key}
+                  id={`link-destination-${index}`}
+                  type="button"
+                  role="option"
+                  aria-selected={index === activeLinkSuggestion}
+                  onMouseEnter={() => setActiveLinkSuggestion(index)}
+                  onClick={() => chooseLinkSuggestion(suggestion)}
+                  className={`flex w-full items-center justify-between gap-3 rounded px-2 py-1.5 text-left transition-colors ${
+                    index === activeLinkSuggestion ? "bg-accent-soft" : "hover:bg-surface-hover"
+                  }`}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-medium text-ink">{suggestion.title}</span>
+                    <span className="block truncate text-[11px] text-ink-tertiary">{suggestion.detail}</span>
+                  </span>
+                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-ink-tertiary">
+                    {suggestion.kind === "page" ? "Page" : "URL"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+/** Project-page matches plus an exact HTTP(S) destination when one is entered. */
+export function buildLinkSuggestions(pages: PageLinkOption[], draft: string): LinkSuggestion[] {
+  const query = draft.trim().toLocaleLowerCase();
+  const pageSuggestions = pages
+    .filter((page) => {
+      if (!query) return true;
+      return (
+        page.title.toLocaleLowerCase().includes(query) ||
+        page.breadcrumbs.join(" / ").toLocaleLowerCase().includes(query) ||
+        page.href.toLocaleLowerCase().includes(query)
+      );
+    })
+    .slice(0, 7)
+    .map(
+      (page): LinkSuggestion => ({
+        kind: "page",
+        key: `page:${page.slug}`,
+        href: page.href,
+        title: page.title,
+        detail: `${page.breadcrumbs.join(" / ")} · ${page.href}`,
+      }),
+    );
+
+  const httpUrl = normalizeHttpUrl(draft);
+  const urlSuggestion: LinkSuggestion[] = httpUrl
+    ? [{ kind: "url", key: `url:${httpUrl}`, href: httpUrl, title: httpUrl, detail: "External web address" }]
+    : [];
+
+  return httpUrl ? [...urlSuggestion, ...pageSuggestions].slice(0, 8) : pageSuggestions;
+}
+
+function normalizeHttpUrl(value: string): string | null {
+  const target = value.trim();
+  if (!/^https?:\/\//i.test(target)) return null;
+  try {
+    const url = new URL(target);
+    return url.protocol === "http:" || url.protocol === "https:" ? target : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -24,6 +24,16 @@ export interface PageRef {
   children?: PageRef[];
 }
 
+/** A sitemap page as presented by the copy editor's link autocomplete. */
+export interface PageLinkOption {
+  slug: string;
+  title: string;
+  /** Human-readable root-to-page titles, used to disambiguate subpages. */
+  breadcrumbs: string[];
+  /** Portable site-relative destination stored in Markdown. */
+  href: string;
+}
+
 export const pageRefSchema: z.ZodType<PageRef> = z.lazy(() =>
   z.object({
     slug: z.string().min(1),
@@ -56,6 +66,27 @@ export function serializeSiteFile(site: SiteFile): string {
 /** Every page in reading order (pre-order), with its nesting depth. */
 export function flattenPages(pages: PageRef[], depth = 0): { page: PageRef; depth: number }[] {
   return pages.flatMap((page) => [{ page, depth }, ...flattenPages(page.children ?? [], depth + 1)]);
+}
+
+/** Flattens the tree into portable destinations while retaining nested labels. */
+export function pageLinkOptions(
+  pages: PageRef[],
+  ancestors: { slug: string; title: string }[] = [],
+): PageLinkOption[] {
+  return pages.flatMap((page) => {
+    const path = [...ancestors, { slug: page.slug, title: page.title }];
+    return [
+      {
+        slug: page.slug,
+        title: page.title,
+        breadcrumbs: path.map(({ title }) => title),
+        // Page slugs are globally unique and content storage is flat, so the
+        // destination stays valid when a page is reparented in the tree.
+        href: `/${page.slug}`,
+      },
+      ...pageLinkOptions(page.children ?? [], path),
+    ];
+  });
 }
 
 export function findPage(pages: PageRef[], slug: string): PageRef | undefined {

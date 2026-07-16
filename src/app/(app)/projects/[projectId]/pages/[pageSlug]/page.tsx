@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ContentStoreUnavailableError, requireProjectAccess } from "@/lib/content/access";
-import { pagePath } from "@/lib/content/site";
+import { pageLinkOptions, pagePath } from "@/lib/content/site";
 import {
   hasUnpublishedChanges,
   readDoc,
@@ -91,6 +91,7 @@ export default async function PageEditorRoute({
           projectName={project.name}
           pageSlug={pageSlug}
           pagePath={path.map(({ slug, title }) => ({ slug, title }))}
+          linkPages={pageLinkOptions(site.pages).filter((page) => page.slug !== pageSlug)}
           initialContent={content}
           initialWireframe={wireframe}
           initialDirty={dirty}

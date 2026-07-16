@@ -112,6 +112,7 @@ test("toolbar: quick headings, quote, and links on highlighted text", async ({ p
   await page.getByText("Feature body line.").click({ clickCount: 3 });
   await toolbar.getByRole("button", { name: "Link", exact: true }).click();
   await page.getByLabel("Link URL").fill("https://copydog.app/docs");
+  await expect(page.getByRole("option", { name: /https:\/\/copydog\.app\/docs.*URL/ })).toBeVisible();
   await page.keyboard.press("Enter");
   const anchor = editor.locator('a[href="https://copydog.app/docs"]');
   await expect(anchor).toContainText("Feature body line.");
@@ -129,6 +130,38 @@ test("toolbar: quick headings, quote, and links on highlighted text", async ({ p
   await page.getByText("Feature body line.").click({ clickCount: 3 });
   await page.getByRole("toolbar", { name: "Selection tools" }).getByRole("button", { name: "Remove link" }).click();
   await expect(page.getByRole("textbox", { name: "Page copy" }).locator("a")).toHaveCount(0);
+});
+
+test("link autocomplete finds nested project pages", async ({ page }) => {
+  await setupTwoSections(page, `PageLinks ${Date.now()}`);
+
+  await page.getByRole("button", { name: "+ New page" }).click();
+  await page.getByLabel("New page name").fill("About");
+  await page.getByLabel("New page name").press("Enter");
+  await expect(page).toHaveURL(/\/pages\/about$/, { timeout: 15_000 });
+
+  await page.locator('[data-page-row="about"]').hover();
+  await page.getByRole("button", { name: "Add subpage inside About" }).click();
+  await page.getByLabel("New page name").fill("Team");
+  await page.getByLabel("New page name").press("Enter");
+  await expect(page).toHaveURL(/\/pages\/team$/, { timeout: 15_000 });
+
+  await page.locator('[data-page-row="home"]').getByRole("link", { name: "Home" }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/);
+
+  const editor = page.getByRole("textbox", { name: "Page copy" });
+  await page.getByText("Feature body line.").click({ clickCount: 3 });
+  await page.getByRole("toolbar", { name: "Selection tools" }).getByRole("button", { name: "Link", exact: true }).click();
+  await page.getByLabel("Link URL").fill("team");
+
+  const teamOption = page.getByRole("option", { name: /Team.*About \/ Team.*Page/ });
+  await expect(teamOption).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(editor.locator('a[href="/team"]')).toContainText("Feature body line.");
+
+  await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
+  await page.reload();
+  await expect(editor.locator('a[href="/team"]')).toContainText("Feature body line.");
 });
 
 test("section rail: ⊕ inserts a new section below and focuses it", async ({ page }) => {

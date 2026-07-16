@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/icons";
 import type { Element } from "@/lib/copy/elements";
 import type { DocContent, DocSection } from "@/lib/content/doc";
+import type { PageLinkOption } from "@/lib/content/site";
 import { parseElementsMarkdown, serializeElements } from "@/lib/copy/markdown";
 import { DEFAULT_SECTION_TITLE, deriveSectionTitle } from "@/lib/copy/sections";
 import { shortId } from "@/lib/slug";
@@ -70,6 +71,8 @@ export interface PageEditorProps {
   pageSlug: string;
   /** root→page sitemap chain for this page — the breadcrumb trail */
   pagePath: { slug: string; title: string }[];
+  /** Every project page, including nested subpages, for link autocomplete. */
+  linkPages: PageLinkOption[];
   initialContent: PageContentItem[];
   initialWireframe: string | null;
   initialDirty: boolean;
@@ -107,6 +110,7 @@ export function PageEditor({
   projectName,
   pageSlug,
   pagePath,
+  linkPages,
   initialContent,
   initialWireframe,
   initialDirty,
@@ -739,6 +743,7 @@ export function PageEditor({
                 <DocEditor
                   ref={docRef}
                   initialContent={initialSnapshot}
+                  linkPages={linkPages}
                   makeSlug={makeSlug}
                   onSnapshotChange={handleSnapshotChange}
                   renderSectionHeader={renderSectionHeader}

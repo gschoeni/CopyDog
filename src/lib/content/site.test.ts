@@ -5,6 +5,7 @@ import {
   flattenPages,
   insertPageNode,
   movePageNode,
+  pageLinkOptions,
   pagePath,
   parseSiteFile,
   serializeSiteFile,
@@ -58,6 +59,22 @@ describe("site tree", () => {
     expect(pagePath(tree(), "early-days")?.map((p) => p.slug)).toEqual(["about", "history", "early-days"]);
     expect(pagePath(tree(), "home")?.map((p) => p.slug)).toEqual(["home"]);
     expect(pagePath(tree(), "missing")).toBeNull();
+  });
+
+  it("builds nested, site-relative destinations for the link picker", () => {
+    expect(pageLinkOptions(tree())).toEqual([
+      { slug: "home", title: "Home", breadcrumbs: ["Home"], href: "/home" },
+      { slug: "about", title: "About", breadcrumbs: ["About"], href: "/about" },
+      { slug: "team", title: "Team", breadcrumbs: ["About", "Team"], href: "/team" },
+      { slug: "history", title: "History", breadcrumbs: ["About", "History"], href: "/history" },
+      {
+        slug: "early-days",
+        title: "Early days",
+        breadcrumbs: ["About", "History", "Early days"],
+        href: "/early-days",
+      },
+      { slug: "pricing", title: "Pricing", breadcrumbs: ["Pricing"], href: "/pricing" },
+    ]);
   });
 
   it("reorders within the same parent (before a later sibling)", () => {

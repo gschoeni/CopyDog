@@ -35,6 +35,7 @@ import {
 } from "lexical";
 
 import type { Element } from "@/lib/copy/elements";
+import type { PageLinkOption } from "@/lib/content/site";
 
 import {
   $buildDocFromContent,
@@ -78,6 +79,7 @@ export interface SectionRect {
 
 export interface DocEditorProps {
   initialContent: ContentSnapshot[];
+  linkPages: PageLinkOption[];
   makeSlug: () => string;
   onSnapshotChange: (content: ContentSnapshot[]) => void;
   /** Renders each section's header chrome into the reserved headroom. */
@@ -86,7 +88,7 @@ export interface DocEditorProps {
 }
 
 export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(function DocEditor(
-  { initialContent, makeSlug, onSnapshotChange, renderSectionHeader, autoFocus },
+  { initialContent, linkPages, makeSlug, onSnapshotChange, renderSectionHeader, autoFocus },
   ref,
 ) {
   const initialConfig = {
@@ -110,6 +112,7 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(function Do
     <LexicalComposer initialConfig={initialConfig}>
       <DocEditorInner
         handleRef={ref}
+        linkPages={linkPages}
         makeSlug={makeSlug}
         onSnapshotChange={onSnapshotChange}
         renderSectionHeader={renderSectionHeader}
@@ -121,12 +124,14 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(function Do
 
 function DocEditorInner({
   handleRef,
+  linkPages,
   makeSlug,
   onSnapshotChange,
   renderSectionHeader,
   autoFocus,
 }: {
   handleRef: React.Ref<DocEditorHandle>;
+  linkPages: PageLinkOption[];
   makeSlug: () => string;
   onSnapshotChange: (content: ContentSnapshot[]) => void;
   renderSectionHeader: (slug: string) => ReactNode;
@@ -321,6 +326,7 @@ function DocEditorInner({
       <LinkPlugin />
       <OnChangePlugin onChange={handleChange} ignoreSelectionChange />
       <SelectionToolbarPlugin
+        linkPages={linkPages}
         onGroup={() => {
           let slug: string | null = null;
           editor.update(() => {
