@@ -39,6 +39,7 @@ import { ImportDialog } from "./import-dialog";
 import { PublishControls } from "./publish-controls";
 import { SectionNotes } from "./section-notes";
 import { SectionToc } from "./section-toc";
+import { usePageSaveNavigation } from "./save-navigation";
 import { VersionSwitcher } from "./version-switcher";
 
 /** A page's content as the editor sees it: loose element runs + sections. */
@@ -77,6 +78,11 @@ export interface PageEditorProps {
 type SaveState = "saved" | "saving" | "error";
 type ViewMode = "copy" | "split" | "wireframe";
 
+interface PendingSave {
+  timer: ReturnType<typeof setTimeout>;
+  save: () => Promise<unknown>;
+}
+
 interface SectionMeta {
   title: string;
   activeVersion: string;
@@ -106,6 +112,7 @@ export function PageEditor({
   initialDirty,
 }: PageEditorProps) {
   const router = useRouter();
+  const { navigate, registerFlush } = usePageSaveNavigation();
   const docRef = useRef<DocEditorHandle>(null);
 
   // ---- section metadata (doc.json fields), keyed by slug ------------------
@@ -177,8 +184,9 @@ export function PageEditor({
 
   // ---- save machinery ------------------------------------------------------
   const pendingSaves = useRef(0);
-  const contentTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
-  const structureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeSaves = useRef(new Set<Promise<unknown>>());
+  const contentTimers = useRef(new Map<string, PendingSave>());
+  const structureTimer = useRef<PendingSave | null>(null);
 
   // "saved" only when nothing is in flight AND nothing is debouncing
   const settle = useCallback(() => {
@@ -190,14 +198,17 @@ export function PageEditor({
   const trackSave = useCallback(
     async (save: Promise<unknown>) => {
       pendingSaves.current += 1;
+      activeSaves.current.add(save);
       setSaveState("saving");
       try {
         await save;
         pendingSaves.current -= 1;
+        activeSaves.current.delete(save);
         setDirty(true);
         settle();
       } catch {
         pendingSaves.current -= 1;
+        activeSaves.current.delete(save);
         setSaveState("error");
       }
     },
@@ -207,15 +218,16 @@ export function PageEditor({
   const debounced = useCallback(
     (key: string, save: () => Promise<unknown>) => {
       const existing = contentTimers.current.get(key);
-      if (existing) clearTimeout(existing);
+      if (existing) clearTimeout(existing.timer);
       setSaveState("saving");
-      contentTimers.current.set(
-        key,
-        setTimeout(() => {
+      const pending: PendingSave = {
+        save,
+        timer: setTimeout(() => {
           contentTimers.current.delete(key);
           void trackSave(save());
         }, AUTOSAVE_DELAY_MS),
-      );
+      };
+      contentTimers.current.set(key, pending);
     },
     [trackSave],
   );
@@ -246,32 +258,68 @@ export function PageEditor({
     [debounced, projectId, pageSlug],
   );
 
-  const scheduleStructureSave = useCallback(() => {
-    if (structureTimer.current) clearTimeout(structureTimer.current);
-    setSaveState("saving");
-    structureTimer.current = setTimeout(() => {
-      structureTimer.current = null;
-      let run = 0;
-      const content: DocContent[] = [];
-      for (const entry of lastSnapshot.current) {
-        if (entry.kind === "elements") {
-          content.push({ kind: "elements", slug: runSlug(run++) });
-          continue;
-        }
-        const meta = metaRef.current.get(entry.slug);
-        if (!meta) continue;
-        content.push({
-          kind: "section",
-          slug: entry.slug,
-          title: meta.title,
-          activeVersion: meta.activeVersion,
-          versions: meta.versions,
-          linked: meta.linked,
-        });
+  const saveStructure = useCallback(() => {
+    let run = 0;
+    const content: DocContent[] = [];
+    for (const entry of lastSnapshot.current) {
+      if (entry.kind === "elements") {
+        content.push({ kind: "elements", slug: runSlug(run++) });
+        continue;
       }
-      void trackSave(saveStructureAction({ projectId, pageSlug, content }));
-    }, AUTOSAVE_DELAY_MS);
-  }, [projectId, pageSlug, trackSave]);
+      const meta = metaRef.current.get(entry.slug);
+      if (!meta) continue;
+      content.push({
+        kind: "section",
+        slug: entry.slug,
+        title: meta.title,
+        activeVersion: meta.activeVersion,
+        versions: meta.versions,
+        linked: meta.linked,
+      });
+    }
+    return saveStructureAction({ projectId, pageSlug, content });
+  }, [projectId, pageSlug]);
+
+  const scheduleStructureSave = useCallback(() => {
+    if (structureTimer.current) clearTimeout(structureTimer.current.timer);
+    setSaveState("saving");
+    const pending: PendingSave = {
+      save: saveStructure,
+      timer: setTimeout(() => {
+        structureTimer.current = null;
+        void trackSave(saveStructure());
+      }, AUTOSAVE_DELAY_MS),
+    };
+    structureTimer.current = pending;
+  }, [saveStructure, trackSave]);
+
+  /**
+   * Client-side page navigation unmounts this editor. Start every debounced
+   * write before its closures disappear, with doc.json last so it never
+   * points at content files that have not been written yet.
+   */
+  const flushPendingSaves = useCallback(async () => {
+    const saves: Array<() => Promise<unknown>> = [];
+    for (const pending of contentTimers.current.values()) {
+      clearTimeout(pending.timer);
+      saves.push(pending.save);
+    }
+    contentTimers.current.clear();
+    if (structureTimer.current) {
+      clearTimeout(structureTimer.current.timer);
+      saves.push(structureTimer.current.save);
+      structureTimer.current = null;
+    }
+
+    await Promise.allSettled([...activeSaves.current]);
+    for (const save of saves) {
+      try {
+        await save();
+      } catch (error) {
+        console.error("autosave flush failed", error);
+      }
+    }
+  }, []);
 
   const rebuildViews = useCallback(() => {
     setSections(sectionViews(lastSnapshot.current, metaRef.current));
@@ -303,7 +351,7 @@ export function PageEditor({
           // doc.json only lists what's in the snapshot, so nothing leaks.
           const timer = contentTimers.current.get(`s:${slug}`);
           if (timer) {
-            clearTimeout(timer);
+            clearTimeout(timer.timer);
             contentTimers.current.delete(`s:${slug}`);
           }
           structural = true;
@@ -363,7 +411,7 @@ export function PageEditor({
       // recreate `run-N.md` for an out-of-range N
       for (const [key, timer] of contentTimers.current) {
         if (key.startsWith("r:") && Number(key.slice(2)) >= runOrdinal) {
-          clearTimeout(timer);
+          clearTimeout(timer.timer);
           contentTimers.current.delete(key);
         }
       }
@@ -495,12 +543,12 @@ export function PageEditor({
   }, [projectId, pageSlug, mode, changeMode]);
 
   useEffect(() => {
-    const timers = contentTimers.current;
+    const unregister = registerFlush(flushPendingSaves);
     return () => {
-      timers.forEach((t) => clearTimeout(t));
-      if (structureTimer.current) clearTimeout(structureTimer.current);
+      unregister();
+      void flushPendingSaves();
     };
-  }, []);
+  }, [flushPendingSaves, registerFlush]);
 
   /** The wireframe renders linked sections only. */
   const linkedSections = useMemo(() => sections.filter((s) => s.linked), [sections]);
@@ -606,11 +654,25 @@ export function PageEditor({
           gives split mode a fixed 6.5rem chrome offset to pin panes against */}
       <div className="sticky top-14 z-10 flex h-12 items-center justify-between gap-4 border-b border-border bg-bg/80 px-6 backdrop-blur">
         <nav aria-label="Breadcrumbs" className="min-w-0 truncate text-xs text-ink-tertiary">
-          <Link href="/projects" className="hover:text-ink">
+          <Link
+            href="/projects"
+            onNavigate={(event) => {
+              event.preventDefault();
+              void navigate("/projects");
+            }}
+            className="hover:text-ink"
+          >
             Projects
           </Link>
           <span className="mx-1.5">/</span>
-          <Link href={`/projects/${projectId}`} className="hover:text-ink">
+          <Link
+            href={`/projects/${projectId}`}
+            onNavigate={(event) => {
+              event.preventDefault();
+              void navigate(`/projects/${projectId}`);
+            }}
+            className="hover:text-ink"
+          >
             {projectName}
           </Link>
           {/* the full nesting chain: ancestors navigate, the page itself is where you are */}
@@ -618,7 +680,14 @@ export function PageEditor({
             <span key={crumb.slug}>
               <span className="mx-1.5">/</span>
               {i < pagePath.length - 1 ? (
-                <Link href={`/projects/${projectId}/pages/${crumb.slug}`} className="hover:text-ink">
+                <Link
+                  href={`/projects/${projectId}/pages/${crumb.slug}`}
+                  onNavigate={(event) => {
+                    event.preventDefault();
+                    void navigate(`/projects/${projectId}/pages/${crumb.slug}`);
+                  }}
+                  className="hover:text-ink"
+                >
                   {crumb.title}
                 </Link>
               ) : (

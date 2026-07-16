@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/server";
 
 import { PageEditor, type PageContentItem } from "./page-editor";
 import { PagesSidebar, type SidebarMember } from "./pages-sidebar";
+import { PageSaveNavigationProvider } from "./save-navigation";
 
 /**
  * The copy editor. Everything shown is the signed-in user's draft view:
@@ -72,28 +73,30 @@ export default async function PageEditorRoute({
   ).map((row) => ({ userId: row.user_id, role: row.role, displayName: row.profile?.display_name ?? "Member" }));
 
   return (
-    <div className="flex min-h-0 flex-1">
-      <PagesSidebar
-        projectId={project.id}
-        projectName={project.name}
-        pages={site.pages}
-        activeSlug={pageSlug}
-        initialMembers={members}
-        openProposals={openProposals ?? 0}
-      />
-      <PageEditor
-        // fingerprint key: router.refresh() after an import remounts the
-        // editor with the new server content instead of stale client state
-        key={fingerprint(JSON.stringify(content) + (wireframe ?? ""))}
-        projectId={project.id}
-        projectName={project.name}
-        pageSlug={pageSlug}
-        pagePath={path.map(({ slug, title }) => ({ slug, title }))}
-        initialContent={content}
-        initialWireframe={wireframe}
-        initialDirty={dirty}
-      />
-    </div>
+    <PageSaveNavigationProvider>
+      <div className="flex min-h-0 flex-1">
+        <PagesSidebar
+          projectId={project.id}
+          projectName={project.name}
+          pages={site.pages}
+          activeSlug={pageSlug}
+          initialMembers={members}
+          openProposals={openProposals ?? 0}
+        />
+        <PageEditor
+          // fingerprint key: router.refresh() after an import remounts the
+          // editor with the new server content instead of stale client state
+          key={`${pageSlug}:${fingerprint(JSON.stringify(content) + (wireframe ?? ""))}`}
+          projectId={project.id}
+          projectName={project.name}
+          pageSlug={pageSlug}
+          pagePath={path.map(({ slug, title }) => ({ slug, title }))}
+          initialContent={content}
+          initialWireframe={wireframe}
+          initialDirty={dirty}
+        />
+      </div>
+    </PageSaveNavigationProvider>
   );
 }
 

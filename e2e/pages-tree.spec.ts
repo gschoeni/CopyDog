@@ -82,3 +82,52 @@ test("subpages nest and drag-reorder in the sidebar tree", async ({ page }) => {
   await expect.poll(() => rowOrder(page), { timeout: 15_000 }).toEqual(["pricing", "about", "team", "home"]);
   await expect(page.getByRole("button", { name: "Fold About" })).toBeVisible();
 });
+
+test("pages and subpages keep independent copy across client navigation", async ({ page }) => {
+  await signIn(page);
+
+  await page.getByPlaceholder("Acme landing page").fill(`Page copy ${Date.now()}`);
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
+
+  const editor = page.getByRole("textbox", { name: "Page copy" });
+  await editor.fill("Home page copy");
+  await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
+
+  await addTopLevelPage(page, "About");
+  await expect(page).toHaveURL(/\/pages\/about$/, { timeout: 15_000 });
+  await expect(editor).not.toContainText("Home page copy");
+  await editor.fill("About page copy");
+
+  // Moving to another page must flush the debounce instead of canceling it.
+  await page.getByRole("link", { name: "Home", exact: true }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/);
+  await page.getByRole("link", { name: "About", exact: true }).click();
+  await expect(page).toHaveURL(/\/pages\/about$/);
+  await expect(editor).toContainText("About page copy");
+
+  await page.locator('[data-page-row="about"]').hover();
+  await page.getByRole("button", { name: "Add subpage inside About" }).click();
+  await page.getByLabel("New page name").fill("Team");
+  await page.getByLabel("New page name").press("Enter");
+  await expect(page).toHaveURL(/\/pages\/team$/, { timeout: 15_000 });
+  await expect(editor).not.toContainText("About page copy");
+  await editor.fill("Team subpage copy");
+
+  await page.getByRole("link", { name: "Home", exact: true }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/);
+  await page.getByRole("link", { name: "Team", exact: true }).click();
+  await expect(page).toHaveURL(/\/pages\/team$/);
+  await expect(editor).toContainText("Team subpage copy");
+
+  await page.reload();
+  await expect(editor).toContainText("Team subpage copy");
+
+  await page.getByRole("link", { name: "About", exact: true }).last().click();
+  await expect(page).toHaveURL(/\/pages\/about$/);
+  await expect(editor).toContainText("About page copy");
+
+  await page.getByRole("link", { name: "Home", exact: true }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/);
+  await expect(editor).toContainText("Home page copy");
+});

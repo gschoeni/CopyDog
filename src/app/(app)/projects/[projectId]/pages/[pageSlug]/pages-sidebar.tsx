@@ -17,6 +17,7 @@ import { flattenPages, movePageNode, type PageRef } from "@/lib/content/site";
 import { createClient } from "@/lib/supabase/client";
 
 import { addPageAction, movePageAction } from "./actions";
+import { usePageSaveNavigation } from "./save-navigation";
 
 export interface SidebarMember {
   userId: string;
@@ -40,6 +41,7 @@ export function PagesSidebar({
   openProposals: number;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const { navigate } = usePageSaveNavigation();
 
   // restore after hydration commit: SSR can't see localStorage (same
   // pattern as the editor's per-project view-mode restore)
@@ -80,6 +82,10 @@ export function PagesSidebar({
               <Link
                 key={page.slug}
                 href={`/projects/${projectId}/pages/${page.slug}`}
+                onNavigate={(event) => {
+                  event.preventDefault();
+                  void navigate(`/projects/${projectId}/pages/${page.slug}`);
+                }}
                 aria-current={page.slug === activeSlug ? "page" : undefined}
                 aria-label={page.title}
                 title={page.title}
@@ -105,6 +111,10 @@ export function PagesSidebar({
           <div className="flex-1" />
           <Link
             href={`/projects/${projectId}/proposals`}
+            onNavigate={(event) => {
+              event.preventDefault();
+              void navigate(`/projects/${projectId}/proposals`);
+            }}
             aria-label={openProposals > 0 ? `Proposals (${openProposals} open)` : "Proposals"}
             title={openProposals > 0 ? `Proposals (${openProposals} open)` : "Proposals"}
             className="relative flex size-8 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
@@ -153,6 +163,7 @@ type DropTarget = { slug: string; kind: "before" | "after" | "into" };
  */
 function PageTree({ projectId, pages, activeSlug }: { projectId: string; pages: PageRef[]; activeSlug: string }) {
   const router = useRouter();
+  const { navigate } = usePageSaveNavigation();
 
   // optimistic tree while a move round-trips; cleared when props catch up
   // (React's "adjust state when props change" render-time pattern)
@@ -201,12 +212,12 @@ function PageTree({ projectId, pages, activeSlug }: { projectId: string; pages: 
         const { slug } = await addPageAction({ projectId, title: title.trim(), parentSlug: parent ?? undefined });
         setAdding(null);
         // no refresh needed: the pushed route server-renders fresh site.json
-        router.push(`/projects/${projectId}/pages/${slug}`);
+        await navigate(`/projects/${projectId}/pages/${slug}`);
       } finally {
         setBusy(false);
       }
     },
-    [projectId, busy, router],
+    [projectId, busy, navigate],
   );
 
   const addSubpage = useCallback(
@@ -349,6 +360,10 @@ function PageTree({ projectId, pages, activeSlug }: { projectId: string; pages: 
             )}
             <Link
               href={`/projects/${projectId}/pages/${page.slug}`}
+              onNavigate={(event) => {
+                event.preventDefault();
+                void navigate(`/projects/${projectId}/pages/${page.slug}`);
+              }}
               aria-current={page.slug === activeSlug ? "page" : undefined}
               draggable={false}
               className={`min-w-0 flex-1 truncate py-1.5 text-sm transition-colors ${
@@ -441,6 +456,7 @@ function SidebarCollaboration({
   initialMembers: SidebarMember[];
   openProposals: number;
 }) {
+  const { navigate } = usePageSaveNavigation();
   const [members, setMembers] = useState(initialMembers);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -479,6 +495,10 @@ function SidebarCollaboration({
     <div className="border-t border-border px-2 py-3">
       <Link
         href={`/projects/${projectId}/proposals`}
+        onNavigate={(event) => {
+          event.preventDefault();
+          void navigate(`/projects/${projectId}/proposals`);
+        }}
         className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
       >
         Proposals
