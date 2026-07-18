@@ -53,3 +53,20 @@ The user should be able to toggle between the copy editor and the wireframe buil
 
 You should be able to export the final wireframes as raw html, or into figma, claude code, or other tools via MCP or other connectors.
 
+
+## MCP Server
+
+CopyDog is drivable by outside agents, not just its own assistant. A remote
+MCP endpoint (`POST /api/mcp`, Streamable HTTP, stateless) exposes the whole
+workflow as tools — read copy and wireframes, rewrite/add sections, design
+layouts, add pages, diff, publish, propose, merge, comment — 20 tools total,
+all routed through the same `src/lib` functions the UI and chat agent use.
+
+Auth is a personal API key (`cdk_…`) minted in **Account → API keys** (key
+icon in the header); the key acts as its owner: same membership, same private
+draft branch, same publish/propose rules. Connect from Claude Code with:
+
+    claude mcp add --transport http copydog https://<host>/api/mcp \
+      --header "Authorization: Bearer cdk_…"
+
+Details and the tool catalog: [07_mcp.md](07_mcp.md).

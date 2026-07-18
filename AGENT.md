@@ -137,4 +137,5 @@ Please add any relevant documentation as you are implementing the project, so th
 * [Plan](docs/04_planning.md) - Planning, current phase status, what's next.
 * [Decisions](docs/05_decisions.md) - Working decisions & rationale.
 * [Backlog](docs/06_backlog.md) - Ideas, links, future exploration.
+* [MCP Server](docs/07_mcp.md) - Connecting external agents (Claude Code, claude.ai) via /api/mcp with personal API keys.
 

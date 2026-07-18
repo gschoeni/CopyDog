@@ -236,3 +236,42 @@ hover trash + confirm dialog. The action deletes the Postgres row through
 RLS first (only the owner's delete removes anything — a non-owner can
 never trigger repo deletion), then best-effort deletes the Oxen repo; all
 project tables cascade.
+
+## 2026-07-18 — Remote MCP server, API keys, and the service-role seam
+
+**External agents are first-class.** The product bet is that people will
+edit copy from Claude Code / claude.ai as often as from our editor, so the
+MCP surface is the same library the UI uses, not a parallel API. To make
+that true, publish/propose/merge moved out of server actions into
+`src/lib/content/collab.ts`, add-page into `src/lib/content/pages.ts`; the
+actions became thin wrappers, and MCP tools call the same functions. The
+chat agent's tool registry (`src/lib/agent/tools.ts`) is reused verbatim
+for rewrite/add/design/redesign — its `ToolContext` never knew about HTTP,
+which is what made this cheap.
+
+**Hand-rolled stateless MCP core.** `src/lib/mcp/protocol.ts` speaks the
+stateless subset of Streamable HTTP (initialize/ping/tools) as a pure
+function — no SDK, no session state, no SSE, plain JSON responses (the
+spec allows this). Same reasoning as the hand-rolled LLM client: the
+subset is tiny, and owning it avoids zod-version coupling with the MCP SDK
+and keeps the handler unit-testable. If we later need resources,
+prompts, or server-initiated streams, revisit with the official SDK.
+
+**API keys over OAuth (for now).** `api_keys` stores sha256 hashes only;
+plaintext shows once at mint. Keys act as their owner. OAuth + dynamic
+client registration (what claude.ai's connector UI prefers) can layer on
+later without changing the tool surface.
+
+**The service-role client exists now, behind one gate.** MCP requests have
+no cookie session, so RLS can't authorize them. `requireProjectAccessAs`
+(access.ts) re-implements the membership gate explicitly on the
+service-role client and is the only sanctioned path to it; collab/store
+functions take whichever Supabase client the caller was authorized with.
+The tradeoff — one explicit check mirroring the RLS policies — is
+documented here so it doesn't silently multiply: if you find yourself
+adding a second service-role query outside access.ts, stop.
+
+**Tests stub `server-only`.** Vitest aliases the `server-only` marker to a
+no-op so server modules (collab, MCP tools) are testable in Node; the MCP
+tool tests mock only the access gate and run everything below it against
+the Oxen stub.
