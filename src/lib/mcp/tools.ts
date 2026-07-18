@@ -17,10 +17,16 @@ import {
   readSite,
   readWireframe,
   syncPageFromMain,
+  writeDoc,
+  writeElementsRun,
   writeSectionVersion,
+  writeWireframe,
 } from "@/lib/content/store";
 import { diffLines } from "@/lib/diff";
 import type { LlmClient } from "@/lib/llm/client";
+import { acceptSectionLayout, upsertWireframeSection } from "@/lib/wireframe/edit";
+import { acceptPageWireframe } from "@/lib/wireframe/generate";
+import { DESIGN_SYSTEM_SPEC } from "@/lib/wireframe/spec";
 
 import type { McpToolDef, McpToolResult, McpToolServer } from "./protocol";
 
@@ -325,9 +331,87 @@ const TOOLS: Record<string, RegisteredMcpTool> = {
     },
   }),
 
+  get_design_system: defineMcpTool({
+    description:
+      "CopyDog's wireframe design-system contract: allowed tags, wf-* classes, copy-slot rules, and layout patterns. Read this BEFORE authoring layout HTML for write_section_layout / write_page_layout.",
+    args: z.object({}),
+    run: async () =>
+      `${DESIGN_SYSTEM_SPEC}\n\nSubmit HTML you author via write_section_layout (one <section> fragment) or write_page_layout (the whole page). Submissions are sanitized and validated by the same rules as CopyDog's internal designer.`,
+  }),
+
+  write_section_layout: defineMcpTool({
+    description:
+      "Set ONE wireframe section's layout to HTML that YOU author (see get_design_system for the contract). Must be exactly one <section class=\"wf-section\" data-copy=\"<section_slug>\"> fragment with empty copy slots; it is sanitized and validated like internal designs. Other sections keep their layout.",
+    args: z.object({
+      project_id: projectId,
+      page_slug: pageSlug,
+      section_slug: contentSlugSchema,
+      html: z.string().min(1).max(50_000).describe("the <section> fragment, wf-* classes and data-element slots only"),
+    }),
+    run: async (args, ctx) => {
+      const { oxen, view } = await access(ctx, args.project_id);
+      const doc = await readDoc(oxen, view, args.page_slug);
+      const section = docSections(doc).find((s) => s.slug === args.section_slug);
+      if (!section) throw new Error(`No section "${args.section_slug}" on page "${args.page_slug}".`);
+
+      // authoring a layout is an explicit "put this in the wireframe"
+      if (!section.linked) {
+        section.linked = true;
+        await writeDoc(oxen, view, args.page_slug, doc);
+      }
+
+      const sectionHtml = acceptSectionLayout(args.html, section.slug);
+      const wireframe = (await readWireframe(oxen, view, args.page_slug)) ?? "";
+      const docOrder = docSections(doc)
+        .filter((s) => s.linked)
+        .map((s) => s.slug);
+      await writeWireframe(oxen, view, args.page_slug, upsertWireframeSection(wireframe, section.slug, sectionHtml, docOrder));
+      return `Set the layout for section "${section.slug}".`;
+    },
+  }),
+
+  write_page_layout: defineMcpTool({
+    description:
+      "Replace the WHOLE page wireframe with HTML that YOU author (see get_design_system for the contract). Must include a <section data-copy=\"…\"> for every linked section; sanitized and validated like internal designs.",
+    args: z.object({
+      project_id: projectId,
+      page_slug: pageSlug,
+      html: z.string().min(1).max(200_000).describe("the full page fragment: sections in order, wf-* classes only"),
+    }),
+    run: async (args, ctx) => {
+      const { oxen, view } = await access(ctx, args.project_id);
+      const doc = await readDoc(oxen, view, args.page_slug);
+      const linked = docSections(doc)
+        .filter((s) => s.linked)
+        .map((s) => s.slug);
+      const html = acceptPageWireframe(args.html, linked);
+      await writeWireframe(oxen, view, args.page_slug, html);
+      return `Replaced the wireframe for "${args.page_slug}" (${linked.length} section slots verified).`;
+    },
+  }),
+
+  update_elements_run: defineMcpTool({
+    description: "Overwrite a loose element run's markdown (the non-section copy shown in get_page).",
+    args: z.object({
+      project_id: projectId,
+      page_slug: pageSlug,
+      run_slug: contentSlugSchema,
+      markdown: markdownField,
+    }),
+    run: async (args, ctx) => {
+      const { oxen, view } = await access(ctx, args.project_id);
+      const doc = await readDoc(oxen, view, args.page_slug);
+      if (!doc.content.some((entry) => entry.kind === "elements" && entry.slug === args.run_slug)) {
+        throw new Error(`No element run "${args.run_slug}" on page "${args.page_slug}".`);
+      }
+      await writeElementsRun(oxen, view, args.page_slug, args.run_slug, args.markdown);
+      return `Updated element run "${args.run_slug}".`;
+    },
+  }),
+
   design_section: defineMcpTool({
     description:
-      "Redesign (or first lay out) ONE wireframe section per an instruction, e.g. 'split hero, image left'. Uses CopyDog's design-system LLM; other sections keep their layout.",
+      "Have CopyDog's built-in designer LLM redesign (or first lay out) ONE wireframe section per an instruction, e.g. 'split hero, image left'. Other sections keep their layout. To author the HTML yourself instead, use write_section_layout.",
     args: z.object({
       project_id: projectId,
       page_slug: pageSlug,
@@ -344,7 +428,7 @@ const TOOLS: Record<string, RegisteredMcpTool> = {
 
   redesign_page: defineMcpTool({
     description:
-      "Regenerate the whole page's wireframe per an instruction. Copy is untouched; the layout regenerates around it.",
+      "Have CopyDog's built-in designer LLM regenerate the whole page's wireframe per an instruction. Copy is untouched; the layout regenerates around it. To author the HTML yourself instead, use write_page_layout.",
     args: z.object({
       project_id: projectId,
       page_slug: pageSlug,
@@ -452,10 +536,12 @@ const TOOLS: Record<string, RegisteredMcpTool> = {
 
 const INSTRUCTIONS = `CopyDog is a collaborative website-copy editor backed by real version control.
 Everything you write lands in the calling user's private draft (their own branch) — you can never
-break teammates' work. The flow: edit copy (rewrite_section / add_section), lay it out
-(design_section / redesign_page), then publish_draft to commit, and propose to open a
-proposal against the team's shared main. Start with list_projects, then get_site, then get_page.
-Copy is markdown; wireframes are greyscale layout HTML that derives entirely from the copy.`;
+break teammates' work. The flow: edit copy (rewrite_section / add_section), lay it out, then
+publish_draft to commit, and propose to open a proposal against the team's shared main.
+Layout has two modes: author the wireframe HTML yourself (get_design_system for the contract,
+then write_section_layout / write_page_layout), or delegate to CopyDog's built-in designer
+(design_section / redesign_page) when available. Start with list_projects, then get_site, then
+get_page. Copy is markdown; wireframes are greyscale layout HTML that derives entirely from the copy.`;
 
 export function buildMcpServer(ctx: McpContext): McpToolServer {
   return {

@@ -155,6 +155,93 @@ describe("MCP tool surface", () => {
     );
   });
 
+  it("serves the design-system contract so external models can author layouts", async () => {
+    const res = await buildMcpServer(ctx).callTool("get_design_system", {});
+    expect(res.isError).toBeUndefined();
+    expect(res.content[0]!.text).toContain("wf-section");
+    expect(res.content[0]!.text).toContain("write_section_layout");
+  });
+
+  it("write_section_layout accepts a conformant externally-authored fragment", async () => {
+    const server = buildMcpServer(ctx);
+    const res = await server.callTool("write_section_layout", {
+      project_id: PROJECT_ID,
+      page_slug: "home",
+      section_slug: "hero",
+      html:
+        '<section class="wf-section" data-copy="hero"><div class="wf-container wf-center">' +
+        '<h1 class="wf-h1" data-element="h1"></h1><p class="wf-p" data-element="p" data-overflow></p>' +
+        '<div class="wf-actions"><a class="wf-button" data-element="button" href="#"></a></div>' +
+        "</div></section>",
+    });
+    expect(res.isError).toBeUndefined();
+
+    const wireframe = (await server.callTool("get_wireframe", { project_id: PROJECT_ID, page_slug: "home" }))
+      .content[0]!.text;
+    expect(wireframe).toContain('data-copy="hero"');
+    expect(wireframe).toContain('data-element="h1"');
+  });
+
+  it("write_section_layout sanitizes and enforces the one-section contract", async () => {
+    const server = buildMcpServer(ctx);
+    // wrong slug → rejected by the same acceptance gate the internal LLM faces
+    const wrongSlug = await server.callTool("write_section_layout", {
+      project_id: PROJECT_ID,
+      page_slug: "home",
+      section_slug: "hero",
+      html: '<section class="wf-section" data-copy="other"></section>',
+    });
+    expect(wrongSlug.isError).toBe(true);
+    expect(wrongSlug.content[0]!.text).toContain('data-copy="hero"');
+
+    // scripts and off-system classes are stripped, not stored
+    const sneaky = await server.callTool("write_section_layout", {
+      project_id: PROJECT_ID,
+      page_slug: "home",
+      section_slug: "hero",
+      html:
+        '<section class="wf-section evil-class" data-copy="hero" onclick="x()">' +
+        '<script>alert(1)</script><p class="wf-p" data-element="p"></p></section>',
+    });
+    expect(sneaky.isError).toBeUndefined();
+    const wireframe = (await server.callTool("get_wireframe", { project_id: PROJECT_ID, page_slug: "home" }))
+      .content[0]!.text;
+    expect(wireframe).not.toContain("script");
+    expect(wireframe).not.toContain("evil-class");
+    expect(wireframe).not.toContain("onclick");
+  });
+
+  it("write_page_layout requires a slot for every linked section", async () => {
+    const server = buildMcpServer(ctx);
+    const missing = await server.callTool("write_page_layout", {
+      project_id: PROJECT_ID,
+      page_slug: "home",
+      html: '<section class="wf-section" data-copy="not-hero"></section>',
+    });
+    expect(missing.isError).toBe(true);
+    expect(missing.content[0]!.text).toContain("hero");
+
+    const ok = await server.callTool("write_page_layout", {
+      project_id: PROJECT_ID,
+      page_slug: "home",
+      html:
+        '<section class="wf-section" data-copy="hero"><div class="wf-container">' +
+        '<h1 class="wf-h1" data-element="h1"></h1></div></section>',
+    });
+    expect(ok.isError).toBeUndefined();
+  });
+
+  it("update_elements_run writes loose copy but refuses unknown runs", async () => {
+    const server = buildMcpServer(ctx);
+    const unknown = await server.callTool("update_elements_run", {
+      project_id: PROJECT_ID,
+      page_slug: "home",
+      run_slug: "intro",
+      markdown: "Hello\n",
+    });
+    expect(unknown.isError).toBe(true);
+  });
+
   it("validates arguments through zod before touching anything", async () => {
     const res = await buildMcpServer(ctx).callTool("get_page", { project_id: "not-a-uuid", page_slug: "home" });
     expect(res.isError).toBe(true);

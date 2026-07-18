@@ -275,3 +275,17 @@ adding a second service-role query outside access.ts, stop.
 no-op so server modules (collab, MCP tools) are testable in Node; the MCP
 tool tests mock only the access gate and run everything below it against
 the Oxen stub.
+
+## 2026-07-18 — External models design directly; one acceptance gate
+
+The MCP design tools originally only *delegated* to the internal designer
+LLM. External harnesses (Claude Code) are themselves capable designers, so
+the surface now supports both modes: `get_design_system` serves the wf-*
+contract (the same `DESIGN_SYSTEM_SPEC` our own LLM is prompted with), and
+`write_section_layout` / `write_page_layout` accept externally-authored
+HTML. The load-bearing decision: acceptance was extracted into
+`acceptSectionLayout` / `acceptPageWireframe` (wireframe/edit.ts,
+generate.ts), and *every* author — internal LLM, external model, future
+import path — goes through those same two doors: sanitize to the wf-*
+allowlist, enforce data-copy slot coverage. Never add a second acceptance
+path; extend those functions.

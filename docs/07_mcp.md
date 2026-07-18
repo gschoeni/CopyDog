@@ -50,17 +50,32 @@ Discovery and reading:
 | `diff_draft` | Draft branch vs. main, per-file line diffs |
 | `list_comments` / `add_comment` | Section-level feedback |
 
-Writing copy and layout (always the caller's draft):
+Writing copy (always the caller's draft — the external model authors the markdown itself):
 
 | Tool | What it does |
 |---|---|
 | `rewrite_section` | New labeled version, made active (history preserved) |
 | `add_section` | New section with initial copy |
 | `update_section` | Overwrite an existing version in place (autosave-style) |
-| `design_section` | Re-layout one wireframe section (CopyDog's design-system LLM) |
-| `redesign_page` | Regenerate the whole page layout |
+| `update_elements_run` | Overwrite a loose element run's copy |
 | `add_page` | New page in the sitemap |
 | `sync_page_from_main` | Reset one page of the draft to main |
+
+Designing layout — two modes:
+
+| Tool | What it does |
+|---|---|
+| `get_design_system` | The wf-* contract (tags, classes, copy-slot rules, patterns) — read before authoring |
+| `write_section_layout` | The external model authors ONE section's HTML itself |
+| `write_page_layout` | The external model authors the whole page's HTML itself |
+| `design_section` | Delegate one section's layout to CopyDog's built-in designer LLM |
+| `redesign_page` | Delegate a whole-page redesign to the built-in designer |
+
+Externally-authored HTML passes through the exact acceptance gate the
+internal designer faces (`acceptSectionLayout` / `acceptPageWireframe`):
+sanitized to the wf-* allowlist, stripped of scripts/styles/handlers, and
+validated for `data-copy` slot coverage. A harness like Claude Code reads
+`get_design_system` once, then designs directly — no internal LLM required.
 
 Version control and collaboration:
 
@@ -73,7 +88,8 @@ Version control and collaboration:
 | `close_proposal` | Close without merging |
 
 `design_section` / `redesign_page` are advertised only when the server has an
-LLM configured (`OXEN_API_KEY`); everything else works without one.
+LLM configured (`OXEN_API_KEY`); everything else — including the author-it-
+yourself layout tools — works without one.
 
 The write tools are the chat agent's own tool implementations
 (`src/lib/agent/tools.ts`) invoked through the same `executeTool` dispatcher —

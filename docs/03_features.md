@@ -59,8 +59,12 @@ You should be able to export the final wireframes as raw html, or into figma, cl
 CopyDog is drivable by outside agents, not just its own assistant. A remote
 MCP endpoint (`POST /api/mcp`, Streamable HTTP, stateless) exposes the whole
 workflow as tools — read copy and wireframes, rewrite/add sections, design
-layouts, add pages, diff, publish, propose, merge, comment — 20 tools total,
+layouts, add pages, diff, publish, propose, merge, comment — 24 tools total,
 all routed through the same `src/lib` functions the UI and chat agent use.
+Design works in two modes: delegate to CopyDog's built-in designer
+(`design_section` / `redesign_page`), or the external model authors the
+wireframe HTML itself (`get_design_system` → `write_section_layout` /
+`write_page_layout`), validated by the same sanitizer + slot rules either way.
 
 Auth is a personal API key (`cdk_…`) minted in **Account → API keys** (key
 icon in the header); the key acts as its owner: same membership, same private

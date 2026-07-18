@@ -56,12 +56,23 @@ export class LlmGenerator implements WireframeGenerator {
       ],
     });
 
-    const html = sanitizeWireframeHtml(stripCodeFences(result.content));
-    if (!coversAllSections(html, sections)) {
-      throw new Error("LLM wireframe missed sections");
-    }
-    return html;
+    return acceptPageWireframe(result.content, sections.map((s) => s.slug));
   }
+}
+
+/**
+ * The acceptance gate for a whole-page wireframe, whoever authored it —
+ * the internal designer LLM and externally-authored HTML (MCP's
+ * write_page_layout) both pass here: sanitize to the wf-* allowlist, then
+ * require a data-copy slot for every linked section.
+ */
+export function acceptPageWireframe(rawHtml: string, requiredSlugs: string[]): string {
+  const html = sanitizeWireframeHtml(stripCodeFences(rawHtml));
+  const missing = requiredSlugs.filter((slug) => !html.includes(`data-copy="${slug}"`));
+  if (missing.length) {
+    throw new Error(`Wireframe is missing sections: ${missing.join(", ")} — every linked section needs a <section data-copy="…">.`);
+  }
+  return html;
 }
 
 /** Picks the best available generator; the heuristic is always safe. */
@@ -84,8 +95,4 @@ export async function generateWireframe(generators: WireframeGenerator[], sectio
     }
   }
   throw lastError instanceof Error ? lastError : new Error("wireframe generation failed");
-}
-
-function coversAllSections(html: string, sections: SectionForLayout[]): boolean {
-  return sections.every((s) => html.includes(`data-copy="${s.slug}"`));
 }

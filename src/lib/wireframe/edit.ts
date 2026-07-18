@@ -106,11 +106,21 @@ export async function generateSectionLayout(
     ],
   });
 
-  const html = sanitizeWireframeHtml(stripCodeFences(result.content));
+  return acceptSectionLayout(result.content, section.slug);
+}
+
+/**
+ * The acceptance gate for a section layout, whoever authored it — the
+ * internal designer LLM and externally-authored HTML (MCP's
+ * write_section_layout) go through this same door: sanitize to the wf-*
+ * allowlist, then require exactly one <section data-copy="slug"> fragment.
+ */
+export function acceptSectionLayout(rawHtml: string, slug: string): string {
+  const html = sanitizeWireframeHtml(stripCodeFences(rawHtml));
   const nodes = sectionNodes(parse(html));
-  const match = nodes.find((node) => node.getAttribute("data-copy") === section.slug);
+  const match = nodes.find((node) => node.getAttribute("data-copy") === slug);
   if (!match || nodes.length !== 1) {
-    throw new Error(`LLM section layout must be exactly one <section data-copy="${section.slug}">`);
+    throw new Error(`A section layout must be exactly one <section data-copy="${slug}"> fragment.`);
   }
   return match.outerHTML;
 }
