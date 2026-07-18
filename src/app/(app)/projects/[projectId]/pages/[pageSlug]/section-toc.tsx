@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { ChevronLeftIcon } from "@/components/ui/icons";
+import { PanelLeftIcon } from "@/components/ui/icons";
 
 import type { SectionView } from "./page-editor";
 
@@ -101,7 +101,7 @@ export function SectionToc({
             title="Collapse contents"
             className="flex size-6 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
-            <ChevronLeftIcon className="size-3.5" />
+            <PanelLeftIcon className="size-3.5" />
           </button>
         </header>
         <ol className="space-y-0.5">
