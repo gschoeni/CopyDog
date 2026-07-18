@@ -80,6 +80,28 @@ test("add to chat attaches a selection the agent can see", async ({ page }) => {
   await expect(page.getByLabel("Attached page context")).toBeVisible();
 });
 
+test("assistant replies render markdown as formatted text", async ({ page }) => {
+  await signIn(page);
+
+  await page.getByPlaceholder("Acme landing page").fill(`Agent markdown ${Date.now()}`);
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
+
+  await page.getByRole("button", { name: "Open assistant" }).click();
+  await page.getByLabel("Message the assistant").fill("Critique the structure of this page");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  // wait for the turn to finish so only the final message is in the DOM
+  await expect(page.getByLabel("Message the assistant")).toBeEnabled({ timeout: 20_000 });
+
+  // lists become real lists, emphasis loses its asterisks
+  await expect(page.getByRole("listitem").filter({ hasText: "No clear narrative" })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "instant clarity" })).toBeVisible();
+  await expect(page.getByText("Current structure issues:")).toBeVisible();
+  await expect(page.getByText("**Current structure issues:**")).toHaveCount(0);
+  await expect(page.getByText("---", { exact: true })).toHaveCount(0);
+});
+
 test("new chat clears the current thread and keeps it in history", async ({ page }) => {
   await signIn(page);
 

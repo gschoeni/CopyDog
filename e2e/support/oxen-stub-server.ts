@@ -69,6 +69,25 @@ const server = createServer(async (req, res) => {
       message = {
         content: `<section class="wf-section" data-copy="${target}"><div class="wf-container wf-split"><div class="wf-stack" data-overflow><h1 class="wf-h1" data-element="h1"></h1></div><div class="wf-media" aria-hidden="true"></div></div></section>`,
       };
+    } else if (/critique the structure/i.test(lastUserText)) {
+      // markdown-rich reply for the chat renderer test
+      message = {
+        content: [
+          "Here's my read on the page:",
+          "",
+          "---",
+          "",
+          "**Current structure issues:**",
+          "- No clear narrative",
+          "- Dead weight sections",
+          "",
+          "**Recommended arc:**",
+          "1. **Hero** — instant clarity",
+          "2. **Problem** — the pain",
+          "",
+          "Ship `copy` that earns its place. (stub)",
+        ].join("\n"),
+      };
     } else if (lastUserText.includes("The user attached page context")) {
       // echo the attachment back so tests can prove the agent saw it
       const quoted = lastUserText.match(/"""\n([\s\S]*?)\n"""/)?.[1];

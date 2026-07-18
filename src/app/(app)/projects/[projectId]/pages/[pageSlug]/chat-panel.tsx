@@ -21,6 +21,8 @@ import { SidePanel } from "@/components/ui/side-panel";
 import type { ChatStreamEvent } from "@/lib/agent/events";
 import { createClient } from "@/lib/supabase/client";
 
+import { AssistantMarkdown } from "./assistant-markdown";
+
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
@@ -562,7 +564,7 @@ function Message({
         </span>
         <span className="text-xs font-medium text-ink">Assistant</span>
       </div>
-      <div className="whitespace-pre-wrap text-sm leading-6 text-ink-secondary">{message.content}</div>
+      <AssistantMarkdown markdown={message.content} />
       {message.interaction && <InteractionCard interaction={message.interaction} pending={interactionPending} onChoose={onChoose} />}
       <button
         type="button"
@@ -660,7 +662,7 @@ function LiveMessage({ live }: { live: LiveTurn | null }) {
         </span>
         <span className="text-xs font-medium text-ink">Assistant</span>
       </div>
-      {live?.text && <div className="whitespace-pre-wrap text-sm leading-6 text-ink-secondary">{live.text}</div>}
+      {live?.text && <AssistantMarkdown markdown={live.text} />}
       <div className="mt-1 flex items-center gap-1.5 text-xs text-ink-tertiary" role="status">
         {!live?.text && (
           <span className="flex gap-1" aria-hidden>
