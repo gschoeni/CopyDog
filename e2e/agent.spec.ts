@@ -80,6 +80,33 @@ test("add to chat attaches a selection the agent can see", async ({ page }) => {
   await expect(page.getByLabel("Attached page context")).toBeVisible();
 });
 
+test("wireframe selections and sections attach to chat", async ({ page }) => {
+  await signIn(page);
+
+  await page.getByPlaceholder("Acme landing page").fill(`Agent wf context ${Date.now()}`);
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
+  await page.getByRole("textbox", { name: "Page copy" }).click();
+  await writeSection(page, ["# Everything you need", "Nothing you don't."], 1);
+  await page.waitForTimeout(1000);
+
+  await page.getByRole("tab", { name: "Split" }).click();
+  await page.getByRole("button", { name: "Generate wireframe from sections" }).click();
+  const heading = page.locator(".wf-root").last().getByRole("heading", { name: "Everything you need" });
+  await expect(heading).toBeVisible({ timeout: 20_000 });
+
+  // select rendered text → labeled pill → chip with the selection
+  await heading.click({ clickCount: 3 });
+  await page.getByRole("button", { name: "Add to chat", exact: true }).click();
+  const chips = page.getByLabel("Attached page context");
+  await expect(chips.getByText("Everything you need").first()).toBeVisible();
+
+  // hover the section → icon affordance → whole-section chip
+  await heading.hover();
+  await page.getByRole("button", { name: "Add section to chat" }).click();
+  await expect(chips.getByTitle("Whole section")).toBeVisible();
+});
+
 test("assistant replies render markdown as formatted text", async ({ page }) => {
   await signIn(page);
 

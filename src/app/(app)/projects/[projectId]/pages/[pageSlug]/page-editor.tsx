@@ -931,10 +931,13 @@ function WireframePane({
 }) {
   const omittedNote = describeOmitted(omitted);
   const containerRef = useRef<HTMLDivElement>(null);
-  // a finished text selection: pill pinned under its end
-  const [selectionPin, setSelectionPin] = useState<{ top: number; left: number; payload: WireframeChatPayload } | null>(null);
-  // the hovered section: pill pinned at its top-right corner
-  const [hoverPin, setHoverPin] = useState<{ top: number; left: number; slug: string } | null>(null);
+  // a finished text selection: pill pinned under its end. Anchored with
+  // `right` (not left + translate) so the absolutely-positioned pill can
+  // take its full one-line width — left-anchoring near the container's
+  // right edge leaves it no room and wraps the label.
+  const [selectionPin, setSelectionPin] = useState<{ top: number; right: number; payload: WireframeChatPayload } | null>(null);
+  // the hovered section: icon button pinned inside its top-right corner
+  const [hoverPin, setHoverPin] = useState<{ top: number; right: number; slug: string } | null>(null);
 
   const handleMouseUp = () => {
     // let the browser settle the selection before reading it
@@ -956,8 +959,11 @@ function WireframePane({
       const containerRect = container.getBoundingClientRect();
       setSelectionPin({
         top: rect.bottom - containerRect.top + container.scrollTop + 8,
-        // the pill right-aligns to the selection end (it renders -translate-x-full)
-        left: Math.min(Math.max(rect.right - containerRect.left, 132), containerRect.width - 16),
+        // right-align the pill to the selection's end, kept inside the pane
+        right: Math.min(
+          Math.max(containerRect.right - rect.right, 12),
+          containerRect.width - 156,
+        ),
         payload: {
           sectionSlug: anchor.closest("[data-copy]")?.getAttribute("data-copy") ?? null,
           text: text.slice(0, 4000),
@@ -990,11 +996,15 @@ function WireframePane({
     }
     const rect = section.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
-    setHoverPin({
-      slug,
-      top: rect.top - containerRect.top + container.scrollTop + 8,
-      left: rect.right - containerRect.left - 8,
-    });
+    const top = rect.top - containerRect.top + container.scrollTop + 10;
+    const right = containerRect.right - rect.right + 10;
+    // mouseover fires constantly while moving inside a section — only
+    // touch state when the pin actually moves
+    setHoverPin((current) =>
+      current && current.slug === slug && current.top === top && current.right === right
+        ? current
+        : { slug, top, right },
+    );
   };
 
   return (
@@ -1052,7 +1062,7 @@ function WireframePane({
             <button
               type="button"
               data-add-to-chat
-              style={{ top: selectionPin.top, left: selectionPin.left }}
+              style={{ top: selectionPin.top, right: selectionPin.right }}
               // keep the text selection alive through the click
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => {
@@ -1061,7 +1071,7 @@ function WireframePane({
                 window.getSelection()?.removeAllRanges();
               }}
               title="Attach this selection as assistant context"
-              className="absolute z-20 flex h-7 -translate-x-full items-center gap-1 rounded-md border border-border bg-surface px-2 text-xs font-medium text-accent shadow-raised transition-colors hover:bg-accent-soft"
+              className="absolute z-20 flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-surface px-2.5 text-xs font-medium text-accent shadow-raised transition-[background-color,transform] hover:bg-accent-soft active:scale-95"
             >
               <AddToChatIcon className="size-3.5" />
               Add to chat
@@ -1071,16 +1081,16 @@ function WireframePane({
             <button
               type="button"
               data-add-to-chat
-              style={{ top: hoverPin.top, left: hoverPin.left }}
+              style={{ top: hoverPin.top, right: hoverPin.right }}
               onClick={() => {
                 onAddToChat({ sectionSlug: hoverPin.slug, text: null, elementType: null });
                 setHoverPin(null);
               }}
-              title="Attach this whole section as assistant context"
-              className="absolute z-20 flex h-7 -translate-x-full items-center gap-1 rounded-md border border-border bg-bg/90 px-2 text-xs font-medium text-ink-secondary shadow-soft backdrop-blur-sm transition-colors hover:bg-accent-soft hover:text-accent"
+              aria-label="Add section to chat"
+              title="Add section to chat"
+              className="absolute z-20 flex size-8 items-center justify-center rounded-lg border border-border bg-bg/85 text-ink-secondary shadow-soft backdrop-blur-sm transition-colors hover:bg-accent-soft hover:text-accent"
             >
-              <AddToChatIcon className="size-3.5" />
-              Add to chat
+              <AddToChatIcon />
             </button>
           )}
         </>
