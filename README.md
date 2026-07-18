@@ -13,6 +13,8 @@ Use the table of contents to learn more about why the product exists, inspiratio
 * [Plan](docs/04_planning.md) - Planning, current phase status, what's next.
 * [Decisions](docs/05_decisions.md) - Working decisions & rationale.
 * [Backlog](docs/06_backlog.md) - Ideas, links, future exploration.
+* [MCP Server](docs/07_mcp.md) - Connect your own agent (Claude Code, claude.ai) to CopyDog over MCP.
+* [Security & Privacy](docs/08_security.md) - Trust model, authorization boundaries, and agent guardrails.
 
 ## The primary UI
 
@@ -74,6 +76,35 @@ CopyDog is a Next.js app backed by two services: Supabase (Postgres + auth, run 
    The app runs at **http://localhost:3131** (port 3131 is intentional — 3000 is usually taken by the local `oxen-server`).
 
 Before committing, run `pnpm check` (lint, typecheck, unit tests, build). See [AGENT.md](AGENT.md) for the full testing and verification workflow.
+
+## Connect your own agent (MCP)
+
+CopyDog exposes a remote [MCP](https://modelcontextprotocol.io) endpoint, so you can bring your own agent — Claude Code, claude.ai, or any MCP-capable harness — and do everything the in-app assistant does: read and write copy, drive wireframes, and run the publish → propose → merge workflow. This is the full quick-start; [docs/07_mcp.md](docs/07_mcp.md) has the complete tool list and [docs/08_security.md](docs/08_security.md) has the trust model.
+
+1. **Mint a personal API key.** In the app, open **Account → API keys** (the key icon in the header). Name the key, choose its scopes (**read** / **write** / **collaborate** / **merge**) and an expiry, and create it. Copy the key (`cdk_…`) immediately — it's shown once and stored only as a hash.
+
+2. **Add the endpoint to your agent.** The endpoint is `POST /api/mcp`; send the key as a bearer token. For Claude Code:
+
+   ```sh
+   # hosted
+   claude mcp add --transport http copydog https://<your-host>/api/mcp \
+     --header "Authorization: Bearer cdk_your_key_here"
+
+   # local dev (the app runs on port 3131)
+   claude mcp add --transport http copydog http://localhost:3131/api/mcp \
+     --header "Authorization: Bearer cdk_your_key_here"
+   ```
+
+   Any other MCP client points at the same URL with an `Authorization: Bearer cdk_…` header. The transport is stateless Streamable HTTP — plain JSON request/response, no sessions or SSE.
+
+3. **Verify the connection.** Ask your agent to run `list_projects`; it should return the projects your key can access. `tools/list` shows exactly what the key's scopes allow — out-of-scope tools are invisible and uncallable. A good first flow is `list_projects` → `get_site` → `get_page`.
+
+**Good to know:**
+
+- The key acts as **you**, narrowed to its scopes. Every write lands in your private `draft/{user_id}` branch, so an agent can never corrupt a teammate's work — exactly like the in-app editor.
+- **Revoke** a key anytime on the same page; access stops immediately, and expired keys die the same way.
+- Keys are rate-limited (240 units/min) and every mutating call is audit-logged (identifiers only, never your copy). `merge_proposal` needs the opt-in **merge** scope and can never merge the key owner's own proposals — a teammate reviews those.
+- **Layout, two ways:** an agent can author wireframe HTML itself (`get_design_system` → `write_section_layout` / `write_page_layout`, validated by the same gate as the built-in designer), or delegate to CopyDog's designer LLM (`design_section` / `redesign_page`, advertised only when the server has an LLM key configured).
 
 ## Agents & Code Contributions
 
