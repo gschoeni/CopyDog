@@ -78,4 +78,17 @@ describe("injectCopy", () => {
     const html = injectCopy(WIREFRAME, []);
     expect(html).toContain("wf-empty");
   });
+
+  it("strips legacy navbar/footer chrome but keeps nav built from copy", () => {
+    const legacy = `<header class="wf-navbar" aria-hidden="true"><div class="wf-logo"></div></header>
+<section class="wf-section" data-copy="s"><h1 class="wf-h1" data-element="h1"></h1></section>
+<footer class="wf-footer" aria-hidden="true"><div class="wf-logo"></div></footer>`;
+    const html = injectCopy(legacy, [{ slug: "s", elements: [{ type: "h1", text: "Hi" }] }]);
+    expect(html).not.toContain("wf-navbar");
+    expect(html).not.toContain("wf-footer");
+    expect(html).toContain(">Hi</h1>");
+
+    const copyNav = `<header class="wf-navbar" data-copy="nav"><p class="wf-p" data-element="p"></p></header>`;
+    expect(injectCopy(copyNav, [{ slug: "nav", elements: [{ type: "p", text: "Home" }] }])).toContain("wf-navbar");
+  });
 });

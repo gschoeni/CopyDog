@@ -13,6 +13,7 @@ import {
 } from "react";
 
 import { ChevronDownIcon, GripIcon, PanelLeftIcon, PlusIcon, ProposeIcon } from "@/components/ui/icons";
+import { ResizeHandle, usePanelSize } from "@/components/ui/resize-handle";
 import { flattenPages, movePageNode, type PageRef } from "@/lib/content/site";
 import { createClient } from "@/lib/supabase/client";
 
@@ -42,6 +43,13 @@ export function PagesSidebar({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const { navigate } = usePageSaveNavigation();
+  const asideRef = useRef<HTMLElement>(null);
+  const { size, commit, reset } = usePanelSize({
+    storageKey: "copydog:w:pages-sidebar",
+    defaultSize: 224,
+    min: 180,
+    max: 400,
+  });
 
   // restore after hydration commit: SSR can't see localStorage (same
   // pattern as the editor's per-project view-mode restore)
@@ -59,11 +67,34 @@ export function PagesSidebar({
 
   return (
     <aside
+      ref={asideRef}
       aria-label="Project sidebar"
+      style={collapsed ? undefined : { width: size }}
       className={`sticky top-14 hidden h-[calc(100dvh-3.5rem)] shrink-0 flex-col self-start overflow-hidden border-r border-border bg-surface-sunken/50 transition-[width] duration-200 ease-out md:flex ${
-        collapsed ? "w-11" : "w-56"
+        collapsed ? "w-11" : ""
       }`}
     >
+      {!collapsed && (
+        <ResizeHandle
+          label="Resize project sidebar"
+          value={size}
+          min={180}
+          max={400}
+          sizeAt={(clientX) => clientX - (asideRef.current?.getBoundingClientRect().left ?? clientX)}
+          onPreview={(width) => {
+            const el = asideRef.current;
+            if (!el) return;
+            el.style.transitionProperty = "none";
+            el.style.width = `${width}px`;
+          }}
+          onCommit={(width) => {
+            if (asideRef.current) asideRef.current.style.transitionProperty = "";
+            commit(width);
+          }}
+          onReset={reset}
+          className="absolute inset-y-0 right-0 z-30 w-2.5"
+        />
+      )}
       {collapsed ? (
         <div className="flex min-h-0 flex-1 flex-col items-center gap-1 py-2">
           <button

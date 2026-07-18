@@ -72,6 +72,8 @@ forms — all `wf-*` classes, sanitizer-enforced, swappable as a module.
 
 The user should be able to toggle between the copy editor and the wireframe builder OR see both at the same time in a dual panel mode.
 
+Every panel is resizable by dragging its divider (project sidebar, copy/wireframe split, assistant) — the shared `ResizeHandle`/`usePanelSize` primitive in `src/components/ui/resize-handle.tsx` implements the ARIA window-splitter pattern (drag, arrow keys, double-click to reset) and persists each size in localStorage.
+
 ## Export
 
 You should be able to export the final wireframes as raw html, or into figma, claude code, or other tools via MCP or other connectors.

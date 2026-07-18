@@ -20,6 +20,7 @@ import {
   WandIcon,
   WireframeModeIcon,
 } from "@/components/ui/icons";
+import { ResizeHandle, usePanelSize } from "@/components/ui/resize-handle";
 import type { ChatContextRef } from "@/lib/agent/context";
 import type { Element } from "@/lib/copy/elements";
 import type { DocContent, DocSection } from "@/lib/content/doc";
@@ -568,6 +569,21 @@ export function PageEditor({
 
   const copyPaneRef = useRef<HTMLDivElement>(null);
 
+  // ---- split-mode divider: copy pane's share of the two panes, percent ----
+  const split = usePanelSize({ storageKey: "copydog:w:split", defaultSize: 50, min: 30, max: 70 });
+  const splitHandleRef = useRef<HTMLDivElement>(null);
+  const splitSizeAt = useCallback(
+    (clientX: number) => {
+      const copy = copyPaneRef.current;
+      const wireframePane = splitHandleRef.current?.nextElementSibling as HTMLElement | null;
+      if (!copy || !wireframePane) return split.size;
+      const copyRect = copy.getBoundingClientRect();
+      const combined = copyRect.width + wireframePane.getBoundingClientRect().width;
+      return combined > 0 ? ((clientX - copyRect.left) / combined) * 100 : split.size;
+    },
+    [split.size],
+  );
+
   const scrollToSection = useCallback((slug: string) => {
     const el = copyPaneRef.current?.querySelector(`[data-section-slug="${CSS.escape(slug)}"]`);
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -784,7 +800,15 @@ export function PageEditor({
             binds to it. A CSS container: the TOC and the balancing spacer
             adapt to the pane's own width (assistant open, split, resize),
             always yielding to the editor first. */}
-        <div ref={copyPaneRef} className={`min-w-0 flex-1 basis-0 @container ${mode === "wireframe" ? "hidden" : ""}`}>
+        <div
+          ref={copyPaneRef}
+          // split mode: the draggable share of the two panes, applied as a
+          // flex-grow weight against the wireframe's grow of 1 — percent
+          // flex-basis would resolve against the whole row (assistant
+          // included) and disagree with the divider's math
+          style={mode === "split" ? { flexGrow: split.size / (100 - split.size) } : undefined}
+          className={`min-w-0 flex-1 basis-0 @container ${mode === "wireframe" ? "hidden" : ""}`}
+        >
           <div className="flex min-h-full">
             <SectionToc sections={sections} onNavigate={scrollToSection} />
             <div className="min-w-0 flex-1">
@@ -807,6 +831,26 @@ export function PageEditor({
             <div aria-hidden className="hidden w-52 shrink-0 @min-[82rem]:block" />
           </div>
         </div>
+
+        {mode === "split" && (
+          <div ref={splitHandleRef} className="relative z-30 w-0">
+            <ResizeHandle
+              label="Resize copy and wireframe panes"
+              value={split.size}
+              min={30}
+              max={70}
+              step={5}
+              sizeAt={splitSizeAt}
+              onPreview={(percent) => {
+                const el = copyPaneRef.current;
+                if (el) el.style.flexGrow = String(percent / (100 - percent));
+              }}
+              onCommit={split.commit}
+              onReset={split.reset}
+              className="absolute inset-y-0 -left-1.5 w-3"
+            />
+          </div>
+        )}
 
         {mode !== "copy" && (
           <WireframePane
