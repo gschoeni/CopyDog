@@ -27,6 +27,16 @@ const LIST_TYPES: ReadonlySet<string> = new Set(["bullets", "numbered"]);
 
 export function injectCopy(wireframeHtml: string, sections: SectionCopy[]): string {
   const root = parse(wireframeHtml);
+
+  // legacy chrome: wireframes generated before 2026-07-18 carried an
+  // invented navbar/footer. Anything without a data-copy section behind
+  // it is not the user's content — strip it at render time so old pages
+  // clean up without a regenerate. (A nav BUILT from copy has data-copy
+  // and is untouched.)
+  for (const chrome of root.querySelectorAll("header.wf-navbar, footer.wf-footer")) {
+    if (!chrome.getAttribute("data-copy") && !chrome.querySelector("[data-copy]")) chrome.remove();
+  }
+
   // blank lines are editor layout, not copy — they never reach the wireframe
   const bySlug = new Map(sections.map((s) => [s.slug, s.elements.filter((el) => !(el.type === "p" && !el.text))]));
 

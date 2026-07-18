@@ -107,6 +107,54 @@ describe("runAgentTurn", () => {
     expect(JSON.stringify(secondRequest.messages)).toContain("Created version");
   });
 
+  it("returns a structured choice interaction without mutating", async () => {
+    const { llm, requests } = scriptedLlm([
+      {
+        model: "m",
+        choices: [
+          {
+            message: {
+              content: null,
+              tool_calls: [
+                {
+                  id: "call_choice",
+                  type: "function",
+                  function: {
+                    name: "ask_user_choice",
+                    arguments: JSON.stringify({
+                      question: "Which direction should I take?",
+                      options: [
+                        { label: "Merge them", description: "One focused split section." },
+                        { label: "Keep them distinct", description: "Two complementary bands." },
+                      ],
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ]);
+
+    const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm }, [], "What are my options?");
+
+    expect(turn).toEqual({
+      reply: "",
+      mutated: false,
+      interaction: {
+        type: "choice",
+        question: "Which direction should I take?",
+        options: [
+          { label: "Merge them", description: "One focused split section." },
+          { label: "Keep them distinct", description: "Two complementary bands." },
+        ],
+      },
+    });
+    expect(requests).toHaveLength(1);
+    expect(JSON.stringify(requests[0]!.tools)).toContain("ask_user_choice");
+  });
+
   it("plain replies pass through without mutation", async () => {
     const { llm } = scriptedLlm([
       { model: "m", choices: [{ message: { content: "Three angles: speed, trust, delight." } }] },

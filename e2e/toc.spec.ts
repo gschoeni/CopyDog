@@ -27,10 +27,24 @@ test("table of contents lists numbered sections, navigates, and compacts in spli
   await page.getByRole("button", { name: "Go to section 3: Closing call" }).click();
   await expect(page.getByRole("heading", { name: "Closing call" })).toBeInViewport({ timeout: 10_000 });
 
-  // split mode: compact rail, numbers only
+  // split mode halves the pane, so the container query compacts the TOC
+  // to a numbers-only rail: titles stay in the DOM but hide
   await page.getByRole("tab", { name: "Split" }).click();
   const compactButton = toc.getByRole("button", { name: "Go to section 2: Features" });
   await expect(compactButton).toBeVisible();
-  await expect(compactButton.getByText("Features")).toHaveCount(0);
+  await expect(compactButton.getByText("Features")).toBeHidden();
   await expect(compactButton.getByText("2", { exact: true })).toBeVisible();
+
+  // the list icon pins it open (titles even in the narrow pane) …
+  await toc.getByRole("button", { name: "Expand contents" }).click();
+  await expect(compactButton.getByText("Features")).toBeVisible();
+
+  // … the preference survives a reload …
+  await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
+  await page.reload();
+  await expect(toc.getByRole("button", { name: "Go to section 2: Features" }).getByText("Features")).toBeVisible({ timeout: 15_000 });
+
+  // … and the chevron pins it back to the numbers rail
+  await toc.getByRole("button", { name: "Collapse contents" }).click();
+  await expect(toc.getByRole("button", { name: "Go to section 2: Features" }).getByText("Features")).toBeHidden();
 });

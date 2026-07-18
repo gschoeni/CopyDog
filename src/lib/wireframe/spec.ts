@@ -43,4 +43,8 @@ Layout patterns (mix these for variety — never the same pattern twice in a row
   <span class="wf-input" aria-hidden="true"></span> and the button slot.
 - CTA band: a compact wf-section-tint with wf-center, an h2 slot, p slot and wf-actions.
 - Use wf-section-tint on some sections to create rhythm between white and grey bands.
-- Start with a wf-navbar header and end with a wf-footer, both aria-hidden="true" decoration.`;
+- Navigation / footer: ONLY when a copy section's own content is nav-like (a short list of links,
+  a brand line) may you lay that section out as a wf-navbar or wf-footer, with its copy in slots.
+
+Everything on the page derives from the provided copy sections. Never invent chrome — no navbar,
+footer, or any band that has no copy section behind it.`;

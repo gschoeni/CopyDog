@@ -8,6 +8,7 @@ import { DocEditor, type DocEditorHandle } from "@/components/editor/doc-editor"
 import type { ContentSnapshot } from "@/components/editor/doc-structure";
 import { Button } from "@/components/ui/button";
 import {
+  AddToChatIcon,
   CopyModeIcon,
   DownloadIcon,
   DuplicateIcon,
@@ -19,6 +20,8 @@ import {
   WandIcon,
   WireframeModeIcon,
 } from "@/components/ui/icons";
+import { ResizeHandle, usePanelSize } from "@/components/ui/resize-handle";
+import type { ChatContextRef } from "@/lib/agent/context";
 import type { Element } from "@/lib/copy/elements";
 import type { DocContent, DocSection } from "@/lib/content/doc";
 import type { PageLinkOption } from "@/lib/content/site";
@@ -37,7 +40,7 @@ import {
   saveSectionAction,
   saveStructureAction,
 } from "./actions";
-import { ChatPanel } from "./chat-panel";
+import { ChatPanel, type ChatPanelHandle } from "./chat-panel";
 import { ImportDialog } from "./import-dialog";
 import { PublishControls } from "./publish-controls";
 import { SectionNotes } from "./section-notes";
@@ -179,6 +182,24 @@ export function PageEditor({
       return !wasOpen;
     });
   }, [projectId]);
+
+  // ---- "Add to chat": selections attach to the assistant as context chips --
+  const chatRef = useRef<ChatPanelHandle>(null);
+  const addContextToChat = useCallback(
+    (payload: Pick<ChatContextRef, "source" | "sectionSlug" | "text"> & { elementType?: string | null }) => {
+      const sectionTitle = payload.sectionSlug ? metaRef.current.get(payload.sectionSlug)?.title ?? null : null;
+      setAssistantOpen(true);
+      localStorage.setItem(`copydog:assistant:${projectId}`, "1");
+      chatRef.current?.addContext({
+        source: payload.source,
+        sectionSlug: payload.sectionSlug,
+        sectionTitle,
+        text: payload.text,
+        elementType: payload.elementType ?? null,
+      });
+    },
+    [projectId],
+  );
 
   const changeMode = useCallback(
     (next: ViewMode) => {
@@ -548,6 +569,21 @@ export function PageEditor({
 
   const copyPaneRef = useRef<HTMLDivElement>(null);
 
+  // ---- split-mode divider: copy pane's share of the two panes, percent ----
+  const split = usePanelSize({ storageKey: "copydog:w:split", defaultSize: 50, min: 30, max: 70 });
+  const splitHandleRef = useRef<HTMLDivElement>(null);
+  const splitSizeAt = useCallback(
+    (clientX: number) => {
+      const copy = copyPaneRef.current;
+      const wireframePane = splitHandleRef.current?.nextElementSibling as HTMLElement | null;
+      if (!copy || !wireframePane) return split.size;
+      const copyRect = copy.getBoundingClientRect();
+      const combined = copyRect.width + wireframePane.getBoundingClientRect().width;
+      return combined > 0 ? ((clientX - copyRect.left) / combined) * 100 : split.size;
+    },
+    [split.size],
+  );
+
   const scrollToSection = useCallback((slug: string) => {
     const el = copyPaneRef.current?.querySelector(`[data-section-slug="${CSS.escape(slug)}"]`);
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -761,12 +797,22 @@ export function PageEditor({
       <div className="flex min-h-0 flex-1">
         {/* hidden, not unmounted: the editor keeps its live state across
             mode switches. No overflow here — the window scrolls, so sticky
-            binds to it. */}
-        <div ref={copyPaneRef} className={`min-w-0 flex-1 basis-0 ${mode === "wireframe" ? "hidden" : ""}`}>
+            binds to it. A CSS container: the TOC and the balancing spacer
+            adapt to the pane's own width (assistant open, split, resize),
+            always yielding to the editor first. */}
+        <div
+          ref={copyPaneRef}
+          // split mode: the draggable share of the two panes, applied as a
+          // flex-grow weight against the wireframe's grow of 1 — percent
+          // flex-basis would resolve against the whole row (assistant
+          // included) and disagree with the divider's math
+          style={mode === "split" ? { flexGrow: split.size / (100 - split.size) } : undefined}
+          className={`min-w-0 flex-1 basis-0 @container ${mode === "wireframe" ? "hidden" : ""}`}
+        >
           <div className="flex min-h-full">
-            <SectionToc sections={sections} compact={mode === "split"} onNavigate={scrollToSection} />
+            <SectionToc sections={sections} onNavigate={scrollToSection} />
             <div className="min-w-0 flex-1">
-              <div className={`mx-auto w-full px-6 pb-32 pt-8 ${mode === "split" ? "max-w-xl" : "max-w-3xl"}`}>
+              <div className={`mx-auto w-full px-6 pb-32 pt-8 ${mode === "split" ? "max-w-xl" : "max-w-4xl"}`}>
                 <DocEditor
                   ref={docRef}
                   initialContent={initialSnapshot}
@@ -774,14 +820,37 @@ export function PageEditor({
                   makeSlug={makeSlug}
                   onSnapshotChange={handleSnapshotChange}
                   renderSectionHeader={renderSectionHeader}
+                  onAddToChat={({ sectionSlug, text }) => addContextToChat({ source: "copy", sectionSlug, text })}
                   autoFocus={initialContent.every((c) => c.elements.length === 0)}
                 />
               </div>
             </div>
-            {/* balances the TOC so the copy column stays centered in the pane */}
-            <div aria-hidden className={`hidden shrink-0 md:block ${mode === "split" ? "w-11" : "w-52"}`} />
+            {/* balances the TOC so the copy column sits optically centered —
+                only on panes wide enough that the editor loses nothing
+                (TOC 13rem + editor 56rem + spacer 13rem) */}
+            <div aria-hidden className="hidden w-52 shrink-0 @min-[82rem]:block" />
           </div>
         </div>
+
+        {mode === "split" && (
+          <div ref={splitHandleRef} className="relative z-30 w-0">
+            <ResizeHandle
+              label="Resize copy and wireframe panes"
+              value={split.size}
+              min={30}
+              max={70}
+              step={5}
+              sizeAt={splitSizeAt}
+              onPreview={(percent) => {
+                const el = copyPaneRef.current;
+                if (el) el.style.flexGrow = String(percent / (100 - percent));
+              }}
+              onCommit={split.commit}
+              onReset={split.reset}
+              className="absolute inset-y-0 -left-1.5 w-3"
+            />
+          </div>
+        )}
 
         {mode !== "copy" && (
           <WireframePane
@@ -792,12 +861,14 @@ export function PageEditor({
             onGenerate={generate}
             bordered={mode === "split"}
             exportHref={`/projects/${projectId}/pages/${pageSlug}/export`}
+            onAddToChat={(payload) => addContextToChat({ source: "wireframe", ...payload })}
           />
         )}
 
         {/* always present: collapsed it's the slim rail on the right edge,
             so the assistant is one click away in every mode */}
         <ChatPanel
+          ref={chatRef}
           projectId={projectId}
           pageSlug={pageSlug}
           collapsed={!assistantOpen}
@@ -873,6 +944,16 @@ function ModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewM
   );
 }
 
+/** What a wireframe "Add to chat" resolves to; `text: null` attaches the whole section. */
+interface WireframeChatPayload {
+  sectionSlug: string | null;
+  text: string | null;
+  elementType: string | null;
+}
+
+const nearestElement = (node: Node): HTMLElement | null =>
+  node instanceof HTMLElement ? node : node.parentElement;
+
 function WireframePane({
   preview,
   generating,
@@ -881,6 +962,7 @@ function WireframePane({
   onGenerate,
   bordered,
   exportHref,
+  onAddToChat,
 }: {
   preview: string | null;
   generating: boolean;
@@ -889,10 +971,95 @@ function WireframePane({
   onGenerate: () => void;
   bordered: boolean;
   exportHref: string;
+  onAddToChat: (payload: WireframeChatPayload) => void;
 }) {
   const omittedNote = describeOmitted(omitted);
+  const containerRef = useRef<HTMLDivElement>(null);
+  // a finished text selection: pill pinned under its end. Anchored with
+  // `right` (not left + translate) so the absolutely-positioned pill can
+  // take its full one-line width — left-anchoring near the container's
+  // right edge leaves it no room and wraps the label.
+  const [selectionPin, setSelectionPin] = useState<{ top: number; right: number; payload: WireframeChatPayload } | null>(null);
+  // the hovered section: icon button pinned inside its top-right corner
+  const [hoverPin, setHoverPin] = useState<{ top: number; right: number; slug: string } | null>(null);
+
+  const handleMouseUp = () => {
+    // let the browser settle the selection before reading it
+    window.requestAnimationFrame(() => {
+      const container = containerRef.current;
+      const selection = window.getSelection();
+      if (!container || !selection || selection.isCollapsed || selection.rangeCount === 0) {
+        setSelectionPin(null);
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      const text = selection.toString().trim();
+      const anchor = nearestElement(range.commonAncestorContainer);
+      if (!text || !anchor?.closest(".wf-root") || !container.contains(anchor)) {
+        setSelectionPin(null);
+        return;
+      }
+      const rect = range.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      // pin above the selection (h-8 pill + gap); below only when the
+      // selection starts at the very top of the pane
+      const above = rect.top - containerRect.top + container.scrollTop - 40;
+      setSelectionPin({
+        top: above >= 4 ? above : rect.bottom - containerRect.top + container.scrollTop + 8,
+        // right-align the pill to the selection's end, kept inside the pane
+        right: Math.min(
+          Math.max(containerRect.right - rect.right, 12),
+          containerRect.width - 156,
+        ),
+        payload: {
+          sectionSlug: anchor.closest("[data-copy]")?.getAttribute("data-copy") ?? null,
+          text: text.slice(0, 4000),
+          elementType: nearestElement(range.startContainer)?.closest("[data-element]")?.getAttribute("data-element") ?? null,
+        },
+      });
+    });
+  };
+
+  // the pin outlives the mouseup only as long as the selection does
+  useEffect(() => {
+    if (!selectionPin) return;
+    const clear = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) setSelectionPin(null);
+    };
+    document.addEventListener("selectionchange", clear);
+    return () => document.removeEventListener("selectionchange", clear);
+  }, [selectionPin]);
+
+  const handleMouseOver = (event: React.MouseEvent) => {
+    const container = containerRef.current;
+    const target = event.target as HTMLElement | null;
+    if (!container || target?.closest("[data-add-to-chat]")) return;
+    const section = target?.closest("[data-copy]");
+    const slug = section?.getAttribute("data-copy");
+    if (!section || !slug) {
+      setHoverPin(null);
+      return;
+    }
+    const rect = section.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const top = rect.top - containerRect.top + container.scrollTop + 10;
+    const right = containerRect.right - rect.right + 10;
+    // mouseover fires constantly while moving inside a section — only
+    // touch state when the pin actually moves
+    setHoverPin((current) =>
+      current && current.slug === slug && current.top === top && current.right === right
+        ? current
+        : { slug, top, right },
+    );
+  };
+
   return (
     <div
+      ref={containerRef}
+      onMouseUp={preview ? handleMouseUp : undefined}
+      onMouseOver={preview ? handleMouseOver : undefined}
+      onMouseLeave={preview ? () => setHoverPin(null) : undefined}
       className={`relative min-w-0 flex-1 basis-0 overflow-y-auto bg-surface-sunken ${
         bordered
           ? // split: pin to the viewport below the chrome and scroll internally,
@@ -938,6 +1105,41 @@ function WireframePane({
               dangerouslySetInnerHTML={{ __html: preview }}
             />
           </div>
+          {selectionPin && (
+            <button
+              type="button"
+              data-add-to-chat
+              style={{ top: selectionPin.top, right: selectionPin.right }}
+              // keep the text selection alive through the click
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onAddToChat(selectionPin.payload);
+                setSelectionPin(null);
+                window.getSelection()?.removeAllRanges();
+              }}
+              title="Attach this selection as assistant context"
+              className="absolute z-20 flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-surface px-2.5 text-xs font-medium text-accent shadow-raised transition-[background-color,transform] hover:bg-accent-soft active:scale-95"
+            >
+              <AddToChatIcon className="size-3.5" />
+              Add to chat
+            </button>
+          )}
+          {hoverPin && !selectionPin && (
+            <button
+              type="button"
+              data-add-to-chat
+              style={{ top: hoverPin.top, right: hoverPin.right }}
+              onClick={() => {
+                onAddToChat({ sectionSlug: hoverPin.slug, text: null, elementType: null });
+                setHoverPin(null);
+              }}
+              aria-label="Add section to chat"
+              title="Add section to chat"
+              className="absolute z-20 flex size-8 items-center justify-center rounded-lg border border-border bg-bg/85 text-ink-secondary shadow-soft backdrop-blur-sm transition-colors hover:bg-accent-soft hover:text-accent"
+            >
+              <AddToChatIcon />
+            </button>
+          )}
         </>
       ) : (
         <div className="flex h-full min-h-64 items-center justify-center p-10">

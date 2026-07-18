@@ -53,7 +53,7 @@ import {
 import { ButtonNode } from "./nodes/button-node";
 import { EyebrowNode } from "./nodes/eyebrow-node";
 import { $createSectionNode, $isSectionNode, SectionNode } from "./nodes/section-node";
-import { SelectionToolbarPlugin } from "./plugins/selection-toolbar";
+import { SelectionToolbarPlugin, type SelectionForChat } from "./plugins/selection-toolbar";
 
 /**
  * The page as one continuous document. Selection spans sections; sections
@@ -87,11 +87,13 @@ export interface DocEditorProps {
   onSnapshotChange: (content: ContentSnapshot[]) => void;
   /** Renders each section's header chrome into the reserved headroom. */
   renderSectionHeader: (slug: string) => ReactNode;
+  /** Attach the current text selection as assistant context. */
+  onAddToChat?: (selection: SelectionForChat) => void;
   autoFocus?: boolean;
 }
 
 export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(function DocEditor(
-  { initialContent, linkPages, makeSlug, onSnapshotChange, renderSectionHeader, autoFocus },
+  { initialContent, linkPages, makeSlug, onSnapshotChange, renderSectionHeader, onAddToChat, autoFocus },
   ref,
 ) {
   const initialConfig = {
@@ -119,6 +121,7 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(function Do
         makeSlug={makeSlug}
         onSnapshotChange={onSnapshotChange}
         renderSectionHeader={renderSectionHeader}
+        onAddToChat={onAddToChat}
         autoFocus={autoFocus}
       />
     </LexicalComposer>
@@ -131,6 +134,7 @@ function DocEditorInner({
   makeSlug,
   onSnapshotChange,
   renderSectionHeader,
+  onAddToChat,
   autoFocus,
 }: {
   handleRef: React.Ref<DocEditorHandle>;
@@ -138,6 +142,7 @@ function DocEditorInner({
   makeSlug: () => string;
   onSnapshotChange: (content: ContentSnapshot[]) => void;
   renderSectionHeader: (slug: string) => ReactNode;
+  onAddToChat?: (selection: SelectionForChat) => void;
   autoFocus?: boolean;
 }) {
   const [editor] = useLexicalComposerContext();
@@ -335,6 +340,7 @@ function DocEditorInner({
       <OnChangePlugin onChange={handleChange} ignoreSelectionChange />
       <SelectionToolbarPlugin
         linkPages={linkPages}
+        onAddToChat={onAddToChat}
         onGroup={() => {
           let slug: string | null = null;
           editor.update(() => {

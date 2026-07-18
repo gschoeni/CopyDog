@@ -46,6 +46,55 @@ export function SparklesIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Clock with a circular arrow — browse prior conversations. */
+export function HistoryIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+      <path d="M12 7v5l3 2" />
+    </Icon>
+  );
+}
+
+/** Up arrow — submit a message from a compact composer. */
+export function ArrowUpIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="m6 12 6-6 6 6" />
+      <path d="M12 18V6" />
+    </Icon>
+  );
+}
+
+/** Two sheets — copy text to the clipboard. */
+export function CopyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="8" y="8" width="11" height="11" rx="2" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+    </Icon>
+  );
+}
+
+/** Check mark — transient confirmation after copying. */
+export function CheckIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="m5 12 4 4L19 6" />
+    </Icon>
+  );
+}
+
+/** Down arrow — return to the newest message. */
+export function ArrowDownIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="m6 9 6 6 6-6" />
+    </Icon>
+  );
+}
+
 /** Circular arrows — pull the team's published copy into your draft. */
 export function SyncIcon(props: SVGProps<SVGSVGElement>) {
   return (
@@ -107,6 +156,47 @@ export function ChevronDownIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Icon {...props}>
       <path d="M6 9l6 6 6-6" />
+    </Icon>
+  );
+}
+
+/** Small X — dismiss or remove. */
+export function CloseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </Icon>
+  );
+}
+
+/** Speech bubble with a plus — attach the selection to the chat. */
+export function AddToChatIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.3 8.6 8.6 0 0 1-3.9-.93L3 20l1.13-4.6A8.2 8.2 0 0 1 4 11.5 8.38 8.38 0 0 1 12.5 3.2 8.38 8.38 0 0 1 21 11.5z" />
+      <path d="M12.5 8.5v6" />
+      <path d="M9.5 11.5h6" />
+    </Icon>
+  );
+}
+
+/** Lines of text — a text selection attachment. */
+export function TextLinesIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4 6h16" />
+      <path d="M4 12h16" />
+      <path d="M4 18h10" />
+    </Icon>
+  );
+}
+
+/** Chevron pointing left — go back to the previous view. */
+export function ChevronLeftIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M15 6l-6 6 6 6" />
     </Icon>
   );
 }

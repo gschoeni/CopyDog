@@ -1,0 +1,15 @@
+-- No-op reconciliation migration (branch merge).
+--
+-- Merging agent-chat-cleanup and mcp-server produced two forked drizzle
+-- snapshot chains. The chat_messages columns/indexes below were already
+-- applied by the earlier chat migrations (20260718054326 -> 20260718173229);
+-- this entry exists only so drizzle's snapshot chain has a single linear tip
+-- reflecting the full combined schema. Its SQL is intentionally empty -- the
+-- accompanying snapshot is the load-bearing artifact.
+--
+-- Applied-earlier equivalent:
+--   ALTER TABLE "chat_messages" ADD COLUMN "conversation_id" uuid NOT NULL;
+--   ALTER TABLE "chat_messages" ADD COLUMN "interaction" jsonb;
+--   ALTER TABLE "chat_messages" ADD COLUMN "context" jsonb;
+--   CREATE INDEX "chat_messages_history_idx" ...;
+--   CREATE INDEX "chat_messages_conversation_idx" ...;

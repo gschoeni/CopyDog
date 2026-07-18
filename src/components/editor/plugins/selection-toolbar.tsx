@@ -23,25 +23,34 @@ import type { PageLinkOption } from "@/lib/content/site";
 import { $touchedElementNodes } from "../doc-structure";
 import { $createButtonNode, $isButtonNode } from "../nodes/button-node";
 import { $createEyebrowNode, $isEyebrowNode } from "../nodes/eyebrow-node";
-import { ChevronDownIcon, LinkIcon } from "@/components/ui/icons";
+import { AddToChatIcon, ChevronDownIcon, LinkIcon } from "@/components/ui/icons";
 
 import { $isSectionNode } from "../nodes/section-node";
 
 /**
  * The floating toolbar above a text selection: inline marks, a link,
- * quick element types (H1–H3, quote), the full turn-into menu, and
- * "Group into section" for whatever elements the selection touches.
+ * quick element types (H1–H3, quote), the full turn-into menu,
+ * "Group into section", and "Add to chat" (attach the selection as
+ * assistant context).
  */
 type LinkSuggestion =
   | { kind: "page"; key: string; href: string; title: string; detail: string }
   | { kind: "url"; key: string; href: string; title: string; detail: string };
 
+/** A text selection captured for the assistant: what and where. */
+export interface SelectionForChat {
+  sectionSlug: string | null;
+  text: string;
+}
+
 export function SelectionToolbarPlugin({
   linkPages,
   onGroup,
+  onAddToChat,
 }: {
   linkPages: PageLinkOption[];
   onGroup: () => string | null;
+  onAddToChat?: (selection: SelectionForChat) => void;
 }) {
   const [editor] = useLexicalComposerContext();
   const [state, setState] = useState<{
@@ -171,6 +180,25 @@ export function SelectionToolbarPlugin({
     [editor],
   );
 
+  const addSelectionToChat = useCallback(() => {
+    editor.getEditorState().read(() => {
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection) || selection.isCollapsed()) return;
+      const text = selection.getTextContent().trim();
+      if (!text) return;
+      // the section containing the selection's anchor (a cross-section
+      // selection attaches under the section it started in)
+      let sectionSlug: string | null = null;
+      for (let node = selection.anchor.getNode().getParent(); node; node = node.getParent()) {
+        if ($isSectionNode(node)) {
+          sectionSlug = node.getSlug();
+          break;
+        }
+      }
+      onAddToChat?.({ sectionSlug, text });
+    });
+  }, [editor, onAddToChat]);
+
   const linkSuggestions = useMemo(
     () => (linkDraft === null ? [] : buildLinkSuggestions(linkPages, linkDraft)),
     [linkDraft, linkPages],
@@ -236,6 +264,20 @@ export function SelectionToolbarPlugin({
             >
               <GroupIcon />
               Group into section
+            </button>
+          </>
+        )}
+        {onAddToChat && (
+          <>
+            <div className="mx-0.5 h-4 w-px bg-border" aria-hidden />
+            <button
+              type="button"
+              onClick={addSelectionToChat}
+              title="Attach this selection as assistant context"
+              className="flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-accent transition-colors hover:bg-accent-soft"
+            >
+              <AddToChatIcon className="size-3.5" />
+              Add to chat
             </button>
           </>
         )}

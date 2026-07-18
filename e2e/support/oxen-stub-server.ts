@@ -69,6 +69,52 @@ const server = createServer(async (req, res) => {
       message = {
         content: `<section class="wf-section" data-copy="${target}"><div class="wf-container wf-split"><div class="wf-stack" data-overflow><h1 class="wf-h1" data-element="h1"></h1></div><div class="wf-media" aria-hidden="true"></div></div></section>`,
       };
+    } else if (/critique the structure/i.test(lastUserText)) {
+      // markdown-rich reply for the chat renderer test
+      message = {
+        content: [
+          "Here's my read on the page:",
+          "",
+          "---",
+          "",
+          "**Current structure issues:**",
+          "- No clear narrative",
+          "- Dead weight sections",
+          "",
+          "**Recommended arc:**",
+          "1. **Hero** — instant clarity",
+          "2. **Problem** — the pain",
+          "",
+          "Ship `copy` that earns its place. (stub)",
+        ].join("\n"),
+      };
+    } else if (lastUserText.includes("The user attached page context")) {
+      // echo the attachment back so tests can prove the agent saw it
+      const quoted = lastUserText.match(/"""\n([\s\S]*?)\n"""/)?.[1];
+      const wholeSection = lastUserText.match(/The whole "([^"]+)" section/)?.[1];
+      message = { content: `Context received: ${quoted ?? wholeSection ?? "unknown"} (stub)` };
+    } else if (/show me choices|give me options/i.test(lastUserText)) {
+      message = {
+        content: null,
+        tool_calls: [
+          {
+            id: "call_stub_choice",
+            type: "function",
+            function: {
+              name: "ask_user_choice",
+              arguments: JSON.stringify({
+                question: "Which layout direction should I take?",
+                options: [
+                  { label: "Merge the sections", description: "Combine them into one focused split section." },
+                  { label: "Keep them distinct", description: "Keep both bands and place them side by side." },
+                ],
+              }),
+            },
+          },
+        ],
+      };
+    } else if (/I choose/i.test(lastUserText)) {
+      message = { content: "Done — I’ll use that direction for the next revision. (stub)" };
     } else if (hadToolResult) {
       const wasDesign = calledTools.includes("design_section");
       message = {
