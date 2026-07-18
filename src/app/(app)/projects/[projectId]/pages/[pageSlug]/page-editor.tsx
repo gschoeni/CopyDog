@@ -781,12 +781,14 @@ export function PageEditor({
       <div className="flex min-h-0 flex-1">
         {/* hidden, not unmounted: the editor keeps its live state across
             mode switches. No overflow here — the window scrolls, so sticky
-            binds to it. */}
-        <div ref={copyPaneRef} className={`min-w-0 flex-1 basis-0 ${mode === "wireframe" ? "hidden" : ""}`}>
+            binds to it. A CSS container: the TOC and the balancing spacer
+            adapt to the pane's own width (assistant open, split, resize),
+            always yielding to the editor first. */}
+        <div ref={copyPaneRef} className={`min-w-0 flex-1 basis-0 @container ${mode === "wireframe" ? "hidden" : ""}`}>
           <div className="flex min-h-full">
-            <SectionToc sections={sections} compact={mode === "split"} onNavigate={scrollToSection} />
+            <SectionToc sections={sections} onNavigate={scrollToSection} />
             <div className="min-w-0 flex-1">
-              <div className={`mx-auto w-full px-6 pb-32 pt-8 ${mode === "split" ? "max-w-xl" : "max-w-3xl"}`}>
+              <div className={`mx-auto w-full px-6 pb-32 pt-8 ${mode === "split" ? "max-w-xl" : "max-w-4xl"}`}>
                 <DocEditor
                   ref={docRef}
                   initialContent={initialSnapshot}
@@ -799,8 +801,10 @@ export function PageEditor({
                 />
               </div>
             </div>
-            {/* balances the TOC so the copy column stays centered in the pane */}
-            <div aria-hidden className={`hidden shrink-0 md:block ${mode === "split" ? "w-11" : "w-52"}`} />
+            {/* balances the TOC so the copy column sits optically centered —
+                only on panes wide enough that the editor loses nothing
+                (TOC 13rem + editor 56rem + spacer 13rem) */}
+            <div aria-hidden className="hidden w-52 shrink-0 @min-[82rem]:block" />
           </div>
         </div>
 

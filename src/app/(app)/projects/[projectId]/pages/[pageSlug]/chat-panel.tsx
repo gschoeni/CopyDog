@@ -153,7 +153,12 @@ export function ChatPanel({
         seen.add(row.conversation_id);
         return [{ id: row.conversation_id, title: row.content.replace(/\s+/g, " ").trim() || "New conversation" }];
       });
-      setThreads(recent);
+      // merge, don't overwrite: a thread the user just started optimistically
+      // may not be in this (earlier-issued) query's rows yet
+      setThreads((current) => {
+        const known = new Set(recent.map((thread) => thread.id));
+        return [...current.filter((thread) => !known.has(thread.id)), ...recent];
+      });
       if (userInteractedRef.current) return;
       if (recent[0]) void loadConversation(recent[0].id);
       else setMessages([]);
