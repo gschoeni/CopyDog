@@ -46,6 +46,55 @@ export function SparklesIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Clock with a circular arrow — browse prior conversations. */
+export function HistoryIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 4v5h5" />
+      <path d="M12 7v5l3 2" />
+    </Icon>
+  );
+}
+
+/** Up arrow — submit a message from a compact composer. */
+export function ArrowUpIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="m6 12 6-6 6 6" />
+      <path d="M12 18V6" />
+    </Icon>
+  );
+}
+
+/** Two sheets — copy text to the clipboard. */
+export function CopyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="8" y="8" width="11" height="11" rx="2" />
+      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+    </Icon>
+  );
+}
+
+/** Check mark — transient confirmation after copying. */
+export function CheckIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="m5 12 4 4L19 6" />
+    </Icon>
+  );
+}
+
+/** Down arrow — return to the newest message. */
+export function ArrowDownIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="m6 9 6 6 6-6" />
+    </Icon>
+  );
+}
+
 /** Circular arrows — pull the team's published copy into your draft. */
 export function SyncIcon(props: SVGProps<SVGSVGElement>) {
   return (

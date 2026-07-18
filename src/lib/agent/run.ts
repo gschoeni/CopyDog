@@ -2,6 +2,7 @@ import { readDoc, readElementsRun, readSectionVersion, readWireframe } from "@/l
 import { LLM_MODELS, type LlmMessage } from "@/lib/llm/client";
 
 import { AGENT_TOOLS, executeTool, toolActivityLabel, type ToolContext } from "./tools";
+import type { ChatInteraction } from "./interactions";
 
 /**
  * The agent loop: give the model the page's current copy + wireframe and
@@ -36,11 +37,16 @@ Writing copy:
 - Copy markdown dialect: #–###### headings, paragraphs, "- " bullets, "1. " numbered lists, [Label](url)
   alone on a line is a CTA button, an "<!--eyebrow-->" line marks the next line as a short overline.
 
+- When a real design or copy decision has 2–4 sensible paths, call ask_user_choice. Give each option a short label
+  and concrete trade-off. Do not duplicate the options in prose — the user gets a dedicated interactive choice card.
+
 Keep replies short and concrete: say what you did and why it works. No filler.`;
 
 export interface AgentTurn {
   reply: string;
   mutated: boolean;
+  /** A first-class UI interaction requested by the agent; ends this turn. */
+  interaction?: ChatInteraction;
 }
 
 /** Live progress from a running turn, for streaming UIs. */
@@ -86,6 +92,9 @@ export async function runAgentTurn(
         outcome = await executeTool(call.function.name, call.function.arguments, ctx);
       } catch (err) {
         outcome = { result: `Tool failed: ${err instanceof Error ? err.message : "unknown error"}`, mutated: false };
+      }
+      if (outcome.interaction) {
+        return { reply: replyParts.join("\n\n"), mutated, interaction: outcome.interaction };
       }
       if (outcome.mutated) {
         mutated = true;

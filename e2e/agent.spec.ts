@@ -44,6 +44,55 @@ test("assistant rewrites a section through a tool call", async ({ page }) => {
   await expect(page.getByText("I rewrote it with a stronger promise")).toBeVisible();
 });
 
+test("new chat clears the current thread and keeps it in history", async ({ page }) => {
+  await signIn(page);
+
+  await page.getByPlaceholder("Acme landing page").fill(`Agent new chat ${Date.now()}`);
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
+  await page.getByRole("textbox", { name: "Page copy" }).click();
+  await writeSection(page, ["# Fresh conversation"], 1);
+  await page.waitForTimeout(1000);
+
+  await page.getByRole("button", { name: "Open assistant" }).click();
+  await page.getByLabel("Message the assistant").fill("Show me choices for this layout");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByRole("region", { name: "Assistant choice" })).toBeVisible({ timeout: 20_000 });
+
+  await page.getByRole("button", { name: "New chat" }).click();
+  await expect(page.getByRole("heading", { name: "What should we create?" })).toBeVisible();
+  await expect(page.getByText("Show me choices for this layout")).not.toBeVisible();
+  await expect(page.getByLabel("Message the assistant")).toBeFocused();
+
+  await page.getByRole("button", { name: "Chat history" }).click();
+  await page.getByRole("button", { name: "Show me choices for this layout" }).click();
+  await expect(page.getByRole("region", { name: "Assistant choice" })).toBeVisible({ timeout: 20_000 });
+});
+
+test("assistant presents and accepts an interactive choice", async ({ page }) => {
+  await signIn(page);
+
+  await page.getByPlaceholder("Acme landing page").fill(`Agent choice ${Date.now()}`);
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
+  await page.getByRole("textbox", { name: "Page copy" }).click();
+  await writeSection(page, ["# A choice to make"], 1);
+  await page.waitForTimeout(1000);
+
+  await page.getByRole("button", { name: "Open assistant" }).click();
+  await page.getByLabel("Message the assistant").fill("Show me choices for this layout");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  const choice = page.getByRole("region", { name: "Assistant choice" });
+  await expect(choice.getByRole("heading", { name: "Which layout direction should I take?" })).toBeVisible({ timeout: 20_000 });
+  await expect(choice.getByRole("button", { name: /Merge the sections/ })).toBeVisible();
+  await expect(choice.getByRole("button", { name: /Keep them distinct/ })).toBeVisible();
+
+  await choice.getByRole("button", { name: /Keep them distinct/ }).click();
+  await expect(page.getByText("Done — I’ll use that direction")).toBeVisible({ timeout: 20_000 });
+  await expect(choice.getByText("Choice submitted.")).toBeVisible();
+});
+
 /**
  * The wireframe-design loop: the assistant redesigns one section through
  * design_section (streamed over the real route), and the wireframe pane

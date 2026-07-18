@@ -24,6 +24,7 @@ export function SidePanel({
   active = false,
   collapsed,
   onToggle,
+  actions,
   children,
 }: {
   /** accessible name of the panel (aria-label) and of its toggle buttons */
@@ -37,13 +38,15 @@ export function SidePanel({
   active?: boolean;
   collapsed: boolean;
   onToggle: () => void;
+  /** optional compact controls placed before the collapse button */
+  actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <aside
       aria-label={label}
       className={`sticky top-[6.5rem] flex h-[calc(100dvh-6.5rem)] shrink-0 flex-col self-start overflow-hidden border-l border-border bg-surface transition-[width] duration-200 ease-out ${
-        collapsed ? "w-11" : "w-80"
+        collapsed ? "w-11" : "w-[24rem]"
       }`}
     >
       {collapsed ? (
@@ -75,16 +78,19 @@ export function SidePanel({
               </span>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onToggle}
-            aria-label={`Collapse ${label.toLowerCase()}`}
-            aria-expanded
-            title={`Collapse ${label.toLowerCase()}`}
-            className="flex size-7 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
-          >
-            <PanelRightIcon />
-          </button>
+          <div className="flex items-center gap-1">
+            {actions}
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-label={`Collapse ${label.toLowerCase()}`}
+              aria-expanded
+              title={`Collapse ${label.toLowerCase()}`}
+              className="flex size-7 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+            >
+              <PanelRightIcon />
+            </button>
+          </div>
         </header>
       )}
       {/* hidden, not unmounted: panel state (a streaming turn, scroll

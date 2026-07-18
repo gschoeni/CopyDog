@@ -40,6 +40,19 @@ lines ("Designing hero…"), and the wireframe pane refreshes after every
 mutating tool so you watch the design evolve. All agent edits land in the
 caller's private draft as new versions — same rules as typing.
 
+Conversations are threaded per page: **+** starts a fresh thread, the history
+button lists recent ones (titled by their first message), and reopening the
+panel resumes the latest. Threads persist in `chat_messages` keyed by a
+client-generated `conversation_id`. When a real decision has 2–4 sensible
+paths the agent calls **ask_user_choice**, which renders a structured choice
+card (stored on the message, so it survives reloads) instead of a numbered
+list in prose; the selection returns as the next user message.
+
+Each tool lives in one registry entry in `src/lib/agent/tools.ts` —
+description, zod args (the JSON Schema the model sees is derived from them),
+live status label, and implementation — so extending the agent is adding one
+`defineTool` entry; the loop in `run.ts` doesn't change.
+
 The greyscale design system the agent composes with: heroes, split layouts
 (both directions), 2/3/4-column card grids, tinted bands, testimonials with
 avatar bylines, logo strips, stats, FAQ rows, pricing cards, and email-capture
