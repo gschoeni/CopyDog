@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 
 /**
- * Opens a section's header strip (title · version · notes · arrows · delete)
+ * Opens a section's header strip (title · version · notes · arrows · duplicate · delete)
  * by clicking its rail handle — the strip only appears deliberately, never
  * on hover. The handle is a toggle, so we only click when the strip isn't
  * already open (rail positions re-measure on a rAF; toPass retries races).

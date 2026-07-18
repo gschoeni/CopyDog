@@ -265,6 +265,29 @@ test("sections reorder by dragging their header grip", async ({ page }) => {
   await expect(page.locator("[data-section-slug]").first()).toContainText("Features");
 });
 
+test("a section can be duplicated from its header", async ({ page }) => {
+  await setupTwoSections(page, `Duplicate ${Date.now()}`);
+  const sections = page.locator("[data-section-slug]");
+  const originalSlug = await sections.first().getAttribute("data-section-slug");
+
+  await openSectionChrome(page, 0);
+  await page
+    .locator(`[data-section-header="${originalSlug}"]`)
+    .getByRole("button", { name: "Duplicate section" })
+    .click();
+
+  await expect(sections).toHaveCount(3);
+  await expect(sections.nth(0)).toContainText("Hero title");
+  await expect(sections.nth(1)).toContainText("Hero title");
+  await expect(sections.nth(1)).toContainText("Hero body line.");
+  expect(await sections.nth(1).getAttribute("data-section-slug")).not.toBe(originalSlug);
+
+  await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
+  await page.reload();
+  await expect(page.locator("[data-section-slug]")).toHaveCount(3);
+  await expect(page.locator("[data-section-slug]").nth(1)).toContainText("Hero body line.");
+});
+
 test("the rail handle toggles the section header: click to open, click to dismiss", async ({ page }) => {
   await setupTwoSections(page, `Toggle ${Date.now()}`);
 
@@ -286,4 +309,3 @@ test("the rail handle toggles the section header: click to open, click to dismis
   await page.getByText("Hero body line.").click();
   await expect(header).toHaveClass(/opacity-0/);
 });
-

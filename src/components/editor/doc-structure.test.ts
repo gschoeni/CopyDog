@@ -19,6 +19,7 @@ import type { Element } from "@/lib/copy/elements";
 
 import {
   $buildDocFromContent,
+  $duplicateSection,
   $groupElementsIntoSection,
   $snapshotContent,
   $touchedElementNodes,
@@ -109,6 +110,32 @@ describe("doc structure", () => {
     expect(editor.read($snapshotContent)).toEqual([
       { kind: "elements", elements: [{ type: "p", text: "keep me" }] },
     ]);
+  });
+
+  it("duplicates a section beside the original with an independent slug", async () => {
+    const { editor } = makeEditor();
+    await update(editor, () =>
+      $buildDocFromContent([
+        { kind: "section", slug: "hero", elements: hero },
+        { kind: "section", slug: "features", elements: features },
+      ]),
+    );
+
+    await update(editor, () => {
+      expect($duplicateSection("hero", "hero-copy")).toBe(true);
+    });
+
+    expect(editor.read($snapshotContent)).toEqual([
+      { kind: "section", slug: "hero", elements: hero },
+      { kind: "section", slug: "hero-copy", elements: hero },
+      { kind: "section", slug: "features", elements: features },
+    ]);
+
+    await update(editor, () => {
+      const copy = $getRoot().getChildren().filter($isSectionNode)[1]!;
+      copy.getFirstChild()!.remove();
+    });
+    expect(editor.read($snapshotContent)[0]).toEqual({ kind: "section", slug: "hero", elements: hero });
   });
 
   it("groups loose elements into a section and leaves a place to keep writing", async () => {

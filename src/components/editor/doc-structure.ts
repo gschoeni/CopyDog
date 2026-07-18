@@ -83,6 +83,20 @@ export function $replaceSectionElements(slug: string, elements: Element[]): bool
   return true;
 }
 
+/** Copies a section's current content into an independent section beside it. */
+export function $duplicateSection(slug: string, duplicateSlug: string): boolean {
+  const section = $getRoot()
+    .getChildren()
+    .find((n): n is SectionNode => $isSectionNode(n) && n.getSlug() === slug);
+  if (!section) return false;
+
+  const duplicate = $createSectionNode(duplicateSlug);
+  $appendElementsTo(duplicate, $elementsFrom(section));
+  if (duplicate.getChildrenSize() === 0) duplicate.append($createParagraphNode());
+  section.insertAfter(duplicate);
+  return true;
+}
+
 /**
  * Keeps the document well-formed: sections that lose all their children
  * dissolve, and an empty root regains a paragraph to type in. Empty

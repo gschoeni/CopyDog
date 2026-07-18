@@ -39,6 +39,7 @@ import type { PageLinkOption } from "@/lib/content/site";
 
 import {
   $buildDocFromContent,
+  $duplicateSection,
   $groupElementsIntoSection,
   $insertSectionAfterSlug,
   $replaceSectionElements,
@@ -67,6 +68,8 @@ export interface DocEditorHandle {
   groupSelection: () => string | null;
   /** Remove a section and its content from the document. */
   removeSection: (slug: string) => void;
+  /** Copy a section and its content into a new independent section. */
+  duplicateSection: (slug: string, duplicateSlug: string) => void;
   /** Move a section one step up (-1) or down (+1). */
   moveSection: (slug: string, direction: -1 | 1) => void;
 }
@@ -264,6 +267,11 @@ function DocEditorInner({
           section?.remove();
         });
       },
+      duplicateSection: (slug, duplicateSlug) => {
+        editor.update(() => {
+          $duplicateSection(slug, duplicateSlug);
+        });
+      },
       moveSection: (slug, direction) => {
         editor.update(() => {
           const sections = $getRoot().getChildren().filter($isSectionNode);
@@ -377,7 +385,7 @@ function DocEditorInner({
                   onOpenChange={(open) => setOpenHeaderSlug(open ? rect.slug : null)}
                 />
               </div>
-              {/* header strip: title · version · notes · delete — opens only
+              {/* header strip: title · version · notes · reorder · duplicate · delete — opens only
                   from the handle, dismisses on any outside click */}
               <div
                 className={`absolute left-14 right-0 z-20 flex items-center transition-opacity duration-150 ${

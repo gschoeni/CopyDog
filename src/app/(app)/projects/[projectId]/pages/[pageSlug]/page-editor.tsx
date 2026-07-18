@@ -10,10 +10,12 @@ import { Button } from "@/components/ui/button";
 import {
   CopyModeIcon,
   DownloadIcon,
+  DuplicateIcon,
   ImportIcon,
   LinkIcon,
   SplitModeIcon,
   UnlinkIcon,
+  TrashIcon,
   WandIcon,
   WireframeModeIcon,
 } from "@/components/ui/icons";
@@ -524,6 +526,22 @@ export function PageEditor({
     docRef.current?.removeSection(slug);
   }, []);
 
+  const duplicateSection = useCallback(
+    (slug: string) => {
+      const source = metaRef.current.get(slug);
+      if (!source) return;
+      const duplicateSlug = makeSlug();
+      metaRef.current.set(duplicateSlug, {
+        title: `${source.title} copy`,
+        activeVersion: "original",
+        versions: [{ slug: "original", label: "Original" }],
+        linked: source.linked,
+      });
+      docRef.current?.duplicateSection(slug, duplicateSlug);
+    },
+    [makeSlug],
+  );
+
   const moveSection = useCallback((slug: string, direction: -1 | 1) => {
     docRef.current?.moveSection(slug, direction);
   }, []);
@@ -637,17 +655,26 @@ export function PageEditor({
           </button>
           <button
             type="button"
+            aria-label="Duplicate section"
+            title="Duplicate section"
+            onClick={() => duplicateSection(slug)}
+            className="flex size-6 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+          >
+            <DuplicateIcon />
+          </button>
+          <button
+            type="button"
             aria-label="Delete section"
             title="Delete section (copy included)"
             onClick={() => deleteSection(slug)}
-            className="flex size-6 shrink-0 items-center justify-center rounded text-xs text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-danger"
+            className="flex size-6 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-danger"
           >
-            ✕
+            <TrashIcon />
           </button>
         </div>
       );
     },
-    [projectId, pageSlug, sections, renameSection, toggleLinked, guarded, switchVersion, createVersion, adoptTeammateVersion, moveSection, deleteSection],
+    [projectId, pageSlug, sections, renameSection, toggleLinked, guarded, switchVersion, createVersion, adoptTeammateVersion, moveSection, duplicateSection, deleteSection],
   );
 
   return (
