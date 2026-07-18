@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { getOxenClient } from "@/lib/oxen";
 import type { OxenClient } from "@/lib/oxen/client";
 import { createClient } from "@/lib/supabase/server";
@@ -61,6 +63,61 @@ export async function requireProjectAccess(projectId: string): Promise<ProjectAc
 
   return {
     user: { id: user.id, email: user.email ?? null },
+    project: { id: project.id, name: project.name, slug: project.slug, oxenRepo: project.oxen_repo },
+    oxen,
+    view,
+  };
+}
+
+/**
+ * The same gate for callers that authenticated outside the cookie session —
+ * today that's the MCP endpoint, where an API key already resolved to a
+ * user id. Because the service-role client bypasses RLS, the membership
+ * check the projects policy would have done implicitly happens explicitly
+ * here. This is the ONLY place service-role project access is legitimized;
+ * MCP tools receive the result and never query around it.
+ */
+export async function requireProjectAccessAs(
+  admin: SupabaseClient,
+  userId: string,
+  projectId: string,
+): Promise<ProjectAccess> {
+  const { data: membership } = await admin
+    .from("project_members")
+    .select("user_id")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!membership) throw new Error("project not found or not a member");
+
+  const { data: project } = await admin
+    .from("projects")
+    .select("id, name, slug, oxen_repo")
+    .eq("id", projectId)
+    .single();
+  if (!project) throw new Error("project not found or not a member");
+
+  const { data: authUser } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("id", userId)
+    .single();
+  if (!authUser) throw new Error("unknown user");
+  const { data: emailRow } = await admin.auth.admin.getUserById(userId);
+
+  const oxen = getOxenClient();
+  let view: DraftView;
+  try {
+    view = await ensureDraftView(oxen, project.oxen_repo, userId);
+  } catch (err) {
+    throw new ContentStoreUnavailableError(
+      `Oxen content store failed for repo "${project.oxen_repo}": ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
+
+  return {
+    user: { id: userId, email: emailRow?.user?.email ?? null },
     project: { id: project.id, name: project.name, slug: project.slug, oxenRepo: project.oxen_repo },
     oxen,
     view,

@@ -10,6 +10,12 @@ const PUBLIC_PATHS = ["/", "/login", "/auth/confirm", "/auth/callback"];
  * signed-out users are sent to /login, signed-in users skip /login.
  */
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
+  // The MCP endpoint authenticates with its own bearer API key (no cookie
+  // session) — the handler owns auth; cookie gating would just 302 it to /login.
+  if (request.nextUrl.pathname.startsWith("/api/mcp")) {
+    return NextResponse.next({ request });
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(publicEnv.supabaseUrl, publicEnv.supabasePublishableKey, {

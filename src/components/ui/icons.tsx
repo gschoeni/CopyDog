@@ -232,3 +232,15 @@ export function WireframeModeIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+/** Key — personal API keys for external agents. */
+export function KeyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="7.5" cy="15.5" r="4.5" />
+      <path d="m10.7 12.3 9.3-9.3" />
+      <path d="m17 6 3 3" />
+      <path d="m14 9 2 2" />
+    </Icon>
+  );
+}

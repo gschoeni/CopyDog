@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { KeyIcon } from "@/components/ui/icons";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -25,6 +26,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </span>
           </Link>
           <div className="flex items-center gap-1">
+            <Link
+              href="/account/api-keys"
+              aria-label="API keys"
+              title="API keys"
+              className="inline-flex size-8 items-center justify-center rounded-md text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <KeyIcon />
+            </Link>
             <ThemeToggle />
             <div className="mx-2 h-5 w-px bg-border" aria-hidden />
             <span className="mr-1 hidden text-sm text-ink-secondary sm:block">

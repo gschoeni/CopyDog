@@ -12,3 +12,4 @@ export * from "./comments";
 export * from "./proposals";
 export * from "./section-versions";
 export * from "./chat-messages";
+export * from "./api-keys";

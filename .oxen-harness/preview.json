@@ -1,0 +1,10 @@
+{
+  "servers": [
+    {
+      "name": "frontend",
+      "command": "pnpm exec next dev --port \"$PORT\"",
+      "port": 3147,
+      "autoPort": false
+    }
+  ]
+}

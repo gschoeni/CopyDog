@@ -8,11 +8,11 @@ import { extractSectionsFromHtml, type ExtractedSection } from "@/lib/import/ext
 import { fetchImportHtml, ImportFetchError } from "@/lib/import/fetch-url";
 import { extractSectionsFromImage, extractSectionsWithLlm } from "@/lib/import/llm-extract";
 import { serializeElements } from "@/lib/copy/markdown";
+import { openProposal, publishDraftAndIndex } from "@/lib/content/collab";
+import { addPage } from "@/lib/content/pages";
 import {
   adoptVersion,
   draftBranchName,
-  hasUnpublishedChanges,
-  publishDraft,
   readDoc,
   readSectionVersion,
   readSite,
@@ -26,7 +26,7 @@ import {
   writeWireframe,
 } from "@/lib/content/store";
 import { createClient } from "@/lib/supabase/server";
-import { flattenPages, insertPageNode, movePageNode } from "@/lib/content/site";
+import { movePageNode } from "@/lib/content/site";
 import { parseElementsMarkdown } from "@/lib/copy/markdown";
 import { getLlmClient } from "@/lib/llm";
 import { generateWireframe, selectGenerator } from "@/lib/wireframe/generate";
@@ -145,44 +145,8 @@ const publishInput = z.object({
  */
 export async function publishAction(input: z.infer<typeof publishInput>): Promise<{ ok: boolean }> {
   const { projectId, message } = publishInput.parse(input);
-  const { oxen, view, user, project } = await requireProjectAccess(projectId);
-
-  const supabase = await createClient();
-  const { data: profile } = await supabase.from("profiles").select("display_name").eq("id", user.id).single();
-  const author = { name: profile?.display_name ?? "copydog", email: user.email ?? "unknown@copydog.app" };
-
-  if (await hasUnpublishedChanges(oxen, view)) {
-    await publishDraft(oxen, view, { message: message?.trim() || "Publish drafts", author });
-  }
-
-  // refresh this user's published-versions index from their doc files
-  const site = await readSite(oxen, view);
-  const rows: Record<string, unknown>[] = [];
-  for (const { page } of flattenPages(site.pages)) {
-    const doc = await readDoc(oxen, view, page.slug);
-    for (const section of docSections(doc)) {
-      for (const version of section.versions) {
-        rows.push({
-          project_id: project.id,
-          author_id: user.id,
-          page_slug: page.slug,
-          section_slug: section.slug,
-          version_slug: version.slug,
-          label: version.label,
-        });
-      }
-    }
-  }
-  const { error: deleteError } = await supabase
-    .from("section_versions")
-    .delete()
-    .match({ project_id: project.id, author_id: user.id });
-  if (deleteError) throw new Error(`publish index refresh failed: ${deleteError.message}`);
-  if (rows.length) {
-    const { error: insertError } = await supabase.from("section_versions").insert(rows);
-    if (insertError) throw new Error(`publish index refresh failed: ${insertError.message}`);
-  }
-
+  const access = await requireProjectAccess(projectId);
+  await publishDraftAndIndex(await createClient(), access, message);
   return { ok: true };
 }
 
@@ -195,30 +159,8 @@ const proposeInput = z.object({
 /** Publishes any pending edits, then opens a proposal from the caller's draft to main. */
 export async function proposeAction(input: z.infer<typeof proposeInput>): Promise<{ proposalId: string }> {
   const { projectId, title, description } = proposeInput.parse(input);
-  const { oxen, view, user, project } = await requireProjectAccess(projectId);
-
-  await publishAction({ projectId });
-  const main = await oxen.getBranch(project.oxenRepo, "main");
-
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("proposals")
-    .insert({
-      project_id: project.id,
-      author_id: user.id,
-      title,
-      description: description || null,
-      source_branch: view.branch,
-      base_commit: main.commit_id,
-    })
-    .select("id")
-    .single<{ id: string }>();
-  if (error || !data) {
-    console.error("proposal insert failed", error);
-    throw new Error(error?.message ?? "could not create proposal");
-  }
-
-  return { proposalId: data.id };
+  const access = await requireProjectAccess(projectId);
+  return openProposal(await createClient(), access, { title, description });
 }
 
 const adoptInput = z.object({
@@ -430,24 +372,7 @@ const addPageInput = z.object({
 export async function addPageAction(input: z.infer<typeof addPageInput>): Promise<{ slug: string }> {
   const { projectId, title, parentSlug } = addPageInput.parse(input);
   const { oxen, view } = await requireProjectAccess(projectId);
-
-  const site = await readSite(oxen, view);
-  const base = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "page";
-  // slugs are page directories — unique across the whole tree
-  const taken = new Set(flattenPages(site.pages).map(({ page }) => page.slug));
-  let slug = base;
-  for (let n = 2; taken.has(slug); n++) slug = `${base}-${n}`;
-
-  if (!insertPageNode(site.pages, { slug, title }, parentSlug ?? null)) {
-    throw new Error(`parent page "${parentSlug}" not found`);
-  }
-  await writeSite(oxen, view, site);
-  await writeDoc(oxen, view, slug, { version: 2, content: [] });
-
-  return { slug };
+  return addPage(oxen, view, title, parentSlug);
 }
 
 const movePageInput = z.object({

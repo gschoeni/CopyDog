@@ -29,6 +29,13 @@
       "when": 1783892763592,
       "tag": "20260712214603_happy_tag",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784402660799,
+      "tag": "20260718192420_curvy_mariko_yashida",
+      "breakpoints": true
     }
   ]
 }
