@@ -35,22 +35,33 @@ export function looksLikeApiKey(candidate: string): boolean {
 export interface ApiKeyIdentity {
   keyId: string;
   userId: string;
+  keyName: string;
+  scopes: string[];
 }
 
 /**
- * Resolves a presented key to its owner, or null when unknown/revoked.
- * Runs on the service-role client — api_keys has no anon-readable path and
- * the MCP request carries no session. Bumps last_used_at best-effort.
+ * Resolves a presented key to its owner, or null when unknown, revoked, or
+ * expired. Runs on the service-role client — api_keys has no anon-readable
+ * path and the MCP request carries no session. Bumps last_used_at best-effort.
  */
 export async function verifyApiKey(admin: SupabaseClient, rawKey: string): Promise<ApiKeyIdentity | null> {
   if (!looksLikeApiKey(rawKey)) return null;
   const keyHash = hashApiKey(rawKey);
   const { data } = await admin
     .from("api_keys")
-    .select("id, user_id, key_hash, revoked_at")
+    .select("id, user_id, name, scopes, key_hash, revoked_at, expires_at")
     .eq("key_hash", keyHash)
-    .maybeSingle<{ id: string; user_id: string; key_hash: string; revoked_at: string | null }>();
+    .maybeSingle<{
+      id: string;
+      user_id: string;
+      name: string;
+      scopes: string[];
+      key_hash: string;
+      revoked_at: string | null;
+      expires_at: string | null;
+    }>();
   if (!data || data.revoked_at) return null;
+  if (data.expires_at && new Date(data.expires_at).getTime() <= Date.now()) return null;
   // defense in depth: constant-time confirm the hash the index matched on
   const a = Buffer.from(data.key_hash, "hex");
   const b = Buffer.from(keyHash, "hex");
@@ -62,5 +73,5 @@ export async function verifyApiKey(admin: SupabaseClient, rawKey: string): Promi
     .eq("id", data.id)
     .then(undefined, () => {});
 
-  return { keyId: data.id, userId: data.user_id };
+  return { keyId: data.id, userId: data.user_id, keyName: data.name, scopes: data.scopes ?? [] };
 }

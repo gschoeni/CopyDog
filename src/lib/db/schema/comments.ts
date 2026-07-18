@@ -23,6 +23,8 @@ export const comments = pgTable(
       .notNull()
       .references(() => profiles.id, { onDelete: "cascade" }),
     body: text("body").notNull(),
+    /** Set when an external agent wrote this via the MCP API — attribution, so teammates can tell. */
+    viaApiKey: uuid("via_api_key"),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

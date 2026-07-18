@@ -7,8 +7,11 @@ import { API_KEY_PREFIX, hashApiKey, looksLikeApiKey, mintApiKey, verifyApiKey }
 interface KeyRow {
   id: string;
   user_id: string;
+  name?: string;
+  scopes?: string[];
   key_hash: string;
   revoked_at: string | null;
+  expires_at?: string | null;
 }
 
 /** Just enough of the supabase query chain for verifyApiKey. */
@@ -51,28 +54,53 @@ describe("API keys", () => {
     expect(looksLikeApiKey("sk-something-else-entirely-but-long-enough")).toBe(false);
   });
 
-  it("verifies a live key and bumps last_used_at", async () => {
+  it("verifies a live key with its scopes and bumps last_used_at", async () => {
     const minted = mintApiKey();
     const touched: string[] = [];
-    const admin = fakeAdmin([{ id: "k1", user_id: "u1", key_hash: minted.keyHash, revoked_at: null }], touched);
+    const admin = fakeAdmin(
+      [
+        {
+          id: "k1",
+          user_id: "u1",
+          name: "Claude Code",
+          scopes: ["read", "write"],
+          key_hash: minted.keyHash,
+          revoked_at: null,
+          expires_at: null,
+        },
+      ],
+      touched,
+    );
 
     const identity = await verifyApiKey(admin, minted.key);
-    expect(identity).toEqual({ keyId: "k1", userId: "u1" });
+    expect(identity).toEqual({ keyId: "k1", userId: "u1", keyName: "Claude Code", scopes: ["read", "write"] });
     // last_used_at update is fire-and-forget; give the microtask a beat
     await new Promise((r) => setTimeout(r, 0));
     expect(touched).toEqual(["k1"]);
   });
 
-  it("rejects unknown, revoked, and malformed keys", async () => {
+  it("rejects unknown, revoked, expired, and malformed keys", async () => {
     const live = mintApiKey();
     const revoked = mintApiKey();
+    const expired = mintApiKey();
     const admin = fakeAdmin([
       { id: "k1", user_id: "u1", key_hash: live.keyHash, revoked_at: null },
       { id: "k2", user_id: "u1", key_hash: revoked.keyHash, revoked_at: "2026-01-01T00:00:00Z" },
+      { id: "k3", user_id: "u1", key_hash: expired.keyHash, revoked_at: null, expires_at: "2026-01-01T00:00:00Z" },
     ]);
 
     expect(await verifyApiKey(admin, mintApiKey().key)).toBeNull(); // unknown
     expect(await verifyApiKey(admin, revoked.key)).toBeNull(); // revoked
+    expect(await verifyApiKey(admin, expired.key)).toBeNull(); // expired
     expect(await verifyApiKey(admin, "not-a-key")).toBeNull(); // malformed — no query needed
+  });
+
+  it("accepts a key with a future expiry", async () => {
+    const minted = mintApiKey();
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    const admin = fakeAdmin([
+      { id: "k1", user_id: "u1", key_hash: minted.keyHash, revoked_at: null, expires_at: future },
+    ]);
+    expect(await verifyApiKey(admin, minted.key)).not.toBeNull();
   });
 });

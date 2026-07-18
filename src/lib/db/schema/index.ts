@@ -13,3 +13,4 @@ export * from "./proposals";
 export * from "./section-versions";
 export * from "./chat-messages";
 export * from "./api-keys";
+export * from "./mcp-audit";

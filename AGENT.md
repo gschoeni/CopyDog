@@ -138,4 +138,5 @@ Please add any relevant documentation as you are implementing the project, so th
 * [Decisions](docs/05_decisions.md) - Working decisions & rationale.
 * [Backlog](docs/06_backlog.md) - Ideas, links, future exploration.
 * [MCP Server](docs/07_mcp.md) - Connecting external agents (Claude Code, claude.ai) via /api/mcp with personal API keys.
+* [Security & Privacy](docs/08_security.md) - Trust model, authorization boundaries, agent guardrails, data-privacy trade-offs. Read before touching auth, keys, or the MCP surface.
 

@@ -8,7 +8,8 @@ wireframes, and run the version-control workflow (publish → propose → merge)
 ## Connecting
 
 1. In the app, open **Account → API keys** (key icon in the header) and
-   create a key. Copy it immediately — it's shown once.
+   create a key: name it, pick its scopes (read / write / collaborate /
+   merge) and an expiry. Copy it immediately — it's shown once.
 2. Point your agent at the endpoint with the key as a bearer token:
 
 ```sh
@@ -19,10 +20,19 @@ claude mcp add --transport http copydog https://<host>/api/mcp \
 
 Local dev: the endpoint is `http://localhost:3131/api/mcp`.
 
-The key acts as its owner. Every write lands in that user's private
-`draft/{user_id}` branch — an external agent can never corrupt a teammate's
-work, exactly like the in-app editor. Revoking the key (same page) cuts off
-access immediately.
+The key acts as its owner, narrowed by its scopes — `tools/list` shows
+exactly what a given key can do; out-of-scope tools are invisible and
+uncallable. Every write lands in that user's private `draft/{user_id}`
+branch — an external agent can never corrupt a teammate's work, exactly
+like the in-app editor. Revoking the key (same page) cuts off access
+immediately; expired keys die the same way.
+
+Guardrails on the agent path: keys are rate-budgeted (240 units/min;
+LLM design tools cost 20 each), every mutating call is audit-logged
+(identifiers only, never copy), proposals/comments/commits carry "via
+agent" attribution, and `merge_proposal` requires the opt-in merge scope
+and never applies to the key owner's own proposals. Details:
+[08_security.md](08_security.md).
 
 ## Transport
 
@@ -99,11 +109,13 @@ the MCP layer adds authentication and argument mapping, not new behavior.
 
 - Keys are `cdk_` + 32 random bytes (base64url). Postgres stores only the
   SHA-256 hash plus a display prefix; RLS lets users manage only their own
-  keys.
-- The MCP request path resolves key → user on the service-role client, then
-  goes through `requireProjectAccessAs` (`src/lib/content/access.ts`), which
-  performs the same membership check the RLS policies enforce for cookie
-  sessions. That function is the only sanctioned use of the service-role
-  client — see the 2026-07-18 entry in [05_decisions.md](05_decisions.md).
+  keys. Scopes and expiry are set at mint and immutable — rotate to change.
+- The MCP request path resolves key → user in `src/lib/mcp/context.ts`,
+  which builds the `McpToolApi` capability object tools run against. Tools
+  never hold a raw database client: `requireProject()` performs the same
+  membership check the RLS policies enforce for cookie sessions and only
+  then returns a handle. `context.ts` is the only module allowed to import
+  the service-role client (eslint-enforced) — see
+  [08_security.md](08_security.md).
 - OAuth (for claude.ai's one-click connector UI) is a possible later layer;
   it would change how a key is obtained, not the tool surface.

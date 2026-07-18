@@ -30,12 +30,17 @@ export async function publishDraftAndIndex(
   supabase: SupabaseClient,
   access: ProjectAccess,
   message?: string,
+  options?: { attribution?: string },
 ): Promise<void> {
   const { oxen, view, user, project } = access;
   const author = await commitAuthorFor(supabase, user);
 
   if (await hasUnpublishedChanges(oxen, view)) {
-    await publishDraft(oxen, view, { message: message?.trim() || "Publish drafts", author });
+    const base = message?.trim() || "Publish drafts";
+    await publishDraft(oxen, view, {
+      message: options?.attribution ? `${base} [${options.attribution}]` : base,
+      author,
+    });
   }
 
   const site = await readSite(oxen, view);
@@ -70,7 +75,7 @@ export async function publishDraftAndIndex(
 export async function openProposal(
   supabase: SupabaseClient,
   access: ProjectAccess,
-  input: { title: string; description?: string },
+  input: { title: string; description?: string; viaApiKey?: string },
 ): Promise<{ proposalId: string }> {
   const { oxen, view, user, project } = access;
   await publishDraftAndIndex(supabase, access);
@@ -85,6 +90,7 @@ export async function openProposal(
       description: input.description || null,
       source_branch: view.branch,
       base_commit: main.commit_id,
+      via_api_key: input.viaApiKey ?? null,
     })
     .select("id")
     .single<{ id: string }>();
@@ -105,6 +111,7 @@ export async function mergeProposal(
   supabase: SupabaseClient,
   access: ProjectAccess,
   proposalId: string,
+  options?: { attribution?: string },
 ): Promise<MergeResult> {
   const { oxen, project, user } = access;
 
@@ -120,7 +127,7 @@ export async function mergeProposal(
   let mergedCommit: string;
   try {
     mergedCommit = await applyBranchToMain(oxen, project.oxenRepo, proposal.source_branch, {
-      message: `Merge proposal: ${proposal.title}`,
+      message: `Merge proposal: ${proposal.title}${options?.attribution ? ` [${options.attribution}]` : ""}`,
       author: await commitAuthorFor(supabase, user),
     });
   } catch (err) {

@@ -36,6 +36,13 @@
       "when": 1784402660799,
       "tag": "20260718192420_curvy_mariko_yashida",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784404283512,
+      "tag": "20260718195123_military_speed",
+      "breakpoints": true
     }
   ]
 }

@@ -13,14 +13,16 @@ export default async function ApiKeysPage() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("api_keys")
-    .select("id, name, key_prefix, created_at, last_used_at, revoked_at")
+    .select("id, name, key_prefix, scopes, created_at, expires_at, last_used_at, revoked_at")
     .order("created_at", { ascending: false });
 
   const keys: ApiKeyRow[] = (data ?? []).map((row) => ({
     id: row.id as string,
     name: row.name as string,
     keyPrefix: row.key_prefix as string,
+    scopes: (row.scopes as string[] | null) ?? ["read"],
     createdAt: row.created_at as string,
+    expiresAt: (row.expires_at as string | null) ?? null,
     lastUsedAt: (row.last_used_at as string | null) ?? null,
     revoked: Boolean(row.revoked_at),
   }));

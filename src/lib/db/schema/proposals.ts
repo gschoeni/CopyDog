@@ -29,6 +29,8 @@ export const proposals = pgTable(
     baseCommit: text("base_commit").notNull(),
     status: proposalStatus("status").notNull().default("open"),
     mergedCommit: text("merged_commit"),
+    /** Set when an external agent opened this via the MCP API — attribution, so teammates can tell. */
+    viaApiKey: uuid("via_api_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   },

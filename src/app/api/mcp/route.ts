@@ -1,17 +1,15 @@
-import { getLlmClient } from "@/lib/llm";
-import { verifyApiKey } from "@/lib/mcp/keys";
+import { authenticateMcp } from "@/lib/mcp/context";
+import { RateLimitExceededError } from "@/lib/mcp/errors";
 import { handleMcpPost } from "@/lib/mcp/protocol";
-import { buildMcpServer, type McpContext } from "@/lib/mcp/tools";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { buildMcpServer } from "@/lib/mcp/tools";
 
 /**
  * CopyDog's remote MCP endpoint (Streamable HTTP, stateless).
  *
  * External agents connect with a personal API key minted in Account → API
  * keys, sent as `Authorization: Bearer cdk_…`. Every request stands alone:
- * authenticate the key, build the tool server bound to that user, answer as
- * plain JSON. No sessions, no SSE — the stateless subset of the transport,
- * which is all Claude Code / claude.ai need from a tools-only server.
+ * authenticate the key, charge its rate budget, build the tool server bound
+ * to that key's scopes, answer as plain JSON. No sessions, no SSE.
  *
  *   claude mcp add --transport http copydog https://<host>/api/mcp \
  *     --header "Authorization: Bearer cdk_…"
@@ -22,12 +20,22 @@ export async function POST(req: Request): Promise<Response> {
   const key = /^bearer\s+(.+)$/i.exec(authorization)?.[1]?.trim();
   if (!key) return unauthorized("Missing Authorization: Bearer <api key>");
 
-  const admin = createAdminClient();
-  const identity = await verifyApiKey(admin, key);
-  if (!identity) return unauthorized("Unknown or revoked API key");
+  const api = await authenticateMcp(key);
+  if (!api) return unauthorized("Unknown, revoked, or expired API key");
 
-  const ctx: McpContext = { userId: identity.userId, supabase: admin, llm: getLlmClient() };
-  const result = await handleMcpPost(await req.text(), buildMcpServer(ctx));
+  try {
+    await api.consumeRate(1);
+  } catch (err) {
+    if (err instanceof RateLimitExceededError) {
+      return new Response(JSON.stringify({ error: err.message }), {
+        status: 429,
+        headers: { "content-type": "application/json", "retry-after": "60" },
+      });
+    }
+    throw err;
+  }
+
+  const result = await handleMcpPost(await req.text(), buildMcpServer(api));
   return new Response(result.body, { status: result.status, headers: result.headers });
 }
 

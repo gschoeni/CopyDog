@@ -12,6 +12,7 @@ interface ProposalRow {
   title: string;
   status: "open" | "merged" | "closed";
   created_at: string;
+  via_api_key: string | null;
   author: { display_name: string } | null;
 }
 
@@ -24,7 +25,7 @@ export default async function ProposalsPage({ params }: { params: Promise<{ proj
 
   const { data } = await supabase
     .from("proposals")
-    .select("id, title, status, created_at, author:profiles(display_name)")
+    .select("id, title, status, created_at, via_api_key, author:profiles(display_name)")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false });
   const proposals = (data ?? []) as unknown as ProposalRow[];
@@ -63,7 +64,8 @@ export default async function ProposalsPage({ params }: { params: Promise<{ proj
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{proposal.title}</p>
                 <p className="mt-0.5 text-xs text-ink-tertiary">
-                  {proposal.author?.display_name ?? "Someone"} ·{" "}
+                  {proposal.author?.display_name ?? "Someone"}
+                  {proposal.via_api_key ? " (via agent)" : ""} ·{" "}
                   {new Date(proposal.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                 </p>
               </div>

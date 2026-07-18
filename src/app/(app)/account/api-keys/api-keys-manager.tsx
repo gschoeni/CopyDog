@@ -13,10 +13,28 @@ export interface ApiKeyRow {
   id: string;
   name: string;
   keyPrefix: string;
+  scopes: string[];
   createdAt: string;
+  expiresAt: string | null;
   lastUsedAt: string | null;
   revoked: boolean;
 }
+
+const SCOPE_OPTIONS: { value: string; label: string; hint: string; locked?: boolean }[] = [
+  { value: "read", label: "Read", hint: "browse projects, pages, copy, diffs", locked: true },
+  { value: "write", label: "Write", hint: "edit copy and layouts in your draft" },
+  { value: "collab", label: "Collaborate", hint: "publish, propose, comment" },
+  { value: "merge", label: "Merge", hint: "merge teammates' proposals to main — grant sparingly" },
+];
+
+type Expiry = 30 | 90 | 365 | null;
+
+const EXPIRY_OPTIONS: { value: Expiry; label: string }[] = [
+  { value: 30, label: "30 days" },
+  { value: 90, label: "90 days" },
+  { value: 365, label: "1 year" },
+  { value: null, label: "No expiry" },
+];
 
 export function ApiKeysManager({ keys }: { keys: ApiKeyRow[] }) {
   const router = useRouter();
@@ -24,6 +42,12 @@ export function ApiKeysManager({ keys }: { keys: ApiKeyRow[] }) {
   const [error, setError] = useState<string | null>(null);
   const [freshKey, setFreshKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [scopes, setScopes] = useState<string[]>(["read", "write", "collab"]);
+  const [expiry, setExpiry] = useState<Expiry>(90);
+
+  function toggleScope(scope: string) {
+    setScopes((prev) => (prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]));
+  }
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -32,7 +56,11 @@ export function ApiKeysManager({ keys }: { keys: ApiKeyRow[] }) {
     if (typeof name !== "string" || !name.trim()) return;
     setBusy(true);
     setError(null);
-    const result = await createApiKeyAction({ name: name.trim() });
+    const result = await createApiKeyAction({
+      name: name.trim(),
+      scopes: scopes as ("read" | "write" | "collab" | "merge")[],
+      expiresInDays: expiry,
+    });
     setBusy(false);
     if (!result.ok) {
       setError(result.error);
@@ -61,21 +89,71 @@ export function ApiKeysManager({ keys }: { keys: ApiKeyRow[] }) {
 
   return (
     <div className="space-y-6">
-      <form onSubmit={create} className="flex gap-2">
-        <label htmlFor="key-name" className="sr-only">
-          Key name
-        </label>
-        <Input
-          id="key-name"
-          name="name"
-          required
-          maxLength={60}
-          placeholder="What's this key for? e.g. Claude Code"
-          disabled={busy}
-        />
-        <Button type="submit" disabled={busy} className="shrink-0">
-          Create key
-        </Button>
+      <form onSubmit={create} className="space-y-4 rounded-md border border-border p-4">
+        <div className="flex gap-2">
+          <label htmlFor="key-name" className="sr-only">
+            Key name
+          </label>
+          <Input
+            id="key-name"
+            name="name"
+            required
+            maxLength={60}
+            placeholder="What's this key for? e.g. Claude Code"
+            disabled={busy}
+          />
+          <Button type="submit" disabled={busy} className="shrink-0">
+            Create key
+          </Button>
+        </div>
+
+        <fieldset>
+          <legend className="text-[12px] font-medium uppercase tracking-wide text-ink-tertiary">
+            What can it do?
+          </legend>
+          <div className="mt-2 space-y-2">
+            {SCOPE_OPTIONS.map((option) => (
+              <label key={option.value} className="flex cursor-pointer items-baseline gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={option.locked || scopes.includes(option.value)}
+                  disabled={option.locked || busy}
+                  onChange={() => toggleScope(option.value)}
+                  className="translate-y-px accent-accent"
+                />
+                <span className="font-medium">{option.label}</span>
+                <span className="text-ink-tertiary">— {option.hint}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend className="text-[12px] font-medium uppercase tracking-wide text-ink-tertiary">Expires</legend>
+          <div className="mt-2 flex gap-1">
+            {EXPIRY_OPTIONS.map((option) => (
+              <button
+                key={String(option.value)}
+                type="button"
+                disabled={busy}
+                onClick={() => setExpiry(option.value)}
+                className={
+                  "rounded-md border px-2.5 py-1 text-[13px] transition-colors " +
+                  (expiry === option.value
+                    ? "border-border-strong bg-surface-hover font-medium text-ink"
+                    : "border-border text-ink-secondary hover:bg-surface-hover")
+                }
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <p className="text-[12px] leading-relaxed text-ink-tertiary">
+          The agent you connect (and the company running it) will process any copy this key can read. Keys are
+          stored by MCP clients in local config files — treat them like passwords.
+        </p>
       </form>
 
       {error ? <p className="text-sm text-danger">{error}</p> : null}
@@ -101,7 +179,8 @@ export function ApiKeysManager({ keys }: { keys: ApiKeyRow[] }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{key.name}</p>
                 <p className="text-[12px] text-ink-tertiary">
-                  <code>{key.keyPrefix}…</code> · created {formatDate(key.createdAt)}
+                  <code>{key.keyPrefix}…</code> · {key.scopes.join(" + ")}
+                  {key.expiresAt ? ` · expires ${formatDate(key.expiresAt)}` : " · no expiry"}
                   {key.lastUsedAt ? ` · last used ${formatDate(key.lastUsedAt)}` : " · never used"}
                 </p>
               </div>

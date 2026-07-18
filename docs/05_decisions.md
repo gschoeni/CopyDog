@@ -289,3 +289,35 @@ generate.ts), and *every* author — internal LLM, external model, future
 import path — goes through those same two doors: sanitize to the wf-*
 allowlist, enforce data-copy slot coverage. Never add a second acceptance
 path; extend those functions.
+
+## 2026-07-18 — Security hardening pass: scopes, budgets, containment
+
+Full rationale in docs/08_security.md; the decisions:
+
+**Keys are scoped and expiring.** read/write/collab/merge chosen at mint,
+immutable after (rotate to change). `merge` is opt-in and even then a key
+never merges its own user's proposals — the propose→merge loop must cross
+a second human, because a prompt-injected agent otherwise closes it alone.
+
+**Service-role access is now structural, not conventional.** Tools receive
+a `McpToolApi` capability object (mcp/context.ts); the raw admin client is
+unreachable from tool bodies, and eslint `no-restricted-imports` fences
+`supabase/admin` to exactly context.ts. The gate function is the only door.
+
+**Rate budgets over per-route limits.** One atomic SQL counter
+(`consume_api_rate`, service-role execute only) charges 1 unit/request and
+20/LLM design call against 240/key/minute — bounds inference spend without
+external infrastructure (works on Vercel serverless, no Redis).
+
+**Audit is metadata-only by construction.** mcp_audit_log takes an
+allowlist of identifier args (slugs, labels); copy bodies can't reach it.
+Attribution: via_api_key on proposals/comments, "[via <key>]" in commit
+messages, "(via agent)" in the proposals UI.
+
+**Error hygiene.** Only McpToolError (messages written for the agent)
+crosses the MCP boundary; everything else logs server-side and reports
+generically.
+
+**SSRF closed properly.** Import fetches now follow redirects manually
+(each hop re-guarded), check DNS answers against the private ranges
+(rebinding, v4-mapped IPv6), and fail closed on resolution errors.
