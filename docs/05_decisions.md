@@ -265,3 +265,13 @@ never preclude it, add when the exporter is built):
   traces die with their project. Fine for now; if training data must
   outlive projects, the exporter snapshots on a schedule (or we revisit
   with soft deletes).
+
+## 2026-07-18 — Wireframes derive entirely from copy
+
+**No invented chrome.** The generators no longer wrap pages in a
+placeholder navbar/footer. Every band in the wireframe is one of the
+user's copy sections; if they want a nav or footer, they write a section
+for it and the designers lay nav-like copy out as wf-navbar / wf-footer
+(the chrome classes stay in the design system for exactly that). Legacy
+wireframes keep their chrome until regenerated — section insertion still
+respects a trailing footer when one exists.

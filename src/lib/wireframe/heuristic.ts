@@ -13,21 +13,13 @@ export interface SectionForLayout {
   elements: Element[];
 }
 
+// Everything in the wireframe derives from the user's copy sections — no
+// invented chrome. A navbar or footer exists only when the user writes a
+// section for one (the LLM designers lay nav-like copy out as wf-navbar /
+// wf-footer).
 export function generateWireframeHeuristic(sections: SectionForLayout[]): string {
-  const body = sections.map((section, index) => renderSection(section, index)).join("\n");
-  return `${NAVBAR}\n${body}\n${FOOTER}`;
+  return sections.map((section, index) => renderSection(section, index)).join("\n");
 }
-
-const NAVBAR = `<header class="wf-navbar" aria-hidden="true">
-  <div class="wf-logo"></div>
-  <nav class="wf-nav-items"><span class="wf-pill"></span><span class="wf-pill"></span><span class="wf-pill"></span></nav>
-  <span class="wf-button">&nbsp;&nbsp;&nbsp;</span>
-</header>`;
-
-const FOOTER = `<footer class="wf-footer" aria-hidden="true">
-  <div class="wf-logo"></div>
-  <nav class="wf-nav-items"><span class="wf-pill"></span><span class="wf-pill"></span></nav>
-</footer>`;
 
 function renderSection(section: SectionForLayout, index: number): string {
   const counts = countTypes(section.elements);
