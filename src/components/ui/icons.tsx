@@ -160,6 +160,15 @@ export function ChevronDownIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Chevron pointing left — go back to the previous view. */
+export function ChevronLeftIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M15 6l-6 6 6 6" />
+    </Icon>
+  );
+}
+
 /** Panel frame with the left edge marked — toggle a left sidebar. */
 export function PanelLeftIcon(props: SVGProps<SVGSVGElement>) {
   return (

@@ -64,3 +64,7 @@ In this file, write future ideas, links, and things we should explore.
   the section and its *active* copy (the editor re-saves it) but alternate
   version files are gone. Rare (publish-while-deleted, then undo); revisit if
   it bites.
+- **Admin export of chat traces as training data** — see the 2026-07-17
+  decisions entry: persist tool traces + draft commit ids per assistant
+  turn, then a service-role exporter (JSONL of threaded conversations)
+  with PII scrubbing.

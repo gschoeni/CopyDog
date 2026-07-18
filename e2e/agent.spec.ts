@@ -64,6 +64,13 @@ test("new chat clears the current thread and keeps it in history", async ({ page
   await expect(page.getByText("Show me choices for this layout")).not.toBeVisible();
   await expect(page.getByLabel("Message the assistant")).toBeFocused();
 
+  // history replaces the whole panel; the chevron backs out without switching
+  await page.getByRole("button", { name: "Chat history" }).click();
+  await expect(page.getByRole("heading", { name: "Recent chats" })).toBeVisible();
+  await expect(page.getByLabel("Message the assistant")).not.toBeVisible();
+  await page.getByRole("button", { name: "Back to conversation" }).click();
+  await expect(page.getByRole("heading", { name: "What should we create?" })).toBeVisible();
+
   await page.getByRole("button", { name: "Chat history" }).click();
   await page.getByRole("button", { name: "Show me choices for this layout" }).click();
   await expect(page.getByRole("region", { name: "Assistant choice" })).toBeVisible({ timeout: 20_000 });

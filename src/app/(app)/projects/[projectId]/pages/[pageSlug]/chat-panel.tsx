@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import type { ChatInteraction } from "@/lib/agent/interactions";
-import { ArrowDownIcon, ArrowUpIcon, CheckIcon, CopyIcon, HistoryIcon, PlusIcon, SparklesIcon } from "@/components/ui/icons";
+import { ArrowDownIcon, ArrowUpIcon, CheckIcon, ChevronLeftIcon, CopyIcon, HistoryIcon, PlusIcon, SparklesIcon } from "@/components/ui/icons";
 import { SidePanel } from "@/components/ui/side-panel";
 import type { ChatStreamEvent } from "@/lib/agent/events";
 import { createClient } from "@/lib/supabase/client";
@@ -159,8 +159,8 @@ export function ChatPanel({
   }, [messages, live, busy, scrollToBottom]);
 
   useEffect(() => {
-    if (!collapsed && !busy) textareaRef.current?.focus();
-  }, [collapsed, busy]);
+    if (!collapsed && !busy && !showHistory) textareaRef.current?.focus();
+  }, [collapsed, busy, showHistory]);
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -303,104 +303,125 @@ export function ChatPanel({
         </>
       }
     >
-      <div className="relative min-h-0 flex-1">
-        {showHistory && (
-          <ThreadPicker
-            threads={threads}
-            activeId={conversationId}
-            onSelect={selectConversation}
-          />
-        )}
-        <div
-          ref={scrollRef}
-          className="h-full overflow-y-auto overscroll-contain px-4 py-5"
-          onScroll={(event) => {
-            const el = event.currentTarget;
-            const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-            stickToBottomRef.current = nearBottom;
-            setShowJump(!nearBottom && hasConversation);
-          }}
-        >
-          {messages === null ? <LoadingConversation /> : !hasConversation ? (
-            <EmptyConversation onSelect={setDraft} />
-          ) : (
-            <div className="space-y-6 pb-2" aria-live="polite">
-              {messages.map((message, index) => (
-                <Message
-                  key={`${message.role}-${index}`}
-                  message={message}
-                  copied={copiedIndex === index}
-                  interactionPending={
-                    message.role === "assistant" &&
-                    message.interaction != null &&
-                    !messages.slice(index + 1).some((next) => next.role === "user")
-                  }
-                  onChoose={(option) => void send(`I choose “${option.label}”: ${option.description}`)}
-                  onCopy={() => void copyMessage(message.content, index)}
-                />
-              ))}
-              {busy && <LiveMessage live={live} />}
-              {error && <ErrorMessage message={error} onRetry={lastPromptRef.current ? () => void send(lastPromptRef.current!) : undefined} />}
-            </div>
+      {showHistory ? (
+        <HistoryView
+          threads={threads}
+          activeId={conversationId}
+          onBack={() => setShowHistory(false)}
+          onSelect={selectConversation}
+        />
+      ) : (
+        <>
+        <div className="relative min-h-0 flex-1">
+          <div
+            ref={scrollRef}
+            className="h-full overflow-y-auto overscroll-contain px-4 py-5"
+            onScroll={(event) => {
+              const el = event.currentTarget;
+              const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+              stickToBottomRef.current = nearBottom;
+              setShowJump(!nearBottom && hasConversation);
+            }}
+          >
+            {messages === null ? <LoadingConversation /> : !hasConversation ? (
+              <EmptyConversation onSelect={setDraft} />
+            ) : (
+              <div className="space-y-6 pb-2" aria-live="polite">
+                {messages.map((message, index) => (
+                  <Message
+                    key={`${message.role}-${index}`}
+                    message={message}
+                    copied={copiedIndex === index}
+                    interactionPending={
+                      message.role === "assistant" &&
+                      message.interaction != null &&
+                      !messages.slice(index + 1).some((next) => next.role === "user")
+                    }
+                    onChoose={(option) => void send(`I choose “${option.label}”: ${option.description}`)}
+                    onCopy={() => void copyMessage(message.content, index)}
+                  />
+                ))}
+                {busy && <LiveMessage live={live} />}
+                {error && <ErrorMessage message={error} onRetry={lastPromptRef.current ? () => void send(lastPromptRef.current!) : undefined} />}
+              </div>
+            )}
+          </div>
+          {showJump && (
+            <button type="button" onClick={() => scrollToBottom()} aria-label="Jump to latest message" title="Jump to latest" className="absolute bottom-3 left-1/2 flex size-8 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-surface text-ink-secondary shadow-raised transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+              <ArrowDownIcon />
+            </button>
           )}
         </div>
-        {showJump && (
-          <button type="button" onClick={() => scrollToBottom()} aria-label="Jump to latest message" title="Jump to latest" className="absolute bottom-3 left-1/2 flex size-8 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-surface text-ink-secondary shadow-raised transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
-            <ArrowDownIcon />
-          </button>
-        )}
-      </div>
 
-      <form className="border-t border-border bg-surface px-3 pb-3 pt-2.5" onSubmit={(event) => { event.preventDefault(); void send(draft); }}>
-        <div className="rounded-xl border border-border-strong bg-bg px-3 pb-2.5 pt-3 shadow-soft transition-[border-color,box-shadow] focus-within:border-accent focus-within:shadow-raised">
-          <textarea
-            ref={textareaRef}
-            name="message"
-            value={draft}
-            onChange={(event) => updateDraft(event.target.value)}
-            onKeyDown={handleComposerKeyDown}
-            placeholder="Ask the assistant to edit this page…"
-            aria-label="Message the assistant"
-            disabled={busy}
-            autoComplete="off"
-            rows={1}
-            className="block max-h-40 min-h-6 w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-ink outline-none placeholder:text-ink-tertiary disabled:cursor-not-allowed"
-          />
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <span className="text-[11px] text-ink-tertiary">
-              {busy ? "Assistant is working" : draft.length > 3600 ? `${draft.length}/4000` : "Enter to send · Shift + Enter for line break"}
-            </span>
-            <button type="submit" disabled={!canSend} aria-label={busy ? "Assistant is working" : "Send"} title="Send message" className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-fg transition-[background-color,transform] hover:bg-accent-hover active:scale-95 disabled:cursor-not-allowed disabled:bg-surface-hover disabled:text-ink-tertiary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
-              <ArrowUpIcon />
-            </button>
+        <form className="border-t border-border bg-surface px-3 pb-3 pt-2.5" onSubmit={(event) => { event.preventDefault(); void send(draft); }}>
+          <div className="rounded-xl border border-border-strong bg-bg px-3 pb-2.5 pt-3 shadow-soft transition-[border-color,box-shadow] focus-within:border-accent focus-within:shadow-raised">
+            <textarea
+              ref={textareaRef}
+              name="message"
+              value={draft}
+              onChange={(event) => updateDraft(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
+              placeholder="Ask the assistant to edit this page…"
+              aria-label="Message the assistant"
+              disabled={busy}
+              autoComplete="off"
+              rows={1}
+              className="block max-h-40 min-h-6 w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-ink outline-none placeholder:text-ink-tertiary disabled:cursor-not-allowed"
+            />
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span className="text-[11px] text-ink-tertiary">
+                {busy ? "Assistant is working" : draft.length > 3600 ? `${draft.length}/4000` : "Enter to send · Shift + Enter for line break"}
+              </span>
+              <button type="submit" disabled={!canSend} aria-label={busy ? "Assistant is working" : "Send"} title="Send message" className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-fg transition-[background-color,transform] hover:bg-accent-hover active:scale-95 disabled:cursor-not-allowed disabled:bg-surface-hover disabled:text-ink-tertiary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+                <ArrowUpIcon />
+              </button>
+            </div>
           </div>
-        </div>
-        <p className="mt-2 px-1 text-center text-[10px] leading-4 text-ink-tertiary">Changes are saved as versions in your private draft.</p>
-      </form>
+          <p className="mt-2 px-1 text-center text-[10px] leading-4 text-ink-tertiary">Changes are saved as versions in your private draft.</p>
+        </form>
+        </>
+      )}
     </SidePanel>
   );
 }
 
-function ThreadPicker({
+/** Full-panel list of this page's conversations; the chevron returns without switching. */
+function HistoryView({
   threads,
   activeId,
+  onBack,
   onSelect,
 }: {
   threads: ChatThread[];
   activeId: string | null;
+  onBack: () => void;
   onSelect: (id: string) => void;
 }) {
   return (
-    <div className="absolute inset-x-3 top-3 z-10 rounded-xl border border-border bg-surface p-2 shadow-raised">
-      <p className="px-2 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-tertiary">Recent chats</p>
-      <div className="max-h-60 overflow-y-auto">
+    <div
+      className="flex min-h-0 flex-1 flex-col"
+      onKeyDown={(event) => { if (event.key === "Escape") onBack(); }}
+    >
+      <div className="flex items-center gap-1.5 border-b border-border px-3 py-2">
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Back to conversation"
+          title="Back to conversation"
+          className="flex size-7 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          <ChevronLeftIcon />
+        </button>
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-tertiary">Recent chats</h3>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {threads.map((thread) => (
           <button
             key={thread.id}
             type="button"
             onClick={() => onSelect(thread.id)}
             aria-current={thread.id === activeId ? "page" : undefined}
-            className="block w-full truncate rounded-lg px-2 py-2 text-left text-sm text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink aria-[current=page]:bg-accent-soft aria-[current=page]:font-medium aria-[current=page]:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="block w-full truncate rounded-lg px-2.5 py-2.5 text-left text-sm text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink aria-[current=page]:bg-accent-soft aria-[current=page]:font-medium aria-[current=page]:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {thread.title}
           </button>

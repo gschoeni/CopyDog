@@ -236,3 +236,32 @@ hover trash + confirm dialog. The action deletes the Postgres row through
 RLS first (only the owner's delete removes anything — a non-owner can
 never trigger repo deletion), then best-effort deletes the Oxen repo; all
 project tables cascade.
+
+## 2026-07-17 — Chat threads, and traces as future training data
+
+**Conversations are threaded, append-only rows.** `chat_messages` is keyed
+by a client-generated `conversation_id` (uuid), one row per message, with
+structured agent interactions (choice cards) in an `interaction` jsonb
+column rather than baked into prose. History never mutates — new turns
+only append. This shape is deliberate: an admin export of traces for
+training data is a planned feature, and append-only + threaded + structured
+already gives us clean per-conversation records.
+
+**What a training export needs that we don't store yet** (design so we
+never preclude it, add when the exporter is built):
+
+- *Tool traces.* Only the final prose reply persists today; the tool calls,
+  arguments, and results inside a turn are discarded after streaming. Plan:
+  a `trace` jsonb on assistant rows (or a `chat_turn_traces` table) written
+  by the chat route — `runAgentTurn` already sees every call/outcome.
+- *Reproducible inputs.* Oxen versions the content, so stamping each turn
+  with the draft branch's commit id would let an exporter reconstruct the
+  exact page state (copy + wireframe) the model saw. Pointer in Postgres,
+  content in Oxen — same division as everything else.
+- *Export path.* Admin export runs server-side with `service_role`, which
+  bypasses RLS — user-scoped policies stay exactly as they are; no
+  admin-read policy needed. Scrub PII before anything leaves.
+- *Retention.* Project/user deletes cascade through `chat_messages`, so
+  traces die with their project. Fine for now; if training data must
+  outlive projects, the exporter snapshots on a schedule (or we revisit
+  with soft deletes).
