@@ -48,6 +48,16 @@ paths the agent calls **ask_user_choice**, which renders a structured choice
 card (stored on the message, so it survives reloads) instead of a numbered
 list in prose; the selection returns as the next user message.
 
+**Add to chat** (Cursor-style): highlight copy in the editor and hit "Add to
+chat" in the selection toolbar, or in the wireframe select rendered text /
+hover a section for the floating pill. The selection becomes a chip on the
+composer (removable; cleared after sending) carrying `source`, section
+slug + title, the exact text (or the whole section), and the wireframe
+element type — see `src/lib/agent/context.ts`. Chips are stored structured
+in `chat_messages.context` and serialized for the model server-side, so
+the UI never shows the raw prompt and the agent knows exactly which
+section slug the user means. Attachments ride with one message only.
+
 Each tool lives in one registry entry in `src/lib/agent/tools.ts` —
 description, zod args (the JSON Schema the model sees is derived from them),
 live status label, and implementation — so extending the agent is adding one

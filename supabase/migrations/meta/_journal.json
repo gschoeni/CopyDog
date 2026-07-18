@@ -50,6 +50,13 @@
       "when": 1784356513196,
       "tag": "20260718063513_steep_maria_hill",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784395949806,
+      "tag": "20260718173229_hard_payback",
+      "breakpoints": true
     }
   ]
 }

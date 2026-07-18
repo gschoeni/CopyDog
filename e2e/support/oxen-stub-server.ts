@@ -69,6 +69,11 @@ const server = createServer(async (req, res) => {
       message = {
         content: `<section class="wf-section" data-copy="${target}"><div class="wf-container wf-split"><div class="wf-stack" data-overflow><h1 class="wf-h1" data-element="h1"></h1></div><div class="wf-media" aria-hidden="true"></div></div></section>`,
       };
+    } else if (lastUserText.includes("The user attached page context")) {
+      // echo the attachment back so tests can prove the agent saw it
+      const quoted = lastUserText.match(/"""\n([\s\S]*?)\n"""/)?.[1];
+      const wholeSection = lastUserText.match(/The whole "([^"]+)" section/)?.[1];
+      message = { content: `Context received: ${quoted ?? wholeSection ?? "unknown"} (stub)` };
     } else if (/show me choices|give me options/i.test(lastUserText)) {
       message = {
         content: null,

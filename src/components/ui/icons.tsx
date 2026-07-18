@@ -160,6 +160,38 @@ export function ChevronDownIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** Small X — dismiss or remove. */
+export function CloseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </Icon>
+  );
+}
+
+/** Speech bubble with a plus — attach the selection to the chat. */
+export function AddToChatIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.3 8.6 8.6 0 0 1-3.9-.93L3 20l1.13-4.6A8.2 8.2 0 0 1 4 11.5 8.38 8.38 0 0 1 12.5 3.2 8.38 8.38 0 0 1 21 11.5z" />
+      <path d="M12.5 8.5v6" />
+      <path d="M9.5 11.5h6" />
+    </Icon>
+  );
+}
+
+/** Lines of text — a text selection attachment. */
+export function TextLinesIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4 6h16" />
+      <path d="M4 12h16" />
+      <path d="M4 18h10" />
+    </Icon>
+  );
+}
+
 /** Chevron pointing left — go back to the previous view. */
 export function ChevronLeftIcon(props: SVGProps<SVGSVGElement>) {
   return (

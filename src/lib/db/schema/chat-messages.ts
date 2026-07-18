@@ -1,3 +1,4 @@
+import type { ChatContextRef } from "@/lib/agent/context";
 import type { ChatInteraction } from "@/lib/agent/interactions";
 import { sql } from "drizzle-orm";
 import { index, pgEnum, pgPolicy, pgTable, text, timestamp, uuid, jsonb } from "drizzle-orm/pg-core";
@@ -30,6 +31,8 @@ export const chatMessages = pgTable(
     content: text("content").notNull(),
     /** Optional structured UI the assistant asked the user to complete. */
     interaction: jsonb("interaction").$type<ChatInteraction | null>(),
+    /** Page context the user attached to this message ("Add to chat" chips). */
+    context: jsonb("context").$type<ChatContextRef[] | null>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

@@ -8,6 +8,7 @@ import { DocEditor, type DocEditorHandle } from "@/components/editor/doc-editor"
 import type { ContentSnapshot } from "@/components/editor/doc-structure";
 import { Button } from "@/components/ui/button";
 import {
+  AddToChatIcon,
   CopyModeIcon,
   DownloadIcon,
   DuplicateIcon,
@@ -19,6 +20,7 @@ import {
   WandIcon,
   WireframeModeIcon,
 } from "@/components/ui/icons";
+import type { ChatContextRef } from "@/lib/agent/context";
 import type { Element } from "@/lib/copy/elements";
 import type { DocContent, DocSection } from "@/lib/content/doc";
 import type { PageLinkOption } from "@/lib/content/site";
@@ -37,7 +39,7 @@ import {
   saveSectionAction,
   saveStructureAction,
 } from "./actions";
-import { ChatPanel } from "./chat-panel";
+import { ChatPanel, type ChatPanelHandle } from "./chat-panel";
 import { ImportDialog } from "./import-dialog";
 import { PublishControls } from "./publish-controls";
 import { SectionNotes } from "./section-notes";
@@ -179,6 +181,24 @@ export function PageEditor({
       return !wasOpen;
     });
   }, [projectId]);
+
+  // ---- "Add to chat": selections attach to the assistant as context chips --
+  const chatRef = useRef<ChatPanelHandle>(null);
+  const addContextToChat = useCallback(
+    (payload: Pick<ChatContextRef, "source" | "sectionSlug" | "text"> & { elementType?: string | null }) => {
+      const sectionTitle = payload.sectionSlug ? metaRef.current.get(payload.sectionSlug)?.title ?? null : null;
+      setAssistantOpen(true);
+      localStorage.setItem(`copydog:assistant:${projectId}`, "1");
+      chatRef.current?.addContext({
+        source: payload.source,
+        sectionSlug: payload.sectionSlug,
+        sectionTitle,
+        text: payload.text,
+        elementType: payload.elementType ?? null,
+      });
+    },
+    [projectId],
+  );
 
   const changeMode = useCallback(
     (next: ViewMode) => {
@@ -774,6 +794,7 @@ export function PageEditor({
                   makeSlug={makeSlug}
                   onSnapshotChange={handleSnapshotChange}
                   renderSectionHeader={renderSectionHeader}
+                  onAddToChat={({ sectionSlug, text }) => addContextToChat({ source: "copy", sectionSlug, text })}
                   autoFocus={initialContent.every((c) => c.elements.length === 0)}
                 />
               </div>
@@ -792,12 +813,14 @@ export function PageEditor({
             onGenerate={generate}
             bordered={mode === "split"}
             exportHref={`/projects/${projectId}/pages/${pageSlug}/export`}
+            onAddToChat={(payload) => addContextToChat({ source: "wireframe", ...payload })}
           />
         )}
 
         {/* always present: collapsed it's the slim rail on the right edge,
             so the assistant is one click away in every mode */}
         <ChatPanel
+          ref={chatRef}
           projectId={projectId}
           pageSlug={pageSlug}
           collapsed={!assistantOpen}
@@ -873,6 +896,16 @@ function ModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (mode: ViewM
   );
 }
 
+/** What a wireframe "Add to chat" resolves to; `text: null` attaches the whole section. */
+interface WireframeChatPayload {
+  sectionSlug: string | null;
+  text: string | null;
+  elementType: string | null;
+}
+
+const nearestElement = (node: Node): HTMLElement | null =>
+  node instanceof HTMLElement ? node : node.parentElement;
+
 function WireframePane({
   preview,
   generating,
@@ -881,6 +914,7 @@ function WireframePane({
   onGenerate,
   bordered,
   exportHref,
+  onAddToChat,
 }: {
   preview: string | null;
   generating: boolean;
@@ -889,10 +923,82 @@ function WireframePane({
   onGenerate: () => void;
   bordered: boolean;
   exportHref: string;
+  onAddToChat: (payload: WireframeChatPayload) => void;
 }) {
   const omittedNote = describeOmitted(omitted);
+  const containerRef = useRef<HTMLDivElement>(null);
+  // a finished text selection: pill pinned under its end
+  const [selectionPin, setSelectionPin] = useState<{ top: number; left: number; payload: WireframeChatPayload } | null>(null);
+  // the hovered section: pill pinned at its top-right corner
+  const [hoverPin, setHoverPin] = useState<{ top: number; left: number; slug: string } | null>(null);
+
+  const handleMouseUp = () => {
+    // let the browser settle the selection before reading it
+    window.requestAnimationFrame(() => {
+      const container = containerRef.current;
+      const selection = window.getSelection();
+      if (!container || !selection || selection.isCollapsed || selection.rangeCount === 0) {
+        setSelectionPin(null);
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      const text = selection.toString().trim();
+      const anchor = nearestElement(range.commonAncestorContainer);
+      if (!text || !anchor?.closest(".wf-root") || !container.contains(anchor)) {
+        setSelectionPin(null);
+        return;
+      }
+      const rect = range.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      setSelectionPin({
+        top: rect.bottom - containerRect.top + container.scrollTop + 8,
+        // the pill right-aligns to the selection end (it renders -translate-x-full)
+        left: Math.min(Math.max(rect.right - containerRect.left, 132), containerRect.width - 16),
+        payload: {
+          sectionSlug: anchor.closest("[data-copy]")?.getAttribute("data-copy") ?? null,
+          text: text.slice(0, 4000),
+          elementType: nearestElement(range.startContainer)?.closest("[data-element]")?.getAttribute("data-element") ?? null,
+        },
+      });
+    });
+  };
+
+  // the pin outlives the mouseup only as long as the selection does
+  useEffect(() => {
+    if (!selectionPin) return;
+    const clear = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) setSelectionPin(null);
+    };
+    document.addEventListener("selectionchange", clear);
+    return () => document.removeEventListener("selectionchange", clear);
+  }, [selectionPin]);
+
+  const handleMouseOver = (event: React.MouseEvent) => {
+    const container = containerRef.current;
+    const target = event.target as HTMLElement | null;
+    if (!container || target?.closest("[data-add-to-chat]")) return;
+    const section = target?.closest("[data-copy]");
+    const slug = section?.getAttribute("data-copy");
+    if (!section || !slug) {
+      setHoverPin(null);
+      return;
+    }
+    const rect = section.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    setHoverPin({
+      slug,
+      top: rect.top - containerRect.top + container.scrollTop + 8,
+      left: rect.right - containerRect.left - 8,
+    });
+  };
+
   return (
     <div
+      ref={containerRef}
+      onMouseUp={preview ? handleMouseUp : undefined}
+      onMouseOver={preview ? handleMouseOver : undefined}
+      onMouseLeave={preview ? () => setHoverPin(null) : undefined}
       className={`relative min-w-0 flex-1 basis-0 overflow-y-auto bg-surface-sunken ${
         bordered
           ? // split: pin to the viewport below the chrome and scroll internally,
@@ -938,6 +1044,41 @@ function WireframePane({
               dangerouslySetInnerHTML={{ __html: preview }}
             />
           </div>
+          {selectionPin && (
+            <button
+              type="button"
+              data-add-to-chat
+              style={{ top: selectionPin.top, left: selectionPin.left }}
+              // keep the text selection alive through the click
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onAddToChat(selectionPin.payload);
+                setSelectionPin(null);
+                window.getSelection()?.removeAllRanges();
+              }}
+              title="Attach this selection as assistant context"
+              className="absolute z-20 flex h-7 -translate-x-full items-center gap-1 rounded-md border border-border bg-surface px-2 text-xs font-medium text-accent shadow-raised transition-colors hover:bg-accent-soft"
+            >
+              <AddToChatIcon className="size-3.5" />
+              Add to chat
+            </button>
+          )}
+          {hoverPin && !selectionPin && (
+            <button
+              type="button"
+              data-add-to-chat
+              style={{ top: hoverPin.top, left: hoverPin.left }}
+              onClick={() => {
+                onAddToChat({ sectionSlug: hoverPin.slug, text: null, elementType: null });
+                setHoverPin(null);
+              }}
+              title="Attach this whole section as assistant context"
+              className="absolute z-20 flex h-7 -translate-x-full items-center gap-1 rounded-md border border-border bg-bg/90 px-2 text-xs font-medium text-ink-secondary shadow-soft backdrop-blur-sm transition-colors hover:bg-accent-soft hover:text-accent"
+            >
+              <AddToChatIcon className="size-3.5" />
+              Add to chat
+            </button>
+          )}
         </>
       ) : (
         <div className="flex h-full min-h-64 items-center justify-center p-10">

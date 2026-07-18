@@ -44,6 +44,42 @@ test("assistant rewrites a section through a tool call", async ({ page }) => {
   await expect(page.getByText("I rewrote it with a stronger promise")).toBeVisible();
 });
 
+test("add to chat attaches a selection the agent can see", async ({ page }) => {
+  await signIn(page);
+
+  await page.getByPlaceholder("Acme landing page").fill(`Agent context ${Date.now()}`);
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
+  await page.getByRole("textbox", { name: "Page copy" }).click();
+  await writeSection(page, ["# Golden headline"], 1);
+  await page.waitForTimeout(1000);
+
+  // highlight the headline (inside the editor, not the TOC) and attach it
+  await page.getByRole("heading", { name: "Golden headline" }).click({ clickCount: 3 });
+  await page
+    .getByRole("toolbar", { name: "Selection tools" })
+    .getByRole("button", { name: "Add to chat" })
+    .click();
+
+  // the assistant opens with a chip on the composer — raw text stays hidden
+  const composerChips = page.getByLabel("Attached page context");
+  await expect(composerChips.getByText("Golden headline").first()).toBeVisible();
+  await expect(page.getByLabel("Message the assistant")).toBeFocused();
+
+  await page.getByLabel("Message the assistant").fill("What does the attached selection say?");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  // the stub echoes the serialized context back — the agent really saw it
+  await expect(page.getByText("Context received: Golden headline")).toBeVisible({ timeout: 20_000 });
+  // the sent message keeps its chip; the composer's is cleared
+  await expect(page.getByLabel("Attached page context")).toHaveCount(1);
+
+  // chips survive a reload with the conversation
+  await page.reload();
+  await expect(page.getByText("What does the attached selection say?")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByLabel("Attached page context")).toBeVisible();
+});
+
 test("new chat clears the current thread and keeps it in history", async ({ page }) => {
   await signIn(page);
 
