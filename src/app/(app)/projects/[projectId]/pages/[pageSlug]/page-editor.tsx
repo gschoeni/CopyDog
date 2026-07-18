@@ -957,8 +957,11 @@ function WireframePane({
       }
       const rect = range.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
+      // pin above the selection (h-8 pill + gap); below only when the
+      // selection starts at the very top of the pane
+      const above = rect.top - containerRect.top + container.scrollTop - 40;
       setSelectionPin({
-        top: rect.bottom - containerRect.top + container.scrollTop + 8,
+        top: above >= 4 ? above : rect.bottom - containerRect.top + container.scrollTop + 8,
         // right-align the pill to the selection's end, kept inside the pane
         right: Math.min(
           Math.max(containerRect.right - rect.right, 12),
