@@ -15,6 +15,14 @@ import type { Element, HeadingLevel } from "./elements";
  * or a bare link) is backslash-escaped on write and unescaped on read.
  */
 
+/**
+ * One-line description of the copy dialect for LLM tool parameters — the
+ * single source of truth so every tool surface (chat agent, MCP) teaches
+ * models the same constructs.
+ */
+export const MARKDOWN_DIALECT =
+  "# h1-###### h6, paragraphs, - bullets, 1. numbered lists, [CTA label](url) on its own line for buttons, <!--eyebrow--> line before a short overline";
+
 const EYEBROW_MARKER = "<!--eyebrow-->";
 const BLANK_MARKER = "<br>";
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;

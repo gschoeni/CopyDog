@@ -2,8 +2,8 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { requireProjectAccessAs, type ProjectAccess } from "@/lib/content/access";
-import type { ApiKeyScope } from "@/lib/db/schema/api-keys";
+import { ContentStoreUnavailableError, requireProjectAccessAs, type ProjectAccess } from "@/lib/content/access";
+import { API_KEY_SCOPES, type ApiKeyScope } from "@/lib/db/schema/api-keys";
 import { getLlmClient } from "@/lib/llm";
 import type { LlmClient } from "@/lib/llm/client";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -64,8 +64,13 @@ export async function authenticateMcp(bearerKey: string): Promise<McpToolApi | n
         const access = await requireProjectAccessAs(admin, identity.userId, projectId);
         return { ...access, db: admin };
       } catch (err) {
-        // access failures carry internals (repo names, store errors) meant
-        // for our logs, not the connected agent
+        // the store being down is infrastructure, not a 404 — collapsing it
+        // into "not found" sends the agent chasing a bad key/membership
+        if (err instanceof ContentStoreUnavailableError) {
+          console.error("mcp content store unavailable", err);
+          throw new McpToolError("The content store is temporarily unavailable — try again shortly.");
+        }
+        // other failures carry internals (repo names) meant for our logs
         console.error("mcp project access failed", err);
         throw new McpToolError("Project not found, or this key's owner is not a member.");
       }
@@ -113,5 +118,5 @@ export async function authenticateMcp(bearerKey: string): Promise<McpToolApi | n
 }
 
 function isScope(value: string): value is ApiKeyScope {
-  return value === "read" || value === "write" || value === "collab" || value === "merge";
+  return (API_KEY_SCOPES as readonly string[]).includes(value);
 }

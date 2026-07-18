@@ -10,7 +10,7 @@ import {
   writeWireframe,
   type DraftView,
 } from "@/lib/content/store";
-import { parseElementsMarkdown } from "@/lib/copy/markdown";
+import { MARKDOWN_DIALECT, parseElementsMarkdown } from "@/lib/copy/markdown";
 import type { LlmClient, LlmTool } from "@/lib/llm/client";
 import type { OxenClient } from "@/lib/oxen/client";
 import { generateSectionLayout, listWireframeSections, upsertWireframeSection } from "@/lib/wireframe/edit";
@@ -27,7 +27,8 @@ export interface ToolContext {
   oxen: OxenClient;
   view: DraftView;
   pageSlug: string;
-  llm: LlmClient;
+  /** Null when no LLM is configured — only the design tools need it. */
+  llm: LlmClient | null;
 }
 
 export interface ToolOutcome {
@@ -49,8 +50,7 @@ export const AGENT_TOOLS: LlmTool[] = [
           label: { type: "string", description: "short human label for the new version, e.g. 'Punchier'" },
           markdown: {
             type: "string",
-            description:
-              "the full new section copy as markdown: # h1-###### h6, paragraphs, - bullets, 1. numbered lists, [CTA label](url) on its own line for buttons, <!--eyebrow--> line before a short overline",
+            description: `the full new section copy as markdown: ${MARKDOWN_DIALECT}`,
           },
         },
         required: ["sectionSlug", "label", "markdown"],
@@ -196,7 +196,10 @@ async function addSection(args: z.infer<typeof addArgs>, ctx: ToolContext): Prom
     title: args.title,
     activeVersion: "original",
     versions: [{ slug: "original", label: "Original" }],
-    linked: true,
+    // unlinked until it gets a layout (design_section / write_section_layout) —
+    // linking it now would force every page-layout write to carry a slot for a
+    // section that has none yet, and it must not render before it's laid out
+    linked: false,
   });
   await writeDoc(ctx.oxen, ctx.view, ctx.pageSlug, doc);
 
@@ -204,6 +207,9 @@ async function addSection(args: z.infer<typeof addArgs>, ctx: ToolContext): Prom
 }
 
 async function designSection(args: z.infer<typeof designArgs>, ctx: ToolContext): Promise<ToolOutcome> {
+  if (!ctx.llm) {
+    return { result: "No designer LLM is configured on this server, so layout tools are unavailable.", mutated: false };
+  }
   const doc = await readDoc(ctx.oxen, ctx.view, ctx.pageSlug);
   const section = docSections(doc).find((s) => s.slug === args.sectionSlug);
   if (!section) {
@@ -247,6 +253,9 @@ async function designSection(args: z.infer<typeof designArgs>, ctx: ToolContext)
 }
 
 async function redesignPage(args: z.infer<typeof redesignArgs>, ctx: ToolContext): Promise<ToolOutcome> {
+  if (!ctx.llm) {
+    return { result: "No designer LLM is configured on this server, so layout tools are unavailable.", mutated: false };
+  }
   const doc = await readDoc(ctx.oxen, ctx.view, ctx.pageSlug);
   const sections = await Promise.all(
     docSections(doc)

@@ -74,8 +74,7 @@ describe("API keys", () => {
 
     const identity = await verifyApiKey(admin, minted.key);
     expect(identity).toEqual({ keyId: "k1", userId: "u1", keyName: "Claude Code", scopes: ["read", "write"] });
-    // last_used_at update is fire-and-forget; give the microtask a beat
-    await new Promise((r) => setTimeout(r, 0));
+    // last_used_at is awaited (survives serverless freeze) and stale here (never used)
     expect(touched).toEqual(["k1"]);
   });
 

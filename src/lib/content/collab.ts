@@ -33,20 +33,25 @@ export async function publishDraftAndIndex(
   options?: { attribution?: string },
 ): Promise<void> {
   const { oxen, view, user, project } = access;
-  const author = await commitAuthorFor(supabase, user);
 
-  if (await hasUnpublishedChanges(oxen, view)) {
-    const base = message?.trim() || "Publish drafts";
-    await publishDraft(oxen, view, {
-      message: options?.attribution ? `${base} [${options.attribution}]` : base,
-      author,
-    });
-  }
+  // Nothing staged means the branch HEAD hasn't moved since the last publish,
+  // which already rebuilt the index from that same HEAD — so there's nothing
+  // to commit and nothing the index could be missing. Skip the whole sweep.
+  if (!(await hasUnpublishedChanges(oxen, view))) return;
+
+  const base = message?.trim() || "Publish drafts";
+  await publishDraft(oxen, view, {
+    message: options?.attribution ? `${base} [${options.attribution}]` : base,
+    author: await commitAuthorFor(supabase, user),
+  });
 
   const site = await readSite(oxen, view);
+  // read every page's doc concurrently instead of one Oxen round trip at a time
+  const docs = await Promise.all(
+    flattenPages(site.pages).map(async ({ page }) => ({ page, doc: await readDoc(oxen, view, page.slug) })),
+  );
   const rows: Record<string, unknown>[] = [];
-  for (const { page } of flattenPages(site.pages)) {
-    const doc = await readDoc(oxen, view, page.slug);
+  for (const { page, doc } of docs) {
     for (const section of docSections(doc)) {
       for (const version of section.versions) {
         rows.push({
@@ -146,15 +151,18 @@ export async function mergeProposal(
   return { ok: true, mergedCommit };
 }
 
+/** Returns whether an open proposal was actually closed (false = none matched). */
 export async function closeProposal(
   supabase: SupabaseClient,
   access: ProjectAccess,
   proposalId: string,
-): Promise<void> {
-  await supabase
+): Promise<boolean> {
+  const { data } = await supabase
     .from("proposals")
     .update({ status: "closed", resolved_at: new Date().toISOString() })
     .eq("id", proposalId)
     .eq("project_id", access.project.id) // never act on another project's proposal
-    .eq("status", "open");
+    .eq("status", "open")
+    .select("id");
+  return (data?.length ?? 0) > 0;
 }

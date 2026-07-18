@@ -303,6 +303,73 @@ describe("MCP tool surface", () => {
       expect(res.isError).toBe(true);
       expect(res.content[0]!.text).toContain("hero");
     });
+
+    it("a rejected write_section_layout leaves the section unlinked (no mutation before validation)", async () => {
+      const server = buildMcpServer(makeApi(handle, recorded));
+      await server.callTool("add_section", {
+        project_id: PROJECT_ID,
+        page_slug: "home",
+        title: "Pricing",
+        markdown: "# Pricing\n\nPlans for everyone.\n",
+      });
+      const before = JSON.parse(
+        (await server.callTool("get_page", { project_id: PROJECT_ID, page_slug: "home" })).content[0]!.text,
+      );
+      const pricing = before.content.find((c: { title?: string }) => c.title === "Pricing");
+      expect(pricing.linked).toBe(false);
+
+      const bad = await server.callTool("write_section_layout", {
+        project_id: PROJECT_ID,
+        page_slug: "home",
+        section_slug: pricing.slug,
+        html: '<section class="wf-section" data-copy="wrong-slug"></section>',
+      });
+      expect(bad.isError).toBe(true);
+
+      const after = JSON.parse(
+        (await server.callTool("get_page", { project_id: PROJECT_ID, page_slug: "home" })).content[0]!.text,
+      );
+      // the invalid layout must NOT have flipped the section to linked
+      expect(after.content.find((c: { title?: string }) => c.title === "Pricing").linked).toBe(false);
+    });
+  });
+
+  describe("mutation integrity", () => {
+    it("add_section leaves the new section unlinked, so write_page_layout needs no slot for it yet", async () => {
+      const server = buildMcpServer(makeApi(handle, recorded));
+      await server.callTool("add_section", {
+        project_id: PROJECT_ID,
+        page_slug: "home",
+        title: "Testimonials",
+        markdown: "> It changed our lives.\n",
+      });
+      const page = JSON.parse(
+        (await server.callTool("get_page", { project_id: PROJECT_ID, page_slug: "home" })).content[0]!.text,
+      );
+      expect(page.content.find((c: { title?: string }) => c.title === "Testimonials").linked).toBe(false);
+
+      // only "hero" is linked, so a page layout covering just hero is accepted
+      const res = await server.callTool("write_page_layout", {
+        project_id: PROJECT_ID,
+        page_slug: "home",
+        html: '<section class="wf-section" data-copy="hero"></section>',
+      });
+      expect(res.isError).toBeUndefined();
+    });
+
+    it("a failed agent-routed tool returns isError and records no audit row", async () => {
+      const server = buildMcpServer(makeApi(handle, recorded));
+      const res = await server.callTool("rewrite_section", {
+        project_id: PROJECT_ID,
+        page_slug: "home",
+        section_slug: "does-not-exist",
+        label: "Punchier",
+        markdown: "# Nope\n",
+      });
+      expect(res.isError).toBe(true);
+      expect(res.content[0]!.text).toContain("No section");
+      expect(recorded.auditRows).toHaveLength(0); // no phantom mutation logged
+    });
   });
 
   describe("error shaping", () => {

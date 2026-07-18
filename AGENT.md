@@ -54,7 +54,7 @@ The application runs on three services, each owning a single responsibility. Ver
 
 - **No locking** — every user writes to their own `draft/{user_id}` Oxen branch; conflicts are structurally impossible
 - **Postgres owns metadata** — Oxen owns and versions all content blobs (text, html, images, videos, etc); never store content in Postgres
-- **LLM Wireframes** — The user never writes HTML or Templates, this is all LLM driven
+- **LLM Wireframes** — Humans never hand-write HTML or Templates in the app UI; wireframes are LLM driven. The one exception is programmatic clients on the MCP surface (`write_section_layout` / `write_page_layout`), where an external model authors wireframe HTML directly against the same sanitize+validate gate — see [docs/05_decisions.md](docs/05_decisions.md).
 - **Markdown is the canonical format** - Oxen stores text files across commits and branches.
   - Serialize the editor to **Markdown** before committing to Oxen.
   - Deserialize Markdown into the editor on load.

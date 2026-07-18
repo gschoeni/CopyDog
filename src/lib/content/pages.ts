@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { OxenClient } from "@/lib/oxen/client";
+import { slugify } from "@/lib/slug";
 
 import { flattenPages, insertPageNode } from "./site";
 import { readSite, writeDoc, writeSite, type DraftView } from "./store";
@@ -16,11 +17,8 @@ export async function addPage(
   parentSlug?: string | null,
 ): Promise<{ slug: string }> {
   const site = await readSite(oxen, view);
-  const base =
-    title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "page";
+  // one slug algorithm across the app (NFKD-normalized), shared with projects
+  const base = slugify(title);
   // slugs are page directories — unique across the whole tree
   const taken = new Set(flattenPages(site.pages).map(({ page }) => page.slug));
   let slug = base;

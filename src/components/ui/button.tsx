@@ -22,6 +22,19 @@ const sizes: Record<Size, string> = {
   icon: "size-8",
 };
 
+/**
+ * The button's class string, for the rare non-<button> that must look like
+ * one — e.g. a Next <Link> used as a header action. Prefer <Button> itself;
+ * reach for this only when the element can't be a real button.
+ */
+export function buttonClasses({
+  variant = "primary",
+  size = "md",
+  className = "",
+}: { variant?: Variant; size?: Size; className?: string } = {}): string {
+  return `${base} ${variants[variant]} ${sizes[size]} ${className}`;
+}
+
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
@@ -31,12 +44,5 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   { variant = "primary", size = "md", className = "", type = "button", ...props },
   ref,
 ) {
-  return (
-    <button
-      ref={ref}
-      type={type}
-      className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
-      {...props}
-    />
-  );
+  return <button ref={ref} type={type} className={buttonClasses({ variant, size, className })} {...props} />;
 });

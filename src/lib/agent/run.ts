@@ -55,6 +55,10 @@ export async function runAgentTurn(
   userMessage: string,
   onEvent?: (event: AgentEvent) => void,
 ): Promise<AgentTurn> {
+  // the chat agent is only mounted when an LLM is configured — assert it so the
+  // conversation loop below can rely on ctx.llm
+  const llm = ctx.llm;
+  if (!llm) throw new Error("runAgentTurn requires a configured LLM");
   const pageContext = await buildPageContext(ctx);
   const messages: LlmMessage[] = [
     { role: "system", content: `${SYSTEM_PROMPT}\n\n${pageContext}` },
@@ -69,8 +73,8 @@ export async function runAgentTurn(
     const options = { model: LLM_MODELS.copy, messages, tools: AGENT_TOOLS, maxTokens: 4000 };
     // narration between tool calls streams too — the turn reads as one reply
     const result = onEvent
-      ? await ctx.llm.chatStream(options, (text) => onEvent({ type: "delta", text }))
-      : await ctx.llm.chat(options);
+      ? await llm.chatStream(options, (text) => onEvent({ type: "delta", text }))
+      : await llm.chat(options);
 
     if (result.content) replyParts.push(result.content);
 

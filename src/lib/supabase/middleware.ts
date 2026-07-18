@@ -11,8 +11,12 @@ const PUBLIC_PATHS = ["/", "/login", "/auth/confirm", "/auth/callback"];
  */
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   // The MCP endpoint authenticates with its own bearer API key (no cookie
-  // session) — the handler owns auth; cookie gating would just 302 it to /login.
-  if (request.nextUrl.pathname.startsWith("/api/mcp")) {
+  // session) — the handler owns auth; cookie gating would just 302 it to
+  // /login. Match /api/mcp exactly (and subpaths), not the whole /api/mcp*
+  // namespace, so a future cookie-auth route like /api/mcp-admin isn't
+  // silently un-gated.
+  const { pathname } = request.nextUrl;
+  if (pathname === "/api/mcp" || pathname.startsWith("/api/mcp/")) {
     return NextResponse.next({ request });
   }
 
@@ -37,7 +41,6 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith("/auth/"));
 
   if (!user && !isPublic) {

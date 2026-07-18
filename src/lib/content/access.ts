@@ -28,6 +28,40 @@ export class ContentStoreUnavailableError extends Error {
   }
 }
 
+interface ProjectRow {
+  id: string;
+  name: string;
+  slug: string;
+  oxen_repo: string;
+}
+
+/**
+ * The shared tail of both access gates: membership is already confirmed, so
+ * anything failing here is the store, not the user (server down, or pointed
+ * at the wrong data directory). Provisions the caller's draft branch +
+ * workspace and assembles the ProjectAccess. Kept in one place so the two
+ * gates can never drift on error handling or result shape.
+ */
+async function openDraftAccess(user: ProjectAccess["user"], project: ProjectRow): Promise<ProjectAccess> {
+  const oxen = getOxenClient();
+  let view: DraftView;
+  try {
+    view = await ensureDraftView(oxen, project.oxen_repo, user.id);
+  } catch (err) {
+    throw new ContentStoreUnavailableError(
+      `Oxen content store failed for repo "${project.oxen_repo}": ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
+
+  return {
+    user,
+    project: { id: project.id, name: project.name, slug: project.slug, oxenRepo: project.oxen_repo },
+    oxen,
+    view,
+  };
+}
+
 /**
  * The one gate every content action goes through: authenticates the user,
  * loads the project through RLS (membership check), and ensures their
@@ -48,25 +82,7 @@ export async function requireProjectAccess(projectId: string): Promise<ProjectAc
     .single();
   if (!project) throw new Error("project not found or not a member");
 
-  const oxen = getOxenClient();
-  // membership is confirmed by now — anything failing below is the store,
-  // not the user: server down, or pointed at the wrong data directory
-  let view: DraftView;
-  try {
-    view = await ensureDraftView(oxen, project.oxen_repo, user.id);
-  } catch (err) {
-    throw new ContentStoreUnavailableError(
-      `Oxen content store failed for repo "${project.oxen_repo}": ${err instanceof Error ? err.message : String(err)}`,
-      { cause: err },
-    );
-  }
-
-  return {
-    user: { id: user.id, email: user.email ?? null },
-    project: { id: project.id, name: project.name, slug: project.slug, oxenRepo: project.oxen_repo },
-    oxen,
-    view,
-  };
+  return openDraftAccess({ id: user.id, email: user.email ?? null }, project);
 }
 
 /**
@@ -82,44 +98,20 @@ export async function requireProjectAccessAs(
   userId: string,
   projectId: string,
 ): Promise<ProjectAccess> {
+  // membership + project in one round trip — the join IS the membership gate
+  // (a row exists only if this user belongs to the project). No separate
+  // profiles-existence check: api_keys.user_id FKs profiles.id ON DELETE
+  // CASCADE, so a resolved key already proves the profile exists.
   const { data: membership } = await admin
     .from("project_members")
-    .select("user_id")
+    .select("projects(id, name, slug, oxen_repo)")
     .eq("project_id", projectId)
     .eq("user_id", userId)
-    .maybeSingle();
-  if (!membership) throw new Error("project not found or not a member");
-
-  const { data: project } = await admin
-    .from("projects")
-    .select("id, name, slug, oxen_repo")
-    .eq("id", projectId)
-    .single();
+    .maybeSingle<{ projects: ProjectRow | null }>();
+  const project = membership?.projects ?? null;
   if (!project) throw new Error("project not found or not a member");
 
-  const { data: authUser } = await admin
-    .from("profiles")
-    .select("id")
-    .eq("id", userId)
-    .single();
-  if (!authUser) throw new Error("unknown user");
   const { data: emailRow } = await admin.auth.admin.getUserById(userId);
 
-  const oxen = getOxenClient();
-  let view: DraftView;
-  try {
-    view = await ensureDraftView(oxen, project.oxen_repo, userId);
-  } catch (err) {
-    throw new ContentStoreUnavailableError(
-      `Oxen content store failed for repo "${project.oxen_repo}": ${err instanceof Error ? err.message : String(err)}`,
-      { cause: err },
-    );
-  }
-
-  return {
-    user: { id: userId, email: emailRow?.user?.email ?? null },
-    project: { id: project.id, name: project.name, slug: project.slug, oxenRepo: project.oxen_repo },
-    oxen,
-    view,
-  };
+  return openDraftAccess({ id: userId, email: emailRow?.user?.email ?? null }, project);
 }

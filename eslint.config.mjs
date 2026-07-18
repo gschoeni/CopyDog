@@ -24,6 +24,15 @@ export default defineConfig([
                 "Service-role access is confined to src/lib/mcp/context.ts. Use the RLS-scoped client (supabase/server) or the McpToolApi facade.",
             },
           ],
+          // catch relative spellings too (./admin, ../supabase/admin, …) — the
+          // alias path alone lets a relative import slip through the fence
+          patterns: [
+            {
+              group: ["**/supabase/admin", "**/supabase/admin.*", "./admin", "./admin.*"],
+              message:
+                "Service-role access is confined to src/lib/mcp/context.ts. Use the RLS-scoped client (supabase/server) or the McpToolApi facade.",
+            },
+          ],
         },
       ],
     },

@@ -1,11 +1,16 @@
 import { lookup as dnsLookup } from "node:dns/promises";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest, type RequestOptions } from "node:https";
+import { Readable } from "node:stream";
 
 /**
  * Safe URL fetching for site imports. Guards against SSRF: only http(s),
  * no private/loopback hosts (unless ALLOW_LOCAL_IMPORT=1 for dev/e2e),
  * every hostname's *resolved addresses* checked too (a public name can
- * point at a private IP), redirects followed manually so each hop faces
- * the same guards, bounded time and size.
+ * point at a private IP), and — crucially — the connection is PINNED to the
+ * exact address we vetted, so a rebinding DNS server can't hand `fetch` a
+ * different (private) answer after the check passes. Redirects are followed
+ * manually so each hop faces the same guards; bounded total time and size.
  */
 
 const MAX_BYTES = 2_000_000;
@@ -38,12 +43,15 @@ export function assertSafeImportUrl(rawUrl: string): URL {
 /**
  * Rejects hostnames whose DNS answers include a private address — the guard
  * `assertSafeImportUrl` can't do from the name alone. Unresolvable names
- * fail closed. Skipped under ALLOW_LOCAL_IMPORT (dev/e2e), like the host check.
+ * fail closed. Returns the vetted addresses so the caller can pin the socket
+ * to one of them (closing the resolve-then-reresolve rebinding window). An
+ * empty result means "don't pin": a dev/e2e local host, or an IP literal
+ * whose host is already the address.
  */
-export async function assertPublicResolution(url: URL, lookupImpl: LookupImpl = defaultLookup): Promise<void> {
-  if (process.env.ALLOW_LOCAL_IMPORT === "1") return;
+export async function assertPublicResolution(url: URL, lookupImpl: LookupImpl = defaultLookup): Promise<string[]> {
+  if (process.env.ALLOW_LOCAL_IMPORT === "1") return [];
   const host = url.hostname.replace(/^\[|\]$/g, "");
-  if (isIpLiteral(host)) return; // literals were already vetted by assertSafeImportUrl
+  if (isIpLiteral(host)) return []; // literals were already vetted by assertSafeImportUrl
   let addresses: { address: string }[];
   try {
     addresses = await lookupImpl(host);
@@ -53,24 +61,65 @@ export async function assertPublicResolution(url: URL, lookupImpl: LookupImpl = 
   if (addresses.length === 0 || addresses.some(({ address }) => isPrivateHost(address))) {
     throw new ImportFetchError("That host can't be imported.");
   }
+  return addresses.map(({ address }) => address);
+}
+
+/**
+ * A `fetch` that connects to a specific, pre-vetted IP while keeping the real
+ * hostname for TLS SNI, certificate validation, and the Host header — so the
+ * request lands on exactly the address `assertPublicResolution` approved,
+ * with no second DNS lookup for a rebinding server to poison.
+ */
+function pinnedFetch(addresses: string[]): typeof fetch {
+  return (input, init) =>
+    new Promise<Response>((resolve, reject) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      const request = url.protocol === "https:" ? httpsRequest : httpRequest;
+      const options: RequestOptions = {
+        protocol: url.protocol,
+        hostname: addresses[0], // the vetted IP; an IP literal skips re-resolution
+        port: url.port || (url.protocol === "https:" ? 443 : 80),
+        path: `${url.pathname}${url.search}`,
+        method: init?.method ?? "GET",
+        headers: { ...(init?.headers as Record<string, string> | undefined), host: url.host },
+        servername: url.hostname, // SNI + cert identity stay the real hostname
+        signal: init?.signal ?? undefined,
+      };
+      const req = request(options, (res) => {
+        const headers = new Headers();
+        for (const [key, value] of Object.entries(res.headers)) {
+          if (Array.isArray(value)) value.forEach((v) => headers.append(key, v));
+          else if (value != null) headers.set(key, value);
+        }
+        resolve(new Response(Readable.toWeb(res) as ReadableStream<Uint8Array>, { status: res.statusCode ?? 502, headers }));
+      });
+      req.on("error", reject);
+      req.end();
+    });
 }
 
 export async function fetchImportHtml(
   rawUrl: string,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl?: typeof fetch,
   lookupImpl: LookupImpl = defaultLookup,
 ): Promise<string> {
   let url = assertSafeImportUrl(rawUrl);
+
+  // one deadline for the whole redirect chain (not a fresh 10s per hop), so a
+  // hostile site can't stretch an import to minutes by chaining slow redirects
+  const deadline = AbortSignal.timeout(TIMEOUT_MS);
 
   // follow redirects by hand: every hop gets the same host + DNS guards the
   // first URL got, otherwise a public page 302ing to 169.254.169.254 wins
   let res: Response;
   for (let hop = 0; ; hop++) {
-    await assertPublicResolution(url, lookupImpl);
+    const addresses = await assertPublicResolution(url, lookupImpl);
+    // pin the socket to a vetted address (production); tests inject fetchImpl
+    const doFetch = fetchImpl ?? (addresses.length ? pinnedFetch(addresses) : fetch);
     try {
-      res = await fetchImpl(url, {
+      res = await doFetch(url, {
         redirect: "manual",
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: deadline,
         headers: { "User-Agent": "CopyDog-Importer/1.0", Accept: "text/html" },
       });
     } catch {

@@ -26,6 +26,11 @@ export interface McpToolResult {
   isError?: boolean;
 }
 
+/** The one error-result shape agents see, shared by the tool layer and this transport. */
+export function mcpErrorResult(text: string): McpToolResult {
+  return { content: [{ type: "text", text: `Error: ${text}` }], isError: true };
+}
+
 /** What a transport needs from us: server identity + a tool surface. */
 export interface McpToolServer {
   serverInfo: { name: string; version: string };
@@ -133,8 +138,6 @@ async function toolsCall(id: unknown, params: unknown, server: McpToolServer): P
     return rpcResult(id, await server.callTool(p.name, args));
   } catch (err) {
     // tool-level failures are results the model can read, not protocol errors
-    const text = err instanceof Error ? err.message : String(err);
-    const result: McpToolResult = { content: [{ type: "text", text: `Error: ${text}` }], isError: true };
-    return rpcResult(id, result);
+    return rpcResult(id, mcpErrorResult(err instanceof Error ? err.message : String(err)));
   }
 }

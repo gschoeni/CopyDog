@@ -1,7 +1,7 @@
 import { LLM_MODELS, LlmClient } from "@/lib/llm/client";
 import { serializeElements } from "@/lib/copy/markdown";
 
-import { stripCodeFences } from "./edit";
+import { listWireframeSections, stripCodeFences } from "./edit";
 import { generateWireframeHeuristic, type SectionForLayout } from "./heuristic";
 import { sanitizeWireframeHtml } from "./sanitize";
 import { DESIGN_SYSTEM_SPEC } from "./spec";
@@ -68,7 +68,11 @@ export class LlmGenerator implements WireframeGenerator {
  */
 export function acceptPageWireframe(rawHtml: string, requiredSlugs: string[]): string {
   const html = sanitizeWireframeHtml(stripCodeFences(rawHtml));
-  const missing = requiredSlugs.filter((slug) => !html.includes(`data-copy="${slug}"`));
+  // parse for real <section data-copy="…"> nodes — a substring check passes on
+  // literal text or an attribute on a non-section tag, which the copy injector
+  // (querySelectorAll on real section slots) would then silently drop
+  const present = new Set(listWireframeSections(html).map((section) => section.slug));
+  const missing = requiredSlugs.filter((slug) => !present.has(slug));
   if (missing.length) {
     throw new Error(`Wireframe is missing sections: ${missing.join(", ")} — every linked section needs a <section data-copy="…">.`);
   }

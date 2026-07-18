@@ -6,6 +6,7 @@ import { executeTool, type ToolContext } from "@/lib/agent/tools";
 import { closeProposal, mergeProposal, openProposal, publishDraftAndIndex } from "@/lib/content/collab";
 import { contentSlugSchema, docSections } from "@/lib/content/doc";
 import { addPage } from "@/lib/content/pages";
+import { MARKDOWN_DIALECT } from "@/lib/copy/markdown";
 import {
   compareRevisions,
   hasUnpublishedChanges,
@@ -22,14 +23,13 @@ import {
 } from "@/lib/content/store";
 import type { ApiKeyScope } from "@/lib/db/schema/api-keys";
 import { diffLines } from "@/lib/diff";
-import type { LlmClient } from "@/lib/llm/client";
 import { acceptSectionLayout, upsertWireframeSection } from "@/lib/wireframe/edit";
 import { acceptPageWireframe } from "@/lib/wireframe/generate";
 import { DESIGN_SYSTEM_SPEC } from "@/lib/wireframe/spec";
 
 import { LLM_TOOL_COST, type McpToolApi, type ProjectHandle } from "./context";
 import { McpToolError } from "./errors";
-import type { McpToolDef, McpToolResult, McpToolServer } from "./protocol";
+import { mcpErrorResult, type McpToolDef, type McpToolResult, type McpToolServer } from "./protocol";
 
 /**
  * The MCP tool surface: what an external agent (Claude Code, a custom
@@ -108,14 +108,15 @@ function jsonSchema(schema: z.ZodType): Record<string, unknown> {
 
 const projectId = z.uuid().describe("project id (from list_projects)");
 const pageSlug = contentSlugSchema.describe("page slug (from get_site)");
-const markdownField = z
-  .string()
-  .max(50_000)
-  .describe(
-    "copy as markdown: # h1-###### h6, paragraphs, - bullets, 1. numbered lists, [CTA label](url) on its own line for buttons, <!--eyebrow--> line before a short overline",
-  );
+const markdownField = z.string().max(50_000).describe(`copy as markdown: ${MARKDOWN_DIALECT}`);
 
-/** Bridges an MCP call onto the chat agent's tool registry (same implementations). */
+/**
+ * Bridges an MCP call onto the chat agent's tool registry (same
+ * implementations). The agent registry reports domain failures as
+ * `{ mutated: false }` result strings rather than throwing; every tool routed
+ * here mutates on success, so a non-mutating outcome is a failure — surface it
+ * as an error result (which also means callTool won't audit a phantom write).
+ */
 async function runAgentTool(
   handle: ProjectHandle,
   api: McpToolApi,
@@ -123,18 +124,10 @@ async function runAgentTool(
   name: string,
   args: Record<string, unknown>,
 ): Promise<string> {
-  const toolCtx: ToolContext = { oxen: handle.oxen, view: handle.view, pageSlug: page, llm: api.llm ?? unavailableLlm() };
+  const toolCtx: ToolContext = { oxen: handle.oxen, view: handle.view, pageSlug: page, llm: api.llm };
   const outcome = await executeTool(name, JSON.stringify(args), toolCtx);
+  if (!outcome.mutated) throw new McpToolError(outcome.result);
   return outcome.result;
-}
-
-/** Stand-in for tools that never touch the LLM; loud failure if one does. */
-function unavailableLlm(): LlmClient {
-  return new Proxy({} as LlmClient, {
-    get() {
-      throw new McpToolError("This server has no LLM configured — LLM-backed tools are unavailable.");
-    },
-  });
 }
 
 const TOOLS: Record<string, RegisteredMcpTool> = {
@@ -416,13 +409,16 @@ const TOOLS: Record<string, RegisteredMcpTool> = {
       const section = docSections(doc).find((s) => s.slug === args.section_slug);
       if (!section) throw new McpToolError(`No section "${args.section_slug}" on page "${args.page_slug}".`);
 
+      // validate BEFORE any write — a rejected layout must not leave the draft
+      // mutated (a linked section with no slot would then wedge write_page_layout)
+      const sectionHtml = acceptLayout(() => acceptSectionLayout(args.html, section.slug));
+
       // authoring a layout is an explicit "put this in the wireframe"
       if (!section.linked) {
         section.linked = true;
         await writeDoc(oxen, view, args.page_slug, doc);
       }
 
-      const sectionHtml = acceptLayout(() => acceptSectionLayout(args.html, section.slug));
       const wireframe = (await readWireframe(oxen, view, args.page_slug)) ?? "";
       const docOrder = docSections(doc)
         .filter((s) => s.linked)
@@ -618,7 +614,10 @@ const TOOLS: Record<string, RegisteredMcpTool> = {
     mutates: true,
     run: async (args, api) => {
       const handle = await api.requireProject(args.project_id);
-      await closeProposal(handle.db, handle, args.proposal_id);
+      const closed = await closeProposal(handle.db, handle, args.proposal_id);
+      if (!closed) {
+        throw new McpToolError("No open proposal with that id in this project — it may not exist or is already resolved.");
+      }
       return "Proposal closed.";
     },
   }),
@@ -644,8 +643,8 @@ get_page. Copy is markdown; wireframes are greyscale layout HTML that derives en
 Your API key may be scoped — tools/list shows exactly what this key can do.`;
 
 export function buildMcpServer(api: McpToolApi): McpToolServer {
-  const usable = ([name, tool]: [string, RegisteredMcpTool]) =>
-    api.scopes.includes(tool.scope) && (tool.enabled?.(api) ?? true) && Boolean(name);
+  const usable = ([, tool]: [string, RegisteredMcpTool]) =>
+    api.scopes.includes(tool.scope) && (tool.enabled?.(api) ?? true);
 
   return {
     serverInfo: { name: "copydog", version: "0.2.0" },
@@ -657,7 +656,7 @@ export function buildMcpServer(api: McpToolApi): McpToolServer {
     callTool: async (name, args): Promise<McpToolResult> => {
       const tool = TOOLS[name];
       if (!tool || !usable([name, tool])) {
-        return errorResult(`Unknown tool (or not permitted by this key's scopes): ${name}`);
+        return mcpErrorResult(`Unknown tool (or not permitted by this key's scopes): ${name}`);
       }
       try {
         if (tool.extraCost) await api.consumeRate(tool.extraCost);
@@ -677,15 +676,11 @@ export function buildMcpServer(api: McpToolApi): McpToolServer {
         }
         return { content: [{ type: "text", text }] };
       } catch (err) {
-        if (err instanceof z.ZodError) return errorResult(`Invalid arguments: ${err.message}`);
-        if (err instanceof McpToolError) return errorResult(err.message);
+        if (err instanceof z.ZodError) return mcpErrorResult(`Invalid arguments: ${err.message}`);
+        if (err instanceof McpToolError) return mcpErrorResult(err.message);
         console.error(`mcp tool ${name} failed`, err);
-        return errorResult("Internal error — the CopyDog server logged the details.");
+        return mcpErrorResult("Internal error — the CopyDog server logged the details.");
       }
     },
   };
-}
-
-function errorResult(text: string): McpToolResult {
-  return { content: [{ type: "text", text: `Error: ${text}` }], isError: true };
 }

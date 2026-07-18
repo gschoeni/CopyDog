@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, pgPolicy, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, integer, pgPolicy, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { authenticatedRole } from "drizzle-orm/supabase";
 
 import { apiKeys } from "./api-keys";
@@ -35,6 +35,11 @@ export const mcpAuditLog = pgTable(
       to: authenticatedRole,
       using: sql`${table.projectId} is not null and public.is_project_member(${table.projectId})`,
     }),
+    // the select policy filters by project_id; reads list a project's trail
+    // newest-first. Also indexes the FKs so parent deletes don't seq-scan.
+    index("mcp_audit_log_project_created_idx").on(table.projectId, table.createdAt),
+    index("mcp_audit_log_api_key_idx").on(table.apiKeyId),
+    index("mcp_audit_log_user_idx").on(table.userId),
   ],
 );
 
@@ -42,7 +47,11 @@ export const mcpAuditLog = pgTable(
  * Fixed-window rate accounting for API keys, one row per key per minute.
  * Incremented atomically by the consume_api_rate() SQL function (see the
  * companion migration); the MCP path refuses work once a window's count
- * exceeds its budget. Service-role only — no client policies at all.
+ * exceeds its budget. Service-role only: RLS is ENABLED with no policies, so
+ * anon/authenticated PostgREST access is denied outright — otherwise a signed-in
+ * user could DELETE their own window to dodge the budget or inflate a
+ * teammate's to deny them service. The SQL function runs as service_role and
+ * bypasses RLS.
  */
 export const apiKeyRate = pgTable(
   "api_key_rate",
@@ -54,4 +63,4 @@ export const apiKeyRate = pgTable(
     count: integer("count").notNull().default(0),
   },
   (table) => [primaryKey({ columns: [table.apiKeyId, table.windowStart] })],
-);
+).enableRLS();

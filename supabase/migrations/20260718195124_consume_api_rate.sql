@@ -23,7 +23,10 @@ begin
   do update set count = public.api_key_rate.count + excluded.count
   returning count into v_count;
 
-  delete from public.api_key_rate where window_start < now() - interval '10 minutes';
+  -- prune only THIS key's stale windows, so the composite PK index is used
+  -- and one busy key can't seq-scan every other key's rows on the hot path
+  delete from public.api_key_rate
+  where api_key_id = p_key_id and window_start < now() - interval '10 minutes';
 
   return v_count;
 end;

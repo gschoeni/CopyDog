@@ -1,5 +1,5 @@
 import { authenticateMcp } from "@/lib/mcp/context";
-import { RateLimitExceededError } from "@/lib/mcp/errors";
+import { McpToolError, RateLimitExceededError } from "@/lib/mcp/errors";
 import { handleMcpPost } from "@/lib/mcp/protocol";
 import { buildMcpServer } from "@/lib/mcp/tools";
 
@@ -30,6 +30,15 @@ export async function POST(req: Request): Promise<Response> {
       return new Response(JSON.stringify({ error: err.message }), {
         status: 429,
         headers: { "content-type": "application/json", "retry-after": "60" },
+      });
+    }
+    // rate accounting failed closed (e.g. the RPC errored) — return a
+    // structured, retryable error, not an opaque framework 500 the agent
+    // can't parse
+    if (err instanceof McpToolError) {
+      return new Response(JSON.stringify({ error: err.message }), {
+        status: 503,
+        headers: { "content-type": "application/json", "retry-after": "5" },
       });
     }
     throw err;

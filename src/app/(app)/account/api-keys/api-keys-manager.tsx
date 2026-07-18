@@ -6,6 +6,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { TrashIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
+import type { ApiKeyScope } from "@/lib/db/schema/api-keys";
 
 import { createApiKeyAction, revokeApiKeyAction } from "./actions";
 
@@ -20,7 +21,8 @@ export interface ApiKeyRow {
   revoked: boolean;
 }
 
-const SCOPE_OPTIONS: { value: string; label: string; hint: string; locked?: boolean }[] = [
+// `read` is locked on: every key can look, and the server grants it regardless.
+const SCOPE_OPTIONS: { value: ApiKeyScope; label: string; hint: string; locked?: boolean }[] = [
   { value: "read", label: "Read", hint: "browse projects, pages, copy, diffs", locked: true },
   { value: "write", label: "Write", hint: "edit copy and layouts in your draft" },
   { value: "collab", label: "Collaborate", hint: "publish, propose, comment" },
@@ -42,10 +44,11 @@ export function ApiKeysManager({ keys }: { keys: ApiKeyRow[] }) {
   const [error, setError] = useState<string | null>(null);
   const [freshKey, setFreshKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [scopes, setScopes] = useState<string[]>(["read", "write", "collab"]);
+  // read is granted server-side and never toggled here — state holds the optional scopes only
+  const [scopes, setScopes] = useState<ApiKeyScope[]>(["write", "collab"]);
   const [expiry, setExpiry] = useState<Expiry>(90);
 
-  function toggleScope(scope: string) {
+  function toggleScope(scope: ApiKeyScope) {
     setScopes((prev) => (prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]));
   }
 
@@ -58,7 +61,7 @@ export function ApiKeysManager({ keys }: { keys: ApiKeyRow[] }) {
     setError(null);
     const result = await createApiKeyAction({
       name: name.trim(),
-      scopes: scopes as ("read" | "write" | "collab" | "merge")[],
+      scopes: ["read", ...scopes],
       expiresInDays: expiry,
     });
     setBusy(false);
@@ -116,9 +119,9 @@ export function ApiKeysManager({ keys }: { keys: ApiKeyRow[] }) {
               <label key={option.value} className="flex cursor-pointer items-baseline gap-2 text-sm">
                 <input
                   type="checkbox"
-                  checked={option.locked || scopes.includes(option.value)}
+                  checked={option.locked ? true : scopes.includes(option.value)}
                   disabled={option.locked || busy}
-                  onChange={() => toggleScope(option.value)}
+                  onChange={option.locked ? undefined : () => toggleScope(option.value)}
                   className="translate-y-px accent-accent"
                 />
                 <span className="font-medium">{option.label}</span>
