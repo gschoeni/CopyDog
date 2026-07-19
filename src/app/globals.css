@@ -42,6 +42,13 @@
   --color-danger-fg: oklch(0.985 0.002 85);
   --color-success: oklch(0.55 0.13 155);
 
+  /* avatars — the theme owns lightness/chroma, the person owns the hue
+     (picked by hashing their user id in ui/avatar.tsx) */
+  --avatar-l: 0.9;
+  --avatar-c: 0.05;
+  --avatar-fg-l: 0.44;
+  --avatar-fg-c: 0.11;
+
   /* elevation */
   --shadow-soft: 0 1px 2px oklch(0.2 0.01 60 / 0.05), 0 4px 16px oklch(0.2 0.01 60 / 0.06);
   --shadow-raised: 0 2px 4px oklch(0.2 0.01 60 / 0.06), 0 12px 32px oklch(0.2 0.01 60 / 0.1);
@@ -76,6 +83,11 @@
   --color-danger-hover: oklch(0.73 0.16 27);
   --color-danger-fg: oklch(0.185 0.005 60);
   --color-success: oklch(0.7 0.12 155);
+
+  --avatar-l: 0.34;
+  --avatar-c: 0.05;
+  --avatar-fg-l: 0.86;
+  --avatar-fg-c: 0.08;
 
   --shadow-soft: 0 1px 2px oklch(0 0 0 / 0.3), 0 4px 16px oklch(0 0 0 / 0.35);
   --shadow-raised: 0 2px 4px oklch(0 0 0 / 0.35), 0 12px 32px oklch(0 0 0 / 0.5);

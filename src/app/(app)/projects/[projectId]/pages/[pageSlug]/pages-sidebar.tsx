@@ -12,10 +12,10 @@ import {
   type ReactNode,
 } from "react";
 
-import { ChevronDownIcon, GripIcon, PanelLeftIcon, PlusIcon, ProposeIcon } from "@/components/ui/icons";
+import { Avatar } from "@/components/ui/avatar";
+import { ChevronDownIcon, GripIcon, PanelLeftIcon, PlusIcon, ProposeIcon, SettingsIcon } from "@/components/ui/icons";
 import { ResizeHandle, usePanelSize } from "@/components/ui/resize-handle";
 import { flattenPages, movePageNode, type PageRef } from "@/lib/content/site";
-import { createClient } from "@/lib/supabase/client";
 
 import { addPageAction, movePageAction } from "./actions";
 import { usePageSaveNavigation } from "./save-navigation";
@@ -24,6 +24,7 @@ export interface SidebarMember {
   userId: string;
   role: "owner" | "editor";
   displayName: string;
+  avatarUrl: string | null;
 }
 
 export function PagesSidebar({
@@ -155,21 +156,47 @@ export function PagesSidebar({
               <span aria-hidden className="absolute right-1 top-1 size-1.5 rounded-full bg-accent" />
             )}
           </Link>
+          <Link
+            href={`/projects/${projectId}/settings`}
+            onNavigate={(event) => {
+              event.preventDefault();
+              void navigate(`/projects/${projectId}/settings`);
+            }}
+            aria-label="Project settings"
+            title="Project settings"
+            className="mb-1 flex size-8 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+          >
+            <SettingsIcon />
+          </Link>
         </div>
       ) : (
         <>
           <div className="flex items-center justify-between gap-2 pb-2 pl-4 pr-2 pt-3">
             <p className="truncate text-xs font-semibold uppercase tracking-[0.15em] text-ink-tertiary">{projectName}</p>
-            <button
-              type="button"
-              onClick={toggle}
-              aria-label="Collapse project sidebar"
-              aria-expanded
-              title="Collapse sidebar"
-              className="flex size-7 shrink-0 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
-            >
-              <PanelLeftIcon />
-            </button>
+            <div className="flex shrink-0 items-center">
+              <Link
+                href={`/projects/${projectId}/settings`}
+                onNavigate={(event) => {
+                  event.preventDefault();
+                  void navigate(`/projects/${projectId}/settings`);
+                }}
+                aria-label="Project settings"
+                title="Project settings"
+                className="flex size-7 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+              >
+                <SettingsIcon />
+              </Link>
+              <button
+                type="button"
+                onClick={toggle}
+                aria-label="Collapse project sidebar"
+                aria-expanded
+                title="Collapse sidebar"
+                className="flex size-7 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+              >
+                <PanelLeftIcon />
+              </button>
+            </div>
           </div>
           <PageTree projectId={projectId} pages={pages} activeSlug={activeSlug} />
           <SidebarCollaboration projectId={projectId} initialMembers={initialMembers} openProposals={openProposals} />
@@ -477,7 +504,11 @@ function AddPageInput({
   );
 }
 
-/** Proposals link + team roster + invite, tucked at the sidebar's foot. */
+/**
+ * The sidebar's foot: Proposals, and the team as a quiet facepile.
+ * Managing people — inviting, removing, roles — lives on the project
+ * settings page; both rows just take you there.
+ */
 function SidebarCollaboration({
   projectId,
   initialMembers,
@@ -488,39 +519,8 @@ function SidebarCollaboration({
   openProposals: number;
 }) {
   const { navigate } = usePageSaveNavigation();
-  const [members, setMembers] = useState(initialMembers);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function invite(email: string) {
-    if (!email.trim() || busy) return;
-    setBusy(true);
-    setError(null);
-    const supabase = createClient();
-    const { error: rpcError } = await supabase.rpc("invite_member", {
-      p_project_id: projectId,
-      p_email: email.trim(),
-    });
-    if (rpcError) {
-      setError(
-        rpcError.message.includes("no CopyDog account")
-          ? "No account with that email yet — ask them to sign in once first."
-          : "Couldn't invite that person.",
-      );
-      setBusy(false);
-      return;
-    }
-    const { data } = await supabase
-      .from("project_members")
-      .select("user_id, role, profile:profiles(display_name)")
-      .eq("project_id", projectId);
-    setMembers(
-      ((data ?? []) as unknown as { user_id: string; role: "owner" | "editor"; profile: { display_name: string } | null }[]).map(
-        (row) => ({ userId: row.user_id, role: row.role, displayName: row.profile?.display_name ?? "Member" }),
-      ),
-    );
-    setBusy(false);
-  }
+  const shown = initialMembers.slice(0, 4);
+  const overflow = initialMembers.length - shown.length;
 
   return (
     <div className="border-t border-border px-2 py-3">
@@ -539,36 +539,33 @@ function SidebarCollaboration({
           </span>
         )}
       </Link>
-
-      <p className="mb-1 mt-3 px-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-ink-tertiary">Team</p>
-      <ul className="space-y-0.5 px-2">
-        {members.map((member) => (
-          <li key={member.userId} className="flex items-baseline justify-between text-xs">
-            <span className="truncate text-ink-secondary">{member.displayName}</span>
-            <span className="shrink-0 pl-2 text-[10px] uppercase tracking-wide text-ink-tertiary/70">{member.role}</span>
-          </li>
-        ))}
-      </ul>
-      <form
-        className="mt-2 px-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const input = e.currentTarget.elements.namedItem("email") as HTMLInputElement;
-          void invite(input.value).then(() => {
-            input.value = "";
-          });
+      <Link
+        href={`/projects/${projectId}/settings`}
+        onNavigate={(event) => {
+          event.preventDefault();
+          void navigate(`/projects/${projectId}/settings`);
         }}
+        title="Manage the team in project settings"
+        className="group flex items-center justify-between rounded-md px-2 py-1.5 text-sm text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
       >
-        <input
-          name="email"
-          type="email"
-          placeholder="Invite by email…"
-          aria-label="Invite by email"
-          disabled={busy}
-          className="w-full rounded-md border border-border bg-surface px-2 py-1.5 text-xs outline-none placeholder:text-ink-tertiary focus:border-accent"
-        />
-      </form>
-      {error && <p className="mt-1.5 px-2 text-[11px] leading-snug text-danger">{error}</p>}
+        Team
+        <span className="flex items-center -space-x-1.5">
+          {shown.map((member) => (
+            <Avatar
+              key={member.userId}
+              userId={member.userId}
+              name={member.displayName}
+              avatarUrl={member.avatarUrl}
+              className="size-5 text-[9px] ring-2 ring-surface-sunken"
+            />
+          ))}
+          {overflow > 0 && (
+            <span className="flex size-5 items-center justify-center rounded-full bg-surface-hover text-[9px] font-semibold text-ink-tertiary ring-2 ring-surface-sunken">
+              +{overflow}
+            </span>
+          )}
+        </span>
+      </Link>
     </div>
   );
 }

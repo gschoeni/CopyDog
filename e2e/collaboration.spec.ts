@@ -26,10 +26,12 @@ test("two users: invite → publish → propose → merge → sync → adopt", a
   await expect(alice.page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
   const projectUrl = alice.page.url().replace(/\/pages\/home$/, "");
 
-  // invite Bob from the editor sidebar
+  // invite Bob from project settings (the sidebar gear)
+  await alice.page.getByRole("link", { name: "Project settings" }).click();
   await alice.page.getByLabel("Invite by email").fill(bobEmail);
-  await alice.page.keyboard.press("Enter");
+  await alice.page.getByRole("button", { name: "Invite" }).click();
   await expect(alice.page.getByText(bobEmail.split("@")[0]!)).toBeVisible({ timeout: 10_000 });
+  await alice.page.goto(`${projectUrl}/pages/home`);
 
   // Alice writes hero copy, groups it, and makes an alternate version
   await alice.page.getByRole("textbox", { name: "Page copy" }).click();

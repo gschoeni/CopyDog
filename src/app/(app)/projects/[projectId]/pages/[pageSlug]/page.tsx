@@ -46,7 +46,10 @@ export default async function PageEditorRoute({
   const [wireframe, dirty, { data: memberRows }, { count: openProposals }, content] = await Promise.all([
     readWireframe(oxen, view, pageSlug),
     hasUnpublishedChanges(oxen, view),
-    supabase.from("project_members").select("user_id, role, profile:profiles(display_name)").eq("project_id", projectId),
+    supabase
+      .from("project_members")
+      .select("user_id, role, profile:profiles(display_name, avatar_url)")
+      .eq("project_id", projectId),
     supabase.from("proposals").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("status", "open"),
     Promise.all(
       doc.content.map(async (entry): Promise<PageContentItem> => {
@@ -69,8 +72,17 @@ export default async function PageEditorRoute({
   ]);
 
   const members: SidebarMember[] = (
-    (memberRows ?? []) as unknown as { user_id: string; role: "owner" | "editor"; profile: { display_name: string } | null }[]
-  ).map((row) => ({ userId: row.user_id, role: row.role, displayName: row.profile?.display_name ?? "Member" }));
+    (memberRows ?? []) as unknown as {
+      user_id: string;
+      role: "owner" | "editor";
+      profile: { display_name: string; avatar_url: string | null } | null;
+    }[]
+  ).map((row) => ({
+    userId: row.user_id,
+    role: row.role,
+    displayName: row.profile?.display_name ?? "Member",
+    avatarUrl: row.profile?.avatar_url ?? null,
+  }));
 
   return (
     <PageSaveNavigationProvider>
