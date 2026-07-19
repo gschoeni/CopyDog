@@ -360,3 +360,17 @@ for it and the designers lay nav-like copy out as wf-navbar / wf-footer
 (the chrome classes stay in the design system for exactly that). Legacy
 wireframes keep their chrome until regenerated — section insertion still
 respects a trailing footer when one exists.
+
+## 2026-07-19 — People-management centralizes on the project settings page
+
+**One place, not two.** The sidebar's roster + invite input moved to a
+real settings page (`/projects/[id]/settings`); the sidebar foot keeps a
+facepile-and-gear that just links there. One management surface beats a
+cramped duplicate: the settings page has room for what the sidebar never
+did — remove (owner, two-click confirm), leave (self), rename and delete
+(owner) — and both remove flows are plain RLS deletes, so the page adds
+no new authorization surface. Invite semantics are unchanged: any member
+can invite, the invitee must have signed in once (pending-invite emails
+stay backlog). Avatars ship with it: photo when OAuth gave us one, else
+initial on a hue hashed from the user id (`ui/avatar.tsx`, `--avatar-*`
+tokens) — the docs' "faces everywhere" spec, first realized here.

@@ -79,6 +79,34 @@ Every panel is resizable by dragging its divider (project sidebar, copy/wirefram
 You should be able to export the final wireframes as raw html, or into figma, claude code, or other tools via MCP or other connectors.
 
 
+## Team & project settings
+
+Every project has a settings page (`/projects/[id]/settings`, the gear in the
+sidebar — the sidebar's Team facepile links there too) that is the one place
+people-management lives:
+
+* **Roster** — everyone on the project with their avatar, name, and role
+  (owner / editor, the only two roles in v1; everyone edits, owners manage).
+  Avatars are the real OAuth photo when there is one, otherwise the person's
+  initial on one of eight muted hues picked by hashing their user id — same
+  person, same color, light and dark (`src/components/ui/avatar.tsx`, themed
+  by the `--avatar-*` tokens in `globals.css`).
+* **Invite by email** — calls the `invite_member` SECURITY DEFINER RPC: the
+  invitee must have signed in to CopyDog once (no pending-invite emails in
+  v1); they join as an editor with their own draft branch, immediately.
+  Any member can invite.
+* **Remove / leave** — the owner removes anyone with a two-click confirm; a
+  member can leave the project themself. Both are plain RLS deletes on
+  `project_members` (owner-or-self policy). Removal revokes access instantly;
+  the person's published versions and authorship stay in history.
+* **Rename & delete** — owner-only. Rename goes through RLS (a non-owner's
+  update touches zero rows and is reported as such); delete is the existing
+  everyone-loses-it flow with its own confirm dialog.
+
+Covered end to end by `e2e/project-settings.spec.ts` (rename, invite, leave,
+remove, and the removed user's access actually dying) and the invite step of
+`e2e/collaboration.spec.ts`.
+
 ## MCP Server
 
 CopyDog is drivable by outside agents, not just its own assistant. A remote
