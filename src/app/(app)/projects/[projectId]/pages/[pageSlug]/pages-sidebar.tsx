@@ -545,6 +545,9 @@ function SidebarCollaboration({
           event.preventDefault();
           void navigate(`/projects/${projectId}/settings`);
         }}
+        // named "Team settings" so a page in the tree named "Team" keeps a
+        // distinct accessible name
+        aria-label="Team settings"
         title="Manage the team in project settings"
         className="group flex items-center justify-between rounded-md px-2 py-1.5 text-sm text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
       >

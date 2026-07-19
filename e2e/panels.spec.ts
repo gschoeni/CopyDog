@@ -15,10 +15,10 @@ test("sidebar and assistant collapse to icon rails and back", async ({ page }) =
   await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
 
   // --- pages sidebar → rail
-  await expect(page.getByLabel("Invite by email")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Team settings" })).toBeVisible();
   await page.getByRole("button", { name: "Collapse project sidebar" }).click();
-  // slims to icon dots: the page keeps an initial, the roster is tucked away
-  await expect(page.getByLabel("Invite by email")).toBeHidden();
+  // slims to icon dots: the page keeps an initial, the team row is tucked away
+  await expect(page.getByRole("link", { name: "Team settings" })).toBeHidden();
   const homeDot = page.getByRole("link", { name: "Home", exact: true });
   await expect(homeDot).toBeVisible();
   await expect(homeDot).toHaveText("H");
@@ -27,7 +27,7 @@ test("sidebar and assistant collapse to icon rails and back", async ({ page }) =
   await page.reload();
   await expect(page.getByRole("button", { name: "Open project sidebar" })).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Open project sidebar" }).click();
-  await expect(page.getByLabel("Invite by email")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Team settings" })).toBeVisible();
 
   // --- assistant: a rail on the right edge, never hidden behind the toolbar
   const openAssistant = page.getByRole("button", { name: "Open assistant" });
