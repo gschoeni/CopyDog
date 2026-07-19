@@ -28,6 +28,18 @@ export class ContentStoreUnavailableError extends Error {
   }
 }
 
+/**
+ * No authenticated user — the session expired or was never established. This
+ * is neither a 404 nor a server fault: callers should route the user to
+ * sign in again, not surface a generic error.
+ */
+export class UnauthenticatedError extends Error {
+  constructor() {
+    super("unauthenticated");
+    this.name = "UnauthenticatedError";
+  }
+}
+
 interface ProjectRow {
   id: string;
   name: string;
@@ -73,7 +85,7 @@ export async function requireProjectAccess(projectId: string): Promise<ProjectAc
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) throw new Error("unauthenticated");
+  if (!user) throw new UnauthenticatedError();
 
   const { data: project } = await supabase
     .from("projects")

@@ -328,7 +328,8 @@ function DocEditorInner({
       <RichTextPlugin
         contentEditable={<ContentEditable className="outline-none" aria-label="Page copy" />}
         placeholder={
-          <p className="pointer-events-none absolute left-18 top-[2.6rem] text-ink-tertiary">
+          // 2.85rem = .doc-editor padding-top (2.5rem) + .editor-p top margin (0.35em)
+          <p className="pointer-events-none absolute left-18 top-[2.85rem] text-ink-tertiary">
             Start writing — highlight copy to group it into a section…
           </p>
         }

@@ -3,7 +3,7 @@
 import { z } from "zod";
 
 import { docContentSchema, docSections, type DocContent } from "@/lib/content/doc";
-import { requireProjectAccess } from "@/lib/content/access";
+import { requireProjectAccess, UnauthenticatedError, type ProjectAccess } from "@/lib/content/access";
 import { extractSectionsFromHtml, type ExtractedSection } from "@/lib/import/extract";
 import { fetchImportHtml, ImportFetchError } from "@/lib/import/fetch-url";
 import { extractSectionsFromImage, extractSectionsWithLlm } from "@/lib/import/llm-extract";
@@ -41,6 +41,29 @@ import type { SectionForLayout } from "@/lib/wireframe/heuristic";
 
 const slugSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/);
 
+/**
+ * Result of an autosave action. `authRequired` means the session lapsed:
+ * the client should stop retrying and route the user to sign in again,
+ * rather than showing a generic "couldn't save" error.
+ */
+export type SaveResult = { ok: true } | { ok: false; authRequired: true };
+
+/**
+ * The access gate for autosave: a lapsed session becomes a typed value the
+ * client can act on instead of an opaque thrown 500 (Next redacts thrown
+ * error messages in production, so the client can't recognize them otherwise).
+ */
+async function accessForSave(
+  projectId: string,
+): Promise<{ access: ProjectAccess } | { authRequired: true }> {
+  try {
+    return { access: await requireProjectAccess(projectId) };
+  } catch (err) {
+    if (err instanceof UnauthenticatedError) return { authRequired: true };
+    throw err;
+  }
+}
+
 const saveSectionInput = z.object({
   projectId: z.uuid(),
   pageSlug: slugSchema,
@@ -49,10 +72,11 @@ const saveSectionInput = z.object({
   markdown: z.string().max(100_000),
 });
 
-export async function saveSectionAction(input: z.infer<typeof saveSectionInput>): Promise<{ ok: boolean }> {
+export async function saveSectionAction(input: z.infer<typeof saveSectionInput>): Promise<SaveResult> {
   const { projectId, pageSlug, sectionSlug, versionSlug, markdown } = saveSectionInput.parse(input);
-  const { oxen, view } = await requireProjectAccess(projectId);
-  await writeSectionVersion(oxen, view, pageSlug, sectionSlug, versionSlug, markdown);
+  const gate = await accessForSave(projectId);
+  if ("authRequired" in gate) return { ok: false, authRequired: true };
+  await writeSectionVersion(gate.access.oxen, gate.access.view, pageSlug, sectionSlug, versionSlug, markdown);
   return { ok: true };
 }
 
@@ -63,12 +87,13 @@ const saveStructureInput = z.object({
 });
 
 /** Persists the page's ordered content (element runs + sections) to doc.json. */
-export async function saveStructureAction(input: z.infer<typeof saveStructureInput>): Promise<{ ok: boolean }> {
+export async function saveStructureAction(input: z.infer<typeof saveStructureInput>): Promise<SaveResult> {
   const { projectId, pageSlug, content } = saveStructureInput.parse(input);
-  const { oxen, view } = await requireProjectAccess(projectId);
+  const gate = await accessForSave(projectId);
+  if ("authRequired" in gate) return { ok: false, authRequired: true };
   // plain write, no orphan pruning: the editor may resurrect deleted
   // sections via undo, so their files must survive until publish prunes
-  await writeDoc(oxen, view, pageSlug, { version: 2, content });
+  await writeDoc(gate.access.oxen, gate.access.view, pageSlug, { version: 2, content });
   return { ok: true };
 }
 
@@ -80,10 +105,11 @@ const saveElementsRunInput = z.object({
 });
 
 /** Saves a loose element run's copy. */
-export async function saveElementsRunAction(input: z.infer<typeof saveElementsRunInput>): Promise<{ ok: boolean }> {
+export async function saveElementsRunAction(input: z.infer<typeof saveElementsRunInput>): Promise<SaveResult> {
   const { projectId, pageSlug, runSlug, markdown } = saveElementsRunInput.parse(input);
-  const { oxen, view } = await requireProjectAccess(projectId);
-  await writeElementsRun(oxen, view, pageSlug, runSlug, markdown);
+  const gate = await accessForSave(projectId);
+  if ("authRequired" in gate) return { ok: false, authRequired: true };
+  await writeElementsRun(gate.access.oxen, gate.access.view, pageSlug, runSlug, markdown);
   return { ok: true };
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { DocEditor, type DocEditorHandle } from "@/components/editor/doc-editor";
@@ -83,7 +83,17 @@ export interface PageEditorProps {
   initialDirty: boolean;
 }
 
-type SaveState = "saved" | "saving" | "error";
+type SaveState = "saved" | "saving" | "error" | "unauthenticated";
+
+/** An autosave action resolved to "the session lapsed" — the user must sign in again. */
+function isAuthRequired(result: unknown): boolean {
+  return (
+    typeof result === "object" &&
+    result !== null &&
+    "authRequired" in result &&
+    (result as { authRequired?: unknown }).authRequired === true
+  );
+}
 type ViewMode = "copy" | "split" | "wireframe";
 
 interface PendingSave {
@@ -121,6 +131,7 @@ export function PageEditor({
   initialDirty,
 }: PageEditorProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { navigate, registerFlush } = usePageSaveNavigation();
   const docRef = useRef<DocEditorHandle>(null);
 
@@ -214,9 +225,28 @@ export function PageEditor({
   const activeSaves = useRef(new Set<Promise<unknown>>());
   const contentTimers = useRef(new Map<string, PendingSave>());
   const structureTimer = useRef<PendingSave | null>(null);
+  // once the session lapses, "unauthenticated" is sticky — no more "saving"/
+  // "saved" churn behind the sign-in prompt, and we only prompt once
+  const sessionExpired = useRef(false);
+
+  const goSignIn = useCallback(() => {
+    router.push(`/login?next=${encodeURIComponent(pathname)}`);
+  }, [router, pathname]);
+
+  const handleAuthRequired = useCallback(() => {
+    if (sessionExpired.current) return;
+    sessionExpired.current = true;
+    setSaveState("unauthenticated");
+  }, []);
+
+  // "saving" must never paint over the sign-in prompt
+  const markSaving = useCallback(() => {
+    if (!sessionExpired.current) setSaveState("saving");
+  }, []);
 
   // "saved" only when nothing is in flight AND nothing is debouncing
   const settle = useCallback(() => {
+    if (sessionExpired.current) return;
     if (pendingSaves.current === 0 && contentTimers.current.size === 0 && structureTimer.current === null) {
       setSaveState("saved");
     }
@@ -226,27 +256,32 @@ export function PageEditor({
     async (save: Promise<unknown>) => {
       pendingSaves.current += 1;
       activeSaves.current.add(save);
-      setSaveState("saving");
+      markSaving();
       try {
-        await save;
+        const result = await save;
         pendingSaves.current -= 1;
         activeSaves.current.delete(save);
+        // a lapsed session comes back as a typed result, not a throw
+        if (isAuthRequired(result)) {
+          handleAuthRequired();
+          return;
+        }
         setDirty(true);
         settle();
       } catch {
         pendingSaves.current -= 1;
         activeSaves.current.delete(save);
-        setSaveState("error");
+        if (!sessionExpired.current) setSaveState("error");
       }
     },
-    [settle],
+    [settle, markSaving, handleAuthRequired],
   );
 
   const debounced = useCallback(
     (key: string, save: () => Promise<unknown>) => {
       const existing = contentTimers.current.get(key);
       if (existing) clearTimeout(existing.timer);
-      setSaveState("saving");
+      markSaving();
       const pending: PendingSave = {
         save,
         timer: setTimeout(() => {
@@ -256,7 +291,7 @@ export function PageEditor({
       };
       contentTimers.current.set(key, pending);
     },
-    [trackSave],
+    [trackSave, markSaving],
   );
 
   const scheduleSectionSave = useCallback(
@@ -309,7 +344,7 @@ export function PageEditor({
 
   const scheduleStructureSave = useCallback(() => {
     if (structureTimer.current) clearTimeout(structureTimer.current.timer);
-    setSaveState("saving");
+    markSaving();
     const pending: PendingSave = {
       save: saveStructure,
       timer: setTimeout(() => {
@@ -318,7 +353,7 @@ export function PageEditor({
       }, AUTOSAVE_DELAY_MS),
     };
     structureTimer.current = pending;
-  }, [saveStructure, trackSave]);
+  }, [saveStructure, trackSave, markSaving]);
 
   /**
    * Client-side page navigation unmounts this editor. Start every debounced
@@ -540,7 +575,9 @@ export function PageEditor({
 
   // version ops hit the server directly; a failure surfaces on the save badge
   const guarded = useCallback((op: Promise<void>) => {
-    void op.catch(() => setSaveState("error"));
+    void op.catch(() => {
+      if (!sessionExpired.current) setSaveState("error");
+    });
   }, []);
 
   const deleteSection = useCallback((slug: string) => {
@@ -763,9 +800,22 @@ export function PageEditor({
             </span>
           ))}
         </nav>
-        <p aria-live="polite" className={`hidden shrink-0 text-xs sm:block ${saveState === "error" ? "text-danger" : "text-ink-tertiary"}`}>
-          {statusLabel}
-        </p>
+        {saveState === "unauthenticated" ? (
+          <p aria-live="assertive" className="shrink-0 text-xs text-danger">
+            Session expired —{" "}
+            <button type="button" onClick={goSignIn} className="font-medium underline underline-offset-2 hover:opacity-80">
+              sign in
+            </button>{" "}
+            to save
+          </p>
+        ) : (
+          <p
+            aria-live="polite"
+            className={`hidden shrink-0 text-xs sm:block ${saveState === "error" ? "text-danger" : "text-ink-tertiary"}`}
+          >
+            {statusLabel}
+          </p>
+        )}
         <div className="flex shrink-0 items-center gap-2">
           {/* ellipsis: signals a dialog, and keeps this distinct from the dialog's Import submit */}
           <Button variant="ghost" size="icon" onClick={() => setImporting(true)} aria-label="Import…" title="Import…">
