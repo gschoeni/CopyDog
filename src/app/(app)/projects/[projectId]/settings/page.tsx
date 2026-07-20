@@ -1,8 +1,9 @@
 import { notFound, redirect } from "next/navigation";
 
+import { listProjectMembers } from "@/lib/members";
 import { createClient } from "@/lib/supabase/server";
 
-import { ProjectSettings, type SettingsMember } from "./project-settings";
+import { ProjectSettings } from "./project-settings";
 
 export const metadata = { title: "Project settings" };
 
@@ -30,32 +31,15 @@ export default async function ProjectSettingsPage({
     .maybeSingle();
   if (!project) notFound();
 
-  const { data: memberRows } = await supabase
-    .from("project_members")
-    .select("user_id, role, profile:profiles(display_name, avatar_url)")
-    .eq("project_id", projectId)
-    .order("created_at", { ascending: true });
-
-  const members: SettingsMember[] = (
-    (memberRows ?? []) as unknown as {
-      user_id: string;
-      role: "owner" | "editor";
-      profile: { display_name: string; avatar_url: string | null } | null;
-    }[]
-  ).map((row) => ({
-    userId: row.user_id,
-    role: row.role,
-    displayName: row.profile?.display_name ?? "Member",
-    avatarUrl: row.profile?.avatar_url ?? null,
-  }));
+  const members = await listProjectMembers(supabase, projectId);
 
   return (
     <ProjectSettings
       projectId={project.id}
-      initialName={project.name}
+      name={project.name}
       isOwner={project.owner_id === user.id}
       currentUserId={user.id}
-      initialMembers={members}
+      members={members}
     />
   );
 }

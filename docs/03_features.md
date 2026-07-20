@@ -91,14 +91,19 @@ people-management lives:
   initial on one of eight muted hues picked by hashing their user id — same
   person, same color, light and dark (`src/components/ui/avatar.tsx`, themed
   by the `--avatar-*` tokens in `globals.css`).
-* **Invite by email** — calls the `invite_member` SECURITY DEFINER RPC: the
+* **Invite by email** — the `invite_member` SECURITY DEFINER RPC: the
   invitee must have signed in to CopyDog once (no pending-invite emails in
   v1); they join as an editor with their own draft branch, immediately.
-  Any member can invite.
+  Any member can invite. The RPC returns whether a membership was actually
+  created, so re-inviting someone already on the project says so instead of
+  pretending success; the no-account failure carries the stable errcode
+  `CD001`.
 * **Remove / leave** — the owner removes anyone with a two-click confirm; a
-  member can leave the project themself. Both are plain RLS deletes on
-  `project_members` (owner-or-self policy). Removal revokes access instantly;
-  the person's published versions and authorship stay in history.
+  member can leave the project themself. Both are server actions deleting
+  under RLS (owner-or-self policy) that revalidate the project layout, so
+  the sidebar facepile and roster stay in sync everywhere. Removal revokes
+  access instantly; the person's published versions and authorship stay in
+  history.
 * **Rename & delete** — owner-only. Rename goes through RLS (a non-owner's
   update touches zero rows and is reported as such); delete is the existing
   everyone-loses-it flow with its own confirm dialog.

@@ -1,8 +1,14 @@
+"use client";
+
+import { useState } from "react";
+
 /**
  * A person's face, everywhere people appear: the real profile photo when
  * OAuth gave us one, otherwise their initial on a muted hue picked by
  * hashing their user id — same person, same color, in light and dark
  * (the theme owns lightness/chroma via --avatar-* tokens in globals.css).
+ * A photo that fails to load falls back to the initial, never to the
+ * browser's broken-image glyph.
  *
  * Avatars are decoration: always `aria-hidden`, with the person's name
  * rendered as text beside them by the caller.
@@ -36,7 +42,9 @@ export function Avatar({
   /** Sizing + type scale live together — pass both when overriding. */
   className?: string;
 }) {
-  if (avatarUrl) {
+  const [broken, setBroken] = useState(false);
+
+  if (avatarUrl && !broken) {
     return (
       // remote OAuth photos come from arbitrary provider hosts; next/image
       // needs each host allowlisted and these are tiny decorative circles
@@ -46,6 +54,7 @@ export function Avatar({
         alt=""
         aria-hidden
         referrerPolicy="no-referrer"
+        onError={() => setBroken(true)}
         className={`shrink-0 rounded-full object-cover ${className}`}
       />
     );

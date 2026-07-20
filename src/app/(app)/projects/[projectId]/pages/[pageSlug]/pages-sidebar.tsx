@@ -16,16 +16,10 @@ import { Avatar } from "@/components/ui/avatar";
 import { ChevronDownIcon, GripIcon, PanelLeftIcon, PlusIcon, ProposeIcon, SettingsIcon } from "@/components/ui/icons";
 import { ResizeHandle, usePanelSize } from "@/components/ui/resize-handle";
 import { flattenPages, movePageNode, type PageRef } from "@/lib/content/site";
+import type { ProjectMember } from "@/lib/members";
 
 import { addPageAction, movePageAction } from "./actions";
 import { usePageSaveNavigation } from "./save-navigation";
-
-export interface SidebarMember {
-  userId: string;
-  role: "owner" | "editor";
-  displayName: string;
-  avatarUrl: string | null;
-}
 
 export function PagesSidebar({
   projectId,
@@ -39,7 +33,7 @@ export function PagesSidebar({
   projectName: string;
   pages: PageRef[];
   activeSlug: string;
-  initialMembers: SidebarMember[];
+  initialMembers: ProjectMember[];
   openProposals: number;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -515,12 +509,16 @@ function SidebarCollaboration({
   openProposals,
 }: {
   projectId: string;
-  initialMembers: SidebarMember[];
+  initialMembers: ProjectMember[];
   openProposals: number;
 }) {
   const { navigate } = usePageSaveNavigation();
   const shown = initialMembers.slice(0, 4);
   const overflow = initialMembers.length - shown.length;
+  // the avatars are aria-hidden decoration, so the roster must live in the
+  // link's name for assistive tech ("Team settings" also keeps this distinct
+  // from a page in the tree named "Team")
+  const teamLabel = `Team settings — ${initialMembers.map((member) => member.displayName).join(", ")}`;
 
   return (
     <div className="border-t border-border px-2 py-3">
@@ -545,11 +543,9 @@ function SidebarCollaboration({
           event.preventDefault();
           void navigate(`/projects/${projectId}/settings`);
         }}
-        // named "Team settings" so a page in the tree named "Team" keeps a
-        // distinct accessible name
-        aria-label="Team settings"
+        aria-label={teamLabel}
         title="Manage the team in project settings"
-        className="group flex items-center justify-between rounded-md px-2 py-1.5 text-sm text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
+        className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink"
       >
         Team
         <span className="flex items-center -space-x-1.5">

@@ -47,6 +47,11 @@ test("settings: rename, invite, leave, and remove a member", async ({ browser })
   await expect(bobRow).toBeVisible({ timeout: 10_000 });
   await expect(bobRow.getByText("editor")).toBeVisible();
 
+  // inviting him again is honest about it, not a false "Added"
+  await alice.page.getByLabel("Invite by email").fill(bobEmail);
+  await alice.page.getByRole("button", { name: "Invite" }).click();
+  await expect(alice.page.getByText("They're already on this project.")).toBeVisible({ timeout: 10_000 });
+
   // Bob sees the settings page, but none of the owner's controls
   await bob.page.goto(`${projectUrl}/settings`);
   await expect(bob.page.getByRole("heading", { name: "Settings" })).toBeVisible();
