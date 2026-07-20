@@ -85,7 +85,9 @@ export default async function ProposalPage({
         <StatusBadge status={proposal.status} />
       </div>
 
-      {proposal.status === "open" && (
+      {/* viewers watch the review; merging and closing are writer moves
+          (RLS backs this — proposals_update_members requires an editor) */}
+      {proposal.status === "open" && access.role !== "viewer" && (
         <div className="mt-6">
           <ProposalActions projectId={project.id} proposalId={proposal.id} changeCount={diffs.length} />
         </div>

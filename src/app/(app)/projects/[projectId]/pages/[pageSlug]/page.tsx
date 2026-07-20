@@ -69,6 +69,8 @@ export default async function PageEditorRoute({
     ),
   ]);
 
+  const canEdit = access.role !== "viewer";
+
   return (
     <PageSaveNavigationProvider>
       <div className="flex min-h-0 flex-1">
@@ -79,6 +81,7 @@ export default async function PageEditorRoute({
           activeSlug={pageSlug}
           initialMembers={members}
           openProposals={openProposals ?? 0}
+          canEdit={canEdit}
         />
         <PageEditor
           // fingerprint key: router.refresh() after an import remounts the
@@ -92,6 +95,7 @@ export default async function PageEditorRoute({
           initialContent={content}
           initialWireframe={wireframe}
           initialDirty={dirty}
+          canEdit={canEdit}
         />
       </div>
     </PageSaveNavigationProvider>

@@ -387,3 +387,27 @@ membership unremovable (app-level guards in the settings actions — a
 demoted creator is a footgun, not an escalation, so RLS doesn't carry it).
 Nobody can change their own role (that one IS RLS), so a project can't
 demote its way to zero owners.
+
+## 2026-07-19 — Viewer role: read-only, enforced at the gates
+
+**A viewer seat that can't be talked around.** `project_role` gains
+`viewer` for read-only clients. The rule isn't a hidden button — it's
+layered where authorization actually lives: RLS write policies now
+require `is_project_editor` (third membership helper: owner|editor);
+`ProjectAccess` carries the member's role and both access gates refuse
+viewers on `write: true` calls (`ReadOnlyMemberError`), which covers
+every content mutation since Oxen writes never touch RLS; the MCP server
+wraps `requireProject` in write mode for any tool declaring `mutates`, so
+a viewer's API key is read-only regardless of scopes (scopes narrow a
+key, the role narrows the person); and `invite_member` refuses viewer
+callers and takes the invitee's role as a parameter (editor|viewer —
+owner is always a post-invite promotion on the roster). Chat counts as a
+write seat because the agent edits the caller's draft. Commenting is
+editor-only for now; the backlog's "commenter" seat is the future home
+for note-leaving clients.
+
+**One dropdown to rule the roles.** The roster and invite role pickers
+are a new hand-rolled `ui/dropdown.tsx` (listbox semantics, keyboard
+complete) styled as a quiet tag that opens an inverse-surface menu —
+dark over light, light over dark — with a check beside the current
+choice. No native `<select>` styling fights, no dependency.

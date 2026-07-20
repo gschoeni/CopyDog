@@ -81,6 +81,8 @@ export interface PageEditorProps {
   initialContent: PageContentItem[];
   initialWireframe: string | null;
   initialDirty: boolean;
+  /** False for viewer-role members: the whole workbench renders read-only. */
+  canEdit: boolean;
 }
 
 type SaveState = "saved" | "saving" | "error" | "unauthenticated";
@@ -129,6 +131,7 @@ export function PageEditor({
   initialContent,
   initialWireframe,
   initialDirty,
+  canEdit,
 }: PageEditorProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -653,8 +656,13 @@ export function PageEditor({
   );
   const unlinkedCount = sections.length - linkedSections.length;
 
-  const statusLabel =
-    saveState === "saving" ? "Saving…" : saveState === "error" ? "Couldn't save — retrying on next edit" : "Saved to your draft";
+  const statusLabel = !canEdit
+    ? "Read-only view"
+    : saveState === "saving"
+      ? "Saving…"
+      : saveState === "error"
+        ? "Couldn't save — retrying on next edit"
+        : "Saved to your draft";
 
   const renderSectionHeader = useCallback(
     (slug: string) => {
@@ -667,10 +675,15 @@ export function PageEditor({
           <input
             key={meta.title}
             defaultValue={meta.title}
-            onBlur={(e) => {
-              const title = e.target.value.trim();
-              if (title) renameSection(slug, title);
-            }}
+            readOnly={!canEdit}
+            onBlur={
+              canEdit
+                ? (e) => {
+                    const title = e.target.value.trim();
+                    if (title) renameSection(slug, title);
+                  }
+                : undefined
+            }
             aria-label="Section title"
             className="w-full min-w-0 bg-transparent text-[11px] font-semibold uppercase tracking-[0.15em] text-ink-tertiary outline-none transition-colors focus:text-ink-secondary"
           />
@@ -679,22 +692,24 @@ export function PageEditor({
               unlinked
             </span>
           )}
-          <button
-            type="button"
-            aria-label={meta.linked ? "Unlink from wireframe" : "Link to wireframe"}
-            aria-pressed={meta.linked}
-            title={
-              meta.linked
-                ? "Linked: appears in the wireframe. Click to unlink."
-                : "Unlinked: kept out of the wireframe. Click to link."
-            }
-            onClick={() => toggleLinked(slug)}
-            className={`flex size-6 shrink-0 items-center justify-center rounded transition-colors hover:bg-surface-hover ${
-              meta.linked ? "text-accent" : "text-ink-tertiary"
-            }`}
-          >
-            {meta.linked ? <LinkIcon /> : <UnlinkIcon />}
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              aria-label={meta.linked ? "Unlink from wireframe" : "Link to wireframe"}
+              aria-pressed={meta.linked}
+              title={
+                meta.linked
+                  ? "Linked: appears in the wireframe. Click to unlink."
+                  : "Unlinked: kept out of the wireframe. Click to link."
+              }
+              onClick={() => toggleLinked(slug)}
+              className={`flex size-6 shrink-0 items-center justify-center rounded transition-colors hover:bg-surface-hover ${
+                meta.linked ? "text-accent" : "text-ink-tertiary"
+              }`}
+            >
+              {meta.linked ? <LinkIcon /> : <UnlinkIcon />}
+            </button>
+          )}
           <VersionSwitcher
             projectId={projectId}
             pageSlug={pageSlug}
@@ -704,50 +719,57 @@ export function PageEditor({
             onSwitch={(v) => guarded(switchVersion(slug, v))}
             onCreate={(label) => guarded(createVersion(slug, label))}
             onAdopt={(source) => guarded(adoptTeammateVersion(slug, source))}
+            // switching/adopting writes the active pointer into the caller's
+            // draft — a viewer has no writable draft
+            disabled={!canEdit}
           />
-          <SectionNotes projectId={projectId} pageSlug={pageSlug} sectionSlug={slug} />
-          <button
-            type="button"
-            aria-label="Move section up"
-            title="Move section up"
-            disabled={index <= 0}
-            onClick={() => moveSection(slug, -1)}
-            className="flex size-6 shrink-0 items-center justify-center rounded text-xs text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
-          >
-            ↑
-          </button>
-          <button
-            type="button"
-            aria-label="Move section down"
-            title="Move section down"
-            disabled={index === -1 || index >= count - 1}
-            onClick={() => moveSection(slug, 1)}
-            className="flex size-6 shrink-0 items-center justify-center rounded text-xs text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
-          >
-            ↓
-          </button>
-          <button
-            type="button"
-            aria-label="Duplicate section"
-            title="Duplicate section"
-            onClick={() => duplicateSection(slug)}
-            className="flex size-6 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
-          >
-            <DuplicateIcon />
-          </button>
-          <button
-            type="button"
-            aria-label="Delete section"
-            title="Delete section (copy included)"
-            onClick={() => deleteSection(slug)}
-            className="flex size-6 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-danger"
-          >
-            <TrashIcon />
-          </button>
+          <SectionNotes projectId={projectId} pageSlug={pageSlug} sectionSlug={slug} canEdit={canEdit} />
+          {canEdit && (
+            <>
+              <button
+                type="button"
+                aria-label="Move section up"
+                title="Move section up"
+                disabled={index <= 0}
+                onClick={() => moveSection(slug, -1)}
+                className="flex size-6 shrink-0 items-center justify-center rounded text-xs text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                aria-label="Move section down"
+                title="Move section down"
+                disabled={index === -1 || index >= count - 1}
+                onClick={() => moveSection(slug, 1)}
+                className="flex size-6 shrink-0 items-center justify-center rounded text-xs text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                aria-label="Duplicate section"
+                title="Duplicate section"
+                onClick={() => duplicateSection(slug)}
+                className="flex size-6 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+              >
+                <DuplicateIcon />
+              </button>
+              <button
+                type="button"
+                aria-label="Delete section"
+                title="Delete section (copy included)"
+                onClick={() => deleteSection(slug)}
+                className="flex size-6 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-danger"
+              >
+                <TrashIcon />
+              </button>
+            </>
+          )}
         </div>
       );
     },
-    [projectId, pageSlug, sections, renameSection, toggleLinked, guarded, switchVersion, createVersion, adoptTeammateVersion, moveSection, duplicateSection, deleteSection],
+    [projectId, pageSlug, sections, canEdit, renameSection, toggleLinked, guarded, switchVersion, createVersion, adoptTeammateVersion, moveSection, duplicateSection, deleteSection],
   );
 
   return (
@@ -817,13 +839,17 @@ export function PageEditor({
           </p>
         )}
         <div className="flex shrink-0 items-center gap-2">
-          {/* ellipsis: signals a dialog, and keeps this distinct from the dialog's Import submit */}
-          <Button variant="ghost" size="icon" onClick={() => setImporting(true)} aria-label="Import…" title="Import…">
-            <ImportIcon />
-          </Button>
-          {/* the assistant's only affordance is its right-edge rail — one
-              home, no duplicate sparkles in the toolbar */}
-          <PublishControls projectId={projectId} pageSlug={pageSlug} dirty={dirty} onPublished={() => setDirty(false)} />
+          {canEdit && (
+            <>
+              {/* ellipsis: signals a dialog, and keeps this distinct from the dialog's Import submit */}
+              <Button variant="ghost" size="icon" onClick={() => setImporting(true)} aria-label="Import…" title="Import…">
+                <ImportIcon />
+              </Button>
+              {/* the assistant's only affordance is its right-edge rail — one
+                  home, no duplicate sparkles in the toolbar */}
+              <PublishControls projectId={projectId} pageSlug={pageSlug} dirty={dirty} onPublished={() => setDirty(false)} />
+            </>
+          )}
           <ModeToggle mode={mode} onChange={changeMode} />
         </div>
       </div>
@@ -871,7 +897,8 @@ export function PageEditor({
                   onSnapshotChange={handleSnapshotChange}
                   renderSectionHeader={renderSectionHeader}
                   onAddToChat={({ sectionSlug, text }) => addContextToChat({ source: "copy", sectionSlug, text })}
-                  autoFocus={initialContent.every((c) => c.elements.length === 0)}
+                  autoFocus={canEdit && initialContent.every((c) => c.elements.length === 0)}
+                  readOnly={!canEdit}
                 />
               </div>
             </div>
@@ -909,14 +936,17 @@ export function PageEditor({
             hasLayoutReadyCopy={linkedSections.some((s) => s.elements.length > 0)}
             omitted={{ looseElements: looseCount, unlinkedSections: unlinkedCount }}
             onGenerate={generate}
+            canGenerate={canEdit}
             bordered={mode === "split"}
             exportHref={`/projects/${projectId}/pages/${pageSlug}/export`}
-            onAddToChat={(payload) => addContextToChat({ source: "wireframe", ...payload })}
+            onAddToChat={canEdit ? (payload) => addContextToChat({ source: "wireframe", ...payload }) : undefined}
           />
         )}
 
-        {/* always present: collapsed it's the slim rail on the right edge,
-            so the assistant is one click away in every mode */}
+        {/* always present (for writers): collapsed it's the slim rail on the
+            right edge, so the assistant is one click away in every mode. The
+            agent edits the caller's draft, so viewers get no assistant. */}
+        {canEdit && (
         <ChatPanel
           ref={chatRef}
           projectId={projectId}
@@ -937,6 +967,7 @@ export function PageEditor({
             router.refresh();
           }}
         />
+        )}
       </div>
     </div>
   );
@@ -1010,6 +1041,7 @@ function WireframePane({
   hasLayoutReadyCopy,
   omitted,
   onGenerate,
+  canGenerate,
   bordered,
   exportHref,
   onAddToChat,
@@ -1019,9 +1051,12 @@ function WireframePane({
   hasLayoutReadyCopy: boolean;
   omitted: { looseElements: number; unlinkedSections: number };
   onGenerate: () => void;
+  /** Viewers can look at the wireframe but never regenerate it. */
+  canGenerate: boolean;
   bordered: boolean;
   exportHref: string;
-  onAddToChat: (payload: WireframeChatPayload) => void;
+  /** Absent for viewers — they have no assistant to attach context to. */
+  onAddToChat?: (payload: WireframeChatPayload) => void;
 }) {
   const omittedNote = describeOmitted(omitted);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1107,9 +1142,9 @@ function WireframePane({
   return (
     <div
       ref={containerRef}
-      onMouseUp={preview ? handleMouseUp : undefined}
-      onMouseOver={preview ? handleMouseOver : undefined}
-      onMouseLeave={preview ? () => setHoverPin(null) : undefined}
+      onMouseUp={preview && onAddToChat ? handleMouseUp : undefined}
+      onMouseOver={preview && onAddToChat ? handleMouseOver : undefined}
+      onMouseLeave={preview && onAddToChat ? () => setHoverPin(null) : undefined}
       className={`relative min-w-0 flex-1 basis-0 overflow-y-auto bg-surface-sunken ${
         bordered
           ? // split: pin to the viewport below the chrome and scroll internally,
@@ -1136,16 +1171,18 @@ function WireframePane({
               >
                 <DownloadIcon />
               </a>
-              <button
-                type="button"
-                onClick={onGenerate}
-                disabled={generating}
-                aria-label="Regenerate layout"
-                title={generating ? "Designing…" : "Regenerate layout"}
-                className="flex size-8 items-center justify-center rounded-md text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink disabled:pointer-events-none"
-              >
-                <WandIcon className={generating ? "size-4 animate-pulse" : "size-4"} />
-              </button>
+              {canGenerate && (
+                <button
+                  type="button"
+                  onClick={onGenerate}
+                  disabled={generating}
+                  aria-label="Regenerate layout"
+                  title={generating ? "Designing…" : "Regenerate layout"}
+                  className="flex size-8 items-center justify-center rounded-md text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink disabled:pointer-events-none"
+                >
+                  <WandIcon className={generating ? "size-4 animate-pulse" : "size-4"} />
+                </button>
+              )}
             </div>
           </div>
           <div className="px-6 pb-16">
@@ -1155,7 +1192,7 @@ function WireframePane({
               dangerouslySetInnerHTML={{ __html: preview }}
             />
           </div>
-          {selectionPin && (
+          {selectionPin && onAddToChat && (
             <button
               type="button"
               data-add-to-chat
@@ -1174,7 +1211,7 @@ function WireframePane({
               Add to chat
             </button>
           )}
-          {hoverPin && !selectionPin && (
+          {hoverPin && !selectionPin && onAddToChat && (
             <button
               type="button"
               data-add-to-chat
@@ -1206,9 +1243,11 @@ function WireframePane({
                 : "The wireframe lays out sections. Highlight some copy and use “Group into section” first."}
             </p>
             {omittedNote && <p className="mt-2 text-xs text-ink-tertiary">{omittedNote}</p>}
-            <Button className="mt-5" onClick={onGenerate} disabled={generating || !hasLayoutReadyCopy}>
-              {generating ? "Designing…" : "Generate wireframe from sections"}
-            </Button>
+            {canGenerate && (
+              <Button className="mt-5" onClick={onGenerate} disabled={generating || !hasLayoutReadyCopy}>
+                {generating ? "Designing…" : "Generate wireframe from sections"}
+              </Button>
+            )}
           </div>
         </div>
       )}

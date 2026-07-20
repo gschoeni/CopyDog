@@ -21,10 +21,13 @@ export function SectionNotes({
   projectId,
   pageSlug,
   sectionSlug,
+  canEdit,
 }: {
   projectId: string;
   pageSlug: string;
   sectionSlug: string;
+  /** Viewers read notes; leaving and resolving them are writer moves. */
+  canEdit: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState<Note[] | null>(null);
@@ -132,13 +135,15 @@ export function SectionNotes({
                   <li key={note.id} className={`rounded-md px-2 py-1.5 ${note.resolved_at ? "opacity-50" : ""}`}>
                     <div className="flex items-baseline justify-between gap-2">
                       <p className="text-xs font-medium">{note.author?.display_name ?? "Someone"}</p>
-                      <button
-                        type="button"
-                        onClick={() => toggleResolved(note)}
-                        className="shrink-0 text-[10px] text-ink-tertiary underline-offset-2 hover:text-ink hover:underline"
-                      >
-                        {note.resolved_at ? "Reopen" : "Resolve"}
-                      </button>
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => toggleResolved(note)}
+                          className="shrink-0 text-[10px] text-ink-tertiary underline-offset-2 hover:text-ink hover:underline"
+                        >
+                          {note.resolved_at ? "Reopen" : "Resolve"}
+                        </button>
+                      )}
                     </div>
                     <p className={`mt-0.5 text-sm text-ink-secondary ${note.resolved_at ? "line-through" : ""}`}>
                       {note.body}
@@ -148,27 +153,29 @@ export function SectionNotes({
               </ul>
             )}
           </div>
-          <form
-            className="flex gap-2 border-t border-border p-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const input = e.currentTarget.elements.namedItem("note") as HTMLInputElement;
-              const body = input.value.trim();
-              if (!body) return;
-              input.value = "";
-              void addNote(body);
-            }}
-          >
-            <input
-              name="note"
-              placeholder="Add a note…"
-              aria-label="Add a note"
-              className="h-8 min-w-0 flex-1 rounded-md border border-border bg-surface px-2 text-sm outline-none placeholder:text-ink-tertiary focus:border-accent"
-            />
-            <Button type="submit" size="sm">
-              Add
-            </Button>
-          </form>
+          {canEdit && (
+            <form
+              className="flex gap-2 border-t border-border p-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const input = e.currentTarget.elements.namedItem("note") as HTMLInputElement;
+                const body = input.value.trim();
+                if (!body) return;
+                input.value = "";
+                void addNote(body);
+              }}
+            >
+              <input
+                name="note"
+                placeholder="Add a note…"
+                aria-label="Add a note"
+                className="h-8 min-w-0 flex-1 rounded-md border border-border bg-surface px-2 text-sm outline-none placeholder:text-ink-tertiary focus:border-accent"
+              />
+              <Button type="submit" size="sm">
+                Add
+              </Button>
+            </form>
+          )}
         </div>
       )}
     </div>

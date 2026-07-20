@@ -28,6 +28,7 @@ export function PagesSidebar({
   activeSlug,
   initialMembers,
   openProposals,
+  canEdit,
 }: {
   projectId: string;
   projectName: string;
@@ -35,6 +36,8 @@ export function PagesSidebar({
   activeSlug: string;
   initialMembers: ProjectMember[];
   openProposals: number;
+  /** False for viewers: the tree navigates, it doesn't restructure. */
+  canEdit: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const { navigate } = usePageSaveNavigation();
@@ -125,15 +128,17 @@ export function PagesSidebar({
               </Link>
             ))}
           </nav>
-          <button
-            type="button"
-            onClick={toggle}
-            aria-label="New page"
-            title="New page"
-            className="flex size-8 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
-          >
-            <PlusIcon />
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={toggle}
+              aria-label="New page"
+              title="New page"
+              className="flex size-8 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+            >
+              <PlusIcon />
+            </button>
+          )}
           <div className="flex-1" />
           <Link
             href={`/projects/${projectId}/proposals`}
@@ -192,7 +197,7 @@ export function PagesSidebar({
               </button>
             </div>
           </div>
-          <PageTree projectId={projectId} pages={pages} activeSlug={activeSlug} />
+          <PageTree projectId={projectId} pages={pages} activeSlug={activeSlug} canEdit={canEdit} />
           <SidebarCollaboration projectId={projectId} initialMembers={initialMembers} openProposals={openProposals} />
         </>
       )}
@@ -213,7 +218,17 @@ type DropTarget = { slug: string; kind: "before" | "after" | "into" };
  * a row decides the move — top edge = before, bottom edge = after,
  * middle = nest inside. Moves apply optimistically, then persist.
  */
-function PageTree({ projectId, pages, activeSlug }: { projectId: string; pages: PageRef[]; activeSlug: string }) {
+function PageTree({
+  projectId,
+  pages,
+  activeSlug,
+  canEdit,
+}: {
+  projectId: string;
+  pages: PageRef[];
+  activeSlug: string;
+  canEdit: boolean;
+}) {
   const router = useRouter();
   const { navigate } = usePageSaveNavigation();
 
@@ -424,24 +439,28 @@ function PageTree({ projectId, pages, activeSlug }: { projectId: string; pages: 
             >
               {page.title}
             </Link>
-            <button
-              type="button"
-              aria-label={`Drag ${page.title}`}
-              title="Drag to reorder — drop on a page to nest"
-              onPointerDown={startDrag(page.slug)}
-              className="flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-ink-tertiary/80 opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
-            >
-              <GripIcon className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              aria-label={`Add subpage inside ${page.title}`}
-              title="Add subpage"
-              onClick={() => addSubpage(page.slug)}
-              className="flex size-5 shrink-0 items-center justify-center rounded text-ink-tertiary/80 opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
-            >
-              <PlusIcon className="size-3.5" />
-            </button>
+            {canEdit && (
+              <>
+                <button
+                  type="button"
+                  aria-label={`Drag ${page.title}`}
+                  title="Drag to reorder — drop on a page to nest"
+                  onPointerDown={startDrag(page.slug)}
+                  className="flex size-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-ink-tertiary/80 opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <GripIcon className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Add subpage inside ${page.title}`}
+                  title="Add subpage"
+                  onClick={() => addSubpage(page.slug)}
+                  className="flex size-5 shrink-0 items-center justify-center rounded text-ink-tertiary/80 opacity-0 transition-opacity hover:bg-surface-hover hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <PlusIcon className="size-3.5" />
+                </button>
+              </>
+            )}
           </div>
           {((children.length > 0 && !isFolded) || addingHere) && (
             /* subtree in a guided gutter: the hairline drops from the parent's
@@ -459,13 +478,15 @@ function PageTree({ projectId, pages, activeSlug }: { projectId: string; pages: 
     <nav aria-label="Pages" className={`min-h-0 flex-1 space-y-px overflow-y-auto px-2 ${dragging ? "select-none" : ""}`}>
       {renderRows(tree)}
       {adding?.parent === null && <AddPageInput busy={busy} onSubmit={(t) => addPage(t, null)} onCancel={() => setAdding(null)} />}
-      <button
-        type="button"
-        onClick={() => setAdding({ parent: null })}
-        className="mt-1 block w-full rounded-md px-2 py-1.5 text-left text-sm text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
-      >
-        + New page
-      </button>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={() => setAdding({ parent: null })}
+          className="mt-1 block w-full rounded-md px-2 py-1.5 text-left text-sm text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+        >
+          + New page
+        </button>
+      )}
     </nav>
   );
 }

@@ -6,9 +6,10 @@ import { useState } from "react";
 
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { ChevronDownIcon, ChevronLeftIcon, TrashIcon } from "@/components/ui/icons";
+import { Dropdown } from "@/components/ui/dropdown";
+import { ChevronLeftIcon, TrashIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
-import type { ProjectMember } from "@/lib/members";
+import type { ProjectMember, ProjectRole } from "@/lib/members";
 
 import { DeleteProjectDialog } from "../../delete-project-dialog";
 import { inviteMemberAction, removeMemberAction, renameProjectAction, updateMemberRoleAction } from "./actions";
@@ -159,14 +160,21 @@ function PeopleSection({
   // userId of the row whose remove/leave is awaiting its second click
   const [armed, setArmed] = useState<string | null>(null);
 
+  // what seat the invite grants; owner stays a deliberate post-invite promotion
+  const [inviteRole, setInviteRole] = useState<"editor" | "viewer">("editor");
+
   // optimistic role while the change round-trips; cleared when props catch up
   // (React's "adjust state when props change" render-time pattern)
-  const [pendingRole, setPendingRole] = useState<{ userId: string; role: "owner" | "editor" } | null>(null);
+  const [pendingRole, setPendingRole] = useState<{ userId: string; role: ProjectRole } | null>(null);
   const [prevMembers, setPrevMembers] = useState(members);
   if (prevMembers !== members) {
     setPrevMembers(members);
     setPendingRole(null);
   }
+
+  // viewers see the roster but manage nothing — not even invites
+  const myRole = members.find((member) => member.userId === currentUserId)?.role;
+  const canInvite = myRole === "owner" || myRole === "editor";
 
   async function invite(email: string): Promise<boolean> {
     if (!email.trim() || busy) return false;
@@ -174,12 +182,18 @@ function PeopleSection({
     setNotice(null);
     setError(null);
     try {
-      const result = await inviteMemberAction({ projectId, email });
+      const result = await inviteMemberAction({ projectId, email, role: inviteRole });
       if (!result.ok) {
         setError(result.error);
         return false;
       }
-      setNotice(result.added ? "Added — they can start editing right away." : "They're already on this project.");
+      setNotice(
+        !result.added
+          ? "They're already on this project."
+          : inviteRole === "viewer"
+            ? "Added as a viewer — they can read everything, change nothing."
+            : "Added — they can start editing right away.",
+      );
       router.refresh();
       return true;
     } catch {
@@ -190,8 +204,12 @@ function PeopleSection({
     }
   }
 
-  async function changeRole(member: ProjectMember, role: "owner" | "editor") {
-    if (busy || member.role === role) return;
+  async function changeRole(member: ProjectMember, role: ProjectRole) {
+    // compare against what the row DISPLAYS: right after a change, the
+    // member prop is stale until the refresh lands, and guarding on it
+    // would silently swallow a quick follow-up change
+    const displayed = pendingRole?.userId === member.userId ? pendingRole.role : member.role;
+    if (busy || displayed === role) return;
     setBusy(true);
     setNotice(null);
     setError(null);
@@ -206,7 +224,9 @@ function PeopleSection({
       setNotice(
         role === "owner"
           ? `${member.displayName} is an owner now — they can manage the team too.`
-          : `${member.displayName} is an editor now.`,
+          : role === "viewer"
+            ? `${member.displayName} is a viewer now — read-only.`
+            : `${member.displayName} is an editor now.`,
       );
       router.refresh();
     } catch {
@@ -244,31 +264,44 @@ function PeopleSection({
     <section className="mt-10">
       <h2 className="text-sm font-semibold">People</h2>
       <p className="mt-1 text-sm leading-relaxed text-ink-secondary">
-        Everyone here writes in their own draft, and can publish, propose, and adopt each other&apos;s versions.
+        Owners and editors write in their own drafts and can publish, propose, and adopt each other&apos;s
+        versions. Viewers see everything and change nothing.
       </p>
 
-      <form
-        className="mt-4 flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const input = e.currentTarget.elements.namedItem("email") as HTMLInputElement;
-          void invite(input.value).then((ok) => {
-            if (ok) input.value = "";
-          });
-        }}
-      >
-        <Input
-          name="email"
-          type="email"
-          required
-          placeholder="teammate@company.com"
-          aria-label="Invite by email"
-          disabled={busy}
-        />
-        <Button type="submit" disabled={busy}>
-          Invite
-        </Button>
-      </form>
+      {canInvite && (
+        <form
+          className="mt-4 flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const input = e.currentTarget.elements.namedItem("email") as HTMLInputElement;
+            void invite(input.value).then((ok) => {
+              if (ok) input.value = "";
+            });
+          }}
+        >
+          <Input
+            name="email"
+            type="email"
+            required
+            placeholder="teammate@company.com"
+            aria-label="Invite by email"
+            disabled={busy}
+          />
+          <Dropdown
+            value={inviteRole}
+            options={[
+              { value: "editor", label: "Editor" },
+              { value: "viewer", label: "Viewer" },
+            ]}
+            onChange={setInviteRole}
+            label="Role for the invitation"
+            disabled={busy}
+          />
+          <Button type="submit" disabled={busy}>
+            Invite
+          </Button>
+        </form>
+      )}
       {notice && <p className="mt-2 text-sm text-success">{notice}</p>}
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
 
@@ -289,19 +322,17 @@ function PeopleSection({
                 {isSelf && <span className="ml-1.5 text-ink-tertiary">(you)</span>}
               </span>
               {canChangeRole ? (
-                <span className="relative shrink-0">
-                  <select
-                    value={pendingRole?.userId === member.userId ? pendingRole.role : member.role}
-                    aria-label={`Change ${member.displayName}'s role`}
-                    disabled={busy}
-                    onChange={(e) => void changeRole(member, e.target.value as "owner" | "editor")}
-                    className="cursor-pointer appearance-none rounded-md border border-transparent bg-transparent py-1 pl-2 pr-6 text-[10px] font-semibold uppercase tracking-[0.15em] text-ink-tertiary transition-colors hover:border-border hover:text-ink focus:border-accent focus:outline-none disabled:cursor-default disabled:opacity-50"
-                  >
-                    <option value="owner">Owner</option>
-                    <option value="editor">Editor</option>
-                  </select>
-                  <ChevronDownIcon aria-hidden className="pointer-events-none absolute right-1.5 top-1/2 size-3 -translate-y-1/2 text-ink-tertiary" />
-                </span>
+                <Dropdown
+                  value={pendingRole?.userId === member.userId ? pendingRole.role : member.role}
+                  options={[
+                    { value: "owner", label: "Owner" },
+                    { value: "editor", label: "Editor" },
+                    { value: "viewer", label: "Viewer" },
+                  ]}
+                  onChange={(role) => void changeRole(member, role)}
+                  label={`Change ${member.displayName}'s role`}
+                  disabled={busy}
+                />
               ) : (
                 <span
                   title={isCreatorRow ? "Created the project" : undefined}

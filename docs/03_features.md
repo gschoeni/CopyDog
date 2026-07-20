@@ -85,25 +85,34 @@ Every project has a settings page (`/projects/[id]/settings`, the gear in the
 sidebar — the sidebar's Team facepile links there too) that is the one place
 people-management lives:
 
-* **Roster** — everyone on the project with their avatar, name, and role
-  (owner / editor, the only two roles in v1; everyone edits, owners manage).
-* **Roles** — an owner can change any other member's role between owner and
-  editor from the roster (RLS: owners only, never their own row). Promoted
-  owners manage people — invite, remove, change roles. Renaming and deleting
-  stay with the project's *creator* (`projects.owner_id`), whose role is
-  locked and whose membership can't be removed — a project always has its
-  anchor.
+* **Roster** — everyone on the project with their avatar, name, and role.
+* **Roles** — three seats: **owners** manage people, **editors** write,
+  **viewers** only read. An owner changes any other member's role from the
+  roster dropdown (RLS: owners only, never their own row). Renaming and
+  deleting stay with the project's *creator* (`projects.owner_id`), whose
+  role is locked and whose membership can't be removed — a project always
+  has its anchor.
+* **Viewer is enforced at every layer, not just hidden in the UI:**
+  RLS write policies require `is_project_editor` (proposals, comments,
+  chat, published versions); both content-access gates
+  (`requireProjectAccess` / `requireProjectAccessAs`) load the member's
+  role and refuse viewers on any write-mode call; the MCP server forces
+  write-mode project access for every tool that mutates, so a viewer's API
+  key reads but never writes regardless of its scopes; and the invite RPC
+  refuses viewer callers. The editor renders read-only for viewers — no
+  publish/propose/import, no section editing, no agent, no new pages.
   Avatars are the real OAuth photo when there is one, otherwise the person's
   initial on one of eight muted hues picked by hashing their user id — same
   person, same color, light and dark (`src/components/ui/avatar.tsx`, themed
   by the `--avatar-*` tokens in `globals.css`).
 * **Invite by email** — the `invite_member` SECURITY DEFINER RPC: the
   invitee must have signed in to CopyDog once (no pending-invite emails in
-  v1); they join as an editor with their own draft branch, immediately.
-  Any member can invite. The RPC returns whether a membership was actually
-  created, so re-inviting someone already on the project says so instead of
-  pretending success; the no-account failure carries the stable errcode
-  `CD001`.
+  v1); they join immediately with their own draft branch, as an **editor or
+  viewer** (the invite form's role dropdown; owner is a deliberate
+  post-invite promotion). Owners and editors can invite; viewers can't.
+  The RPC returns whether a membership was actually created, so re-inviting
+  someone already on the project says so instead of pretending success; the
+  no-account failure carries the stable errcode `CD001`.
 * **Remove / leave** — the owner removes anyone with a two-click confirm; a
   member can leave the project themself. Both are server actions deleting
   under RLS (owner-or-self policy) that revalidate the project layout, so

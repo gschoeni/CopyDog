@@ -33,12 +33,20 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
       <div className="w-full max-w-sm text-center">
         <p className="text-xs font-medium uppercase tracking-[0.2em] text-ink-tertiary">{access.project.name}</p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight">Every site starts with a page</h1>
-        <p className="mt-2 text-sm leading-relaxed text-ink-secondary">
-          Name your first one and start writing — sections, versions, and the wireframe grow from there.
-        </p>
-        <div className="mt-8">
-          <FirstPageForm projectId={access.project.id} />
-        </div>
+        {access.role === "viewer" ? (
+          <p className="mt-2 text-sm leading-relaxed text-ink-secondary">
+            Nothing here yet — you&apos;ll see the copy as soon as a writer adds the first page.
+          </p>
+        ) : (
+          <>
+            <p className="mt-2 text-sm leading-relaxed text-ink-secondary">
+              Name your first one and start writing — sections, versions, and the wireframe grow from there.
+            </p>
+            <div className="mt-8">
+              <FirstPageForm projectId={access.project.id} />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

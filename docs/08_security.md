@@ -9,12 +9,20 @@ entry in [05_decisions.md](05_decisions.md).
 
 | Actor | Trust | Enforced by |
 |---|---|---|
-| Signed-in browser user | Their own memberships | Supabase RLS on every query (cookie session → `auth.uid()`) |
-| External agent with an API key | The key owner's memberships, narrowed by scopes | `McpToolApi` facade + membership gate + scope checks |
+| Signed-in browser user | Their own memberships, narrowed by role | Supabase RLS on every query (cookie session → `auth.uid()`) + role-aware access gates |
+| External agent with an API key | The key owner's memberships, narrowed by scopes **and role** | `McpToolApi` facade + membership gate + scope checks + write-mode role gate |
 | Content read by any LLM (copy, comments, imported sites) | **Untrusted input** | sanitizer allowlist, acceptance gates, MCP guardrails below |
 | The service-role Supabase client | Bypasses RLS — most dangerous object in the system | confined to two modules, eslint-fenced |
 
 ## Authorization boundaries
+
+**Roles narrow people; scopes narrow keys.** `project_role` is
+owner | editor | viewer. Viewers are read-only members: RLS write policies
+require `is_project_editor`, and — because Oxen content writes never touch
+RLS — both access gates (`requireProjectAccess` / `requireProjectAccessAs`)
+load the caller's role and throw `ReadOnlyMemberError` on any `write: true`
+call. The MCP server forces write mode for every tool declaring `mutates`,
+so a viewer's key cannot write no matter which scopes it carries.
 
 **Browser paths: RLS is the authority.** Policies live next to their tables
 in `src/lib/db/schema/*`; membership derives from `is_project_member` /

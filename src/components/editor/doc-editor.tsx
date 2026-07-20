@@ -90,14 +90,17 @@ export interface DocEditorProps {
   /** Attach the current text selection as assistant context. */
   onAddToChat?: (selection: SelectionForChat) => void;
   autoFocus?: boolean;
+  /** Viewer mode: the document renders but nothing can change it. */
+  readOnly?: boolean;
 }
 
 export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(function DocEditor(
-  { initialContent, linkPages, makeSlug, onSnapshotChange, renderSectionHeader, onAddToChat, autoFocus },
+  { initialContent, linkPages, makeSlug, onSnapshotChange, renderSectionHeader, onAddToChat, autoFocus, readOnly = false },
   ref,
 ) {
   const initialConfig = {
     namespace: "copydog-doc",
+    editable: !readOnly,
     theme: {
       heading: { h1: "editor-h1", h2: "editor-h2", h3: "editor-h3", h4: "editor-h4", h5: "editor-h5", h6: "editor-h6" },
       paragraph: "editor-p",
@@ -123,6 +126,7 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(function Do
         renderSectionHeader={renderSectionHeader}
         onAddToChat={onAddToChat}
         autoFocus={autoFocus}
+        readOnly={readOnly}
       />
     </LexicalComposer>
   );
@@ -136,6 +140,7 @@ function DocEditorInner({
   renderSectionHeader,
   onAddToChat,
   autoFocus,
+  readOnly,
 }: {
   handleRef: React.Ref<DocEditorHandle>;
   linkPages: PageLinkOption[];
@@ -144,6 +149,7 @@ function DocEditorInner({
   renderSectionHeader: (slug: string) => ReactNode;
   onAddToChat?: (selection: SelectionForChat) => void;
   autoFocus?: boolean;
+  readOnly: boolean;
 }) {
   const [editor] = useLexicalComposerContext();
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -328,10 +334,12 @@ function DocEditorInner({
       <RichTextPlugin
         contentEditable={<ContentEditable className="outline-none" aria-label="Page copy" />}
         placeholder={
-          // 2.85rem = .doc-editor padding-top (2.5rem) + .editor-p top margin (0.35em)
-          <p className="pointer-events-none absolute left-18 top-[2.85rem] text-ink-tertiary">
-            Start writing — highlight copy to group it into a section…
-          </p>
+          readOnly ? null : (
+            // 2.85rem = .doc-editor padding-top (2.5rem) + .editor-p top margin (0.35em)
+            <p className="pointer-events-none absolute left-18 top-[2.85rem] text-ink-tertiary">
+              Start writing — highlight copy to group it into a section…
+            </p>
+          )
         }
         ErrorBoundary={LexicalErrorBoundary}
       />
@@ -339,19 +347,21 @@ function DocEditorInner({
       <ListPlugin />
       <LinkPlugin />
       <OnChangePlugin onChange={handleChange} ignoreSelectionChange />
-      <SelectionToolbarPlugin
-        linkPages={linkPages}
-        onAddToChat={onAddToChat}
-        onGroup={() => {
-          let slug: string | null = null;
-          editor.update(() => {
-            const selection = $getSelection();
-            if (!$isRangeSelection(selection)) return;
-            slug = $groupElementsIntoSection($touchedElementNodes(selection.getNodes()), makeSlug);
-          });
-          return slug;
-        }}
-      />
+      {!readOnly && (
+        <SelectionToolbarPlugin
+          linkPages={linkPages}
+          onAddToChat={onAddToChat}
+          onGroup={() => {
+            let slug: string | null = null;
+            editor.update(() => {
+              const selection = $getSelection();
+              if (!$isRangeSelection(selection)) return;
+              slug = $groupElementsIntoSection($touchedElementNodes(selection.getNodes()), makeSlug);
+            });
+            return slug;
+          }}
+        />
+      )}
 
       {/* section chrome: invisible until hovered, floating in the gap above
           each section — nothing reserves space, nothing can overlap copy */}
@@ -371,17 +381,19 @@ function DocEditorInner({
                 style={{ top: rect.top - 1, left: 2 }}
                 data-section-rail={rect.slug}
               >
-                <button
-                  type="button"
-                  aria-label="Add section below"
-                  title="Add a section below"
-                  onClick={() => insertSectionAfter(editor, rect.slug, makeSlug)}
-                  className="flex size-6 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
-                >
-                  <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-                    <path d="M8 3v10M3 8h10" strokeLinecap="round" />
-                  </svg>
-                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    aria-label="Add section below"
+                    title="Add a section below"
+                    onClick={() => insertSectionAfter(editor, rect.slug, makeSlug)}
+                    className="flex size-6 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+                  >
+                    <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                      <path d="M8 3v10M3 8h10" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                )}
                 <SectionGrip
                   slug={rect.slug}
                   editor={editor}
@@ -390,6 +402,7 @@ function DocEditorInner({
                   onDropLine={setSectionDropLine}
                   open={openHeaderSlug === rect.slug}
                   onOpenChange={(open) => setOpenHeaderSlug(open ? rect.slug : null)}
+                  canDrag={!readOnly}
                 />
               </div>
               {/* header strip: title · version · notes · reorder · duplicate · delete — opens only
@@ -435,6 +448,7 @@ function SectionGrip({
   onDropLine,
   open,
   onOpenChange,
+  canDrag,
 }: {
   slug: string;
   editor: LexicalEditor;
@@ -443,9 +457,16 @@ function SectionGrip({
   onDropLine: (top: number | null) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  canDrag: boolean;
 }) {
   const startDrag = (event: React.PointerEvent) => {
     event.preventDefault();
+    // read-only: the handle still opens the header (title, versions, notes
+    // are all worth seeing) but a press can never become a reorder drag
+    if (!canDrag) {
+      onOpenChange(!open);
+      return;
+    }
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
 
@@ -511,9 +532,9 @@ function SectionGrip({
     <button
       type="button"
       aria-label="Section options"
-      title="Click for section options · drag to reorder"
+      title={canDrag ? "Click for section options · drag to reorder" : "Click for section options"}
       onPointerDown={startDrag}
-      className="flex size-6 shrink-0 cursor-grab items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+      className={`flex size-6 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink ${canDrag ? "cursor-grab" : ""}`}
     >
       <svg viewBox="0 0 16 16" className="size-4" fill="currentColor" aria-hidden>
         <circle cx="5.5" cy="3.5" r="1.2" />

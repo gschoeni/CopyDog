@@ -45,7 +45,8 @@ test("settings: rename, invite, leave, and remove a member", async ({ browser })
   await alice.page.getByRole("button", { name: "Invite" }).click();
   const bobRow = roster.getByRole("listitem").filter({ hasText: bobName });
   await expect(bobRow).toBeVisible({ timeout: 10_000 });
-  await expect(bobRow.getByLabel(`Change ${bobName}'s role`)).toHaveValue("editor");
+  const bobRole = bobRow.getByRole("combobox", { name: `Change ${bobName}'s role` });
+  await expect(bobRole).toContainText("Editor");
 
   // inviting him again is honest about it, not a false "Added"
   await alice.page.getByLabel("Invite by email").fill(bobEmail);
@@ -54,14 +55,15 @@ test("settings: rename, invite, leave, and remove a member", async ({ browser })
 
   // the owner can change Bob's role — promote to owner, then back to editor;
   // her own (creator) row offers no role control
-  const bobRole = alice.page.getByLabel(`Change ${bobName}'s role`);
-  await expect(alice.page.getByLabel(/Change .*'s role/)).toHaveCount(1);
-  await bobRole.selectOption("owner");
+  await expect(alice.page.getByRole("combobox", { name: /Change .*'s role/ })).toHaveCount(1);
+  await bobRole.click();
+  await alice.page.getByRole("option", { name: "Owner" }).click();
   await expect(alice.page.getByText(/is an owner now/)).toBeVisible({ timeout: 10_000 });
-  await expect(bobRole).toHaveValue("owner");
-  await bobRole.selectOption("editor");
+  await expect(bobRole).toContainText("Owner");
+  await bobRole.click();
+  await alice.page.getByRole("option", { name: "Editor" }).click();
   await expect(alice.page.getByText(/is an editor now/)).toBeVisible({ timeout: 10_000 });
-  await expect(bobRole).toHaveValue("editor");
+  await expect(bobRole).toContainText("Editor");
 
   // Bob sees the settings page, but none of the owner's controls
   await bob.page.goto(`${projectUrl}/settings`);

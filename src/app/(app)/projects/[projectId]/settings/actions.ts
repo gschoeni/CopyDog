@@ -45,6 +45,8 @@ export async function renameProjectAction(input: { projectId: string; name: stri
 const inviteInput = z.object({
   projectId: z.uuid(),
   email: z.string().trim().min(1, "Enter an email").max(320, "That doesn't look like an email"),
+  // owner is deliberately not invitable — promotion is a second step on the roster
+  role: z.enum(["editor", "viewer"]),
 });
 
 export type InviteMemberResult =
@@ -56,23 +58,31 @@ export type InviteMemberResult =
  * member can invite; the invitee must have signed in once). Runs server-side
  * so a successful invite can revalidate every route that renders the roster.
  */
-export async function inviteMemberAction(input: { projectId: string; email: string }): Promise<InviteMemberResult> {
+export async function inviteMemberAction(input: {
+  projectId: string;
+  email: string;
+  role: "editor" | "viewer";
+}): Promise<InviteMemberResult> {
   const parsed = inviteInput.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid email" };
   }
-  const { projectId, email } = parsed.data;
+  const { projectId, email, role } = parsed.data;
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("invite_member", {
     p_project_id: projectId,
     p_email: email,
+    p_role: role,
   });
   if (error) {
     // CD001 is the RPC's stable no-account errcode; the message check keeps
     // this working against a database that predates the errcode migration
     if (error.code === "CD001" || error.message.includes("no CopyDog account")) {
       return { ok: false, error: "No account with that email yet — ask them to sign in once first." };
+    }
+    if (error.message.includes("not allowed to invite")) {
+      return { ok: false, error: "Viewers can't invite people to the project." };
     }
     console.error("invite failed", { projectId, error });
     return { ok: false, error: "Couldn't invite that person." };
@@ -131,7 +141,7 @@ export async function removeMemberAction(input: { projectId: string; userId: str
 const roleInput = z.object({
   projectId: z.uuid(),
   userId: z.uuid(),
-  role: z.enum(["owner", "editor"]),
+  role: z.enum(["owner", "editor", "viewer"]),
 });
 
 export type UpdateMemberRoleResult = { ok: true } | { ok: false; error: string };
@@ -148,7 +158,7 @@ export type UpdateMemberRoleResult = { ok: true } | { ok: false; error: string }
 export async function updateMemberRoleAction(input: {
   projectId: string;
   userId: string;
-  role: "owner" | "editor";
+  role: "owner" | "editor" | "viewer";
 }): Promise<UpdateMemberRoleResult> {
   const { projectId, userId, role } = roleInput.parse(input);
 
