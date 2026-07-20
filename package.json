@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
+    "db:up": "supabase migration up --local",
     "db:reset": "supabase db reset",
     "check": "pnpm lint && pnpm typecheck && pnpm test && NEXT_DIST_DIR=.next-build pnpm build"
   },

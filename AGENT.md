@@ -72,9 +72,11 @@ When you're unsure where something goes, ask: *"Do I need to query this, or vers
 
 Drizzle owns the schema; the Supabase CLI owns the environment. Tables, types, and RLS policies are defined together in TypeScript under src/lib/db/schema/, one file per table. drizzle-kit generate diffs those definitions and emits SQL into supabase/migrations/, and the Supabase CLI applies it. Exactly one tool generates migrations — never run supabase db diff, or two generators will fight over the same schema. Keeping policies in the same file as the table they protect is the point: authorization is part of the schema, not a separate artifact that drifts away from it.
 
-Local development is supabase start, and that is the only database environment. It runs the whole stack in Docker — Postgres, Auth, Storage, Studio — which means real auth.uid() and real anon / authenticated / service_role roles rather than an approximation of them. supabase db reset rebuilds the database from scratch and replays every migration in order; treat that as a test, not just a reset button, because a failure there means the migrations are broken and you'd rather learn it on your laptop than during a deploy. Migrations reach production through CI, not from a developer's machine.
+Local development is supabase start, and that is the only database environment. It runs the whole stack in Docker — Postgres, Auth, Storage, Studio — which means real auth.uid() and real anon / authenticated / service_role roles rather than an approximation of them. **The local database holds real working data — users, projects, drafts. Treat it as precious.**
 
-Make sure we can quickly test in a test database that has the same schema as the real one.
+**Never run `pnpm db:reset` / `supabase db reset` unless the user explicitly asks for a wipe in the current conversation.** It destroys every row on the machine; verifying a migration is not a reason (that mistake has been made once already). The routine way to bring the local schema up to date is `pnpm db:up` (`supabase migration up --local`), which applies only pending migrations and touches no existing data. From-scratch replay verification is CI's job — migrations reach production through CI, not from a developer's machine, and a replay failure there means the migrations are broken.
+
+Tests never need a reset either: e2e runs sign up their own throwaway users and create their own projects against the running local stack, so they coexist with real local data. Keep it that way — anything a test writes must be data the test created.
 
 ## Process for making code updates (Ralph Wiggum Loop)
 
@@ -109,7 +111,7 @@ We built the codebase to have a really good testing framework from the start, so
 - `pnpm test:e2e` — Playwright end-to-end tests in `e2e/`. Builds and serves the app itself on port **3132**, so it coexists with `pnpm dev` on 3131 and the local `oxen-server` on 3000. Emailed auth links point at the dev origin; the test helpers rewrite them onto the test origin (`gotoEmailLink`).
 - `pnpm test:watch` — Vitest in watch mode while iterating.
 
-Database: `supabase start` runs the full local stack in Docker (Postgres on `127.0.0.1:54322`, credentials `postgres`/`postgres`). `pnpm db:generate` diffs `src/lib/db/schema/` into `supabase/migrations/`; `pnpm db:reset` replays every migration from scratch — treat a reset failure as a broken migration.
+Database: `supabase start` runs the full local stack in Docker (Postgres on `127.0.0.1:54322`, credentials `postgres`/`postgres`). `pnpm db:generate` diffs `src/lib/db/schema/` into `supabase/migrations/`; `pnpm db:up` applies pending migrations to the local database without destroying data. `pnpm db:reset` wipes all local data — user-approved only (see the Database section above); CI owns the from-scratch replay.
 
 ### Verification checklist
 
@@ -118,9 +120,9 @@ After every change, run these in order:
 1. `pnpm lint`
 2. `pnpm typecheck`
 3. `pnpm test`
-4. `pnpm build`
+4. `NEXT_DIST_DIR=.next-build pnpm build` — never bare `pnpm build`, which writes into `.next` and clobbers a running `pnpm dev`'s cache
 
-(`pnpm check` runs all four.) If the change touches the database schema: `pnpm db:generate` then `pnpm db:reset`. If it touches user-facing flows: `pnpm test:e2e`.
+(`pnpm check` runs all four.) If the change touches the database schema: `pnpm db:generate` then `pnpm db:up` — never `db:reset`, which wipes local data (CI does the from-scratch replay). If it touches user-facing flows: `pnpm test:e2e`.
 
 ### Environment Variables
 
