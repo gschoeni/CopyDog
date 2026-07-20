@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import type { ProjectRole } from "@/lib/members";
 import { getOxenClient } from "@/lib/oxen";
 import type { OxenClient } from "@/lib/oxen/client";
 import { createClient } from "@/lib/supabase/server";
@@ -11,8 +12,15 @@ import { ensureDraftView, type DraftView } from "./store";
 export interface ProjectAccess {
   user: { id: string; email: string | null };
   project: { id: string; name: string; slug: string; oxenRepo: string };
+  /** The caller's seat on this project. Viewers read; they never write. */
+  role: ProjectRole;
   oxen: OxenClient;
   view: DraftView;
+}
+
+export interface AccessOptions {
+  /** The caller intends to mutate — viewers are refused at the gate. */
+  write?: boolean;
 }
 
 /**
@@ -40,6 +48,19 @@ export class UnauthenticatedError extends Error {
   }
 }
 
+/**
+ * The caller is a member, but a read-only one (viewer role) attempting a
+ * write. Not a 404 — the project exists and they can see it — and not an
+ * infra fault. The UI hides write affordances from viewers, so hitting
+ * this means someone went around the UI; refuse politely.
+ */
+export class ReadOnlyMemberError extends Error {
+  constructor() {
+    super("viewers have read-only access to this project");
+    this.name = "ReadOnlyMemberError";
+  }
+}
+
 interface ProjectRow {
   id: string;
   name: string;
@@ -54,7 +75,16 @@ interface ProjectRow {
  * workspace and assembles the ProjectAccess. Kept in one place so the two
  * gates can never drift on error handling or result shape.
  */
-async function openDraftAccess(user: ProjectAccess["user"], project: ProjectRow): Promise<ProjectAccess> {
+async function openDraftAccess(
+  user: ProjectAccess["user"],
+  project: ProjectRow,
+  role: ProjectRole,
+  options: AccessOptions | undefined,
+): Promise<ProjectAccess> {
+  // the one write gate both access paths share: a viewer never gets a
+  // writable ProjectAccess, no matter how the request authenticated
+  if (options?.write && role === "viewer") throw new ReadOnlyMemberError();
+
   const oxen = getOxenClient();
   let view: DraftView;
   try {
@@ -69,6 +99,7 @@ async function openDraftAccess(user: ProjectAccess["user"], project: ProjectRow)
   return {
     user,
     project: { id: project.id, name: project.name, slug: project.slug, oxenRepo: project.oxen_repo },
+    role,
     oxen,
     view,
   };
@@ -80,21 +111,25 @@ async function openDraftAccess(user: ProjectAccess["user"], project: ProjectRow)
  * draft branch + workspace exist. Throws on any failure — callers treat
  * that as 404/401.
  */
-export async function requireProjectAccess(projectId: string): Promise<ProjectAccess> {
+export async function requireProjectAccess(projectId: string, options?: AccessOptions): Promise<ProjectAccess> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new UnauthenticatedError();
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, name, slug, oxen_repo")
-    .eq("id", projectId)
-    .single();
+  // membership + project + role in one round trip; RLS scopes the rows,
+  // the join proves membership
+  const { data: membership } = await supabase
+    .from("project_members")
+    .select("role, projects(id, name, slug, oxen_repo)")
+    .eq("project_id", projectId)
+    .eq("user_id", user.id)
+    .maybeSingle<{ role: ProjectRole; projects: ProjectRow | null }>();
+  const project = membership?.projects ?? null;
   if (!project) throw new Error("project not found or not a member");
 
-  return openDraftAccess({ id: user.id, email: user.email ?? null }, project);
+  return openDraftAccess({ id: user.id, email: user.email ?? null }, project, membership!.role, options);
 }
 
 /**
@@ -109,6 +144,7 @@ export async function requireProjectAccessAs(
   admin: SupabaseClient,
   userId: string,
   projectId: string,
+  options?: AccessOptions,
 ): Promise<ProjectAccess> {
   // membership + project in one round trip — the join IS the membership gate
   // (a row exists only if this user belongs to the project). No separate
@@ -116,14 +152,14 @@ export async function requireProjectAccessAs(
   // CASCADE, so a resolved key already proves the profile exists.
   const { data: membership } = await admin
     .from("project_members")
-    .select("projects(id, name, slug, oxen_repo)")
+    .select("role, projects(id, name, slug, oxen_repo)")
     .eq("project_id", projectId)
     .eq("user_id", userId)
-    .maybeSingle<{ projects: ProjectRow | null }>();
+    .maybeSingle<{ role: ProjectRole; projects: ProjectRow | null }>();
   const project = membership?.projects ?? null;
   if (!project) throw new Error("project not found or not a member");
 
   const { data: emailRow } = await admin.auth.admin.getUserById(userId);
 
-  return openDraftAccess({ id: userId, email: emailRow?.user?.email ?? null }, project);
+  return openDraftAccess({ id: userId, email: emailRow?.user?.email ?? null }, project, membership!.role, options);
 }

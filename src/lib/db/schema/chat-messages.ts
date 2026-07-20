@@ -45,10 +45,11 @@ export const chatMessages = pgTable(
       to: authenticatedRole,
       using: sql`${table.userId} = ${authUid}`,
     }),
+    // the agent writes to the user's draft, so chatting is a write seat
     pgPolicy("chat_messages_insert_own", {
       for: "insert",
       to: authenticatedRole,
-      withCheck: sql`${table.userId} = ${authUid} and public.is_project_member(${table.projectId})`,
+      withCheck: sql`${table.userId} = ${authUid} and public.is_project_editor(${table.projectId})`,
     }),
     pgPolicy("chat_messages_delete_own", {
       for: "delete",

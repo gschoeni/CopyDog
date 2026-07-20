@@ -19,7 +19,7 @@ const proposalRef = z.object({
  */
 export async function mergeProposalAction(input: z.infer<typeof proposalRef>): Promise<{ ok: true } | { ok: false; error: string }> {
   const { projectId, proposalId } = proposalRef.parse(input);
-  const access = await requireProjectAccess(projectId);
+  const access = await requireProjectAccess(projectId, { write: true });
 
   const result = await mergeProposal(await createClient(), access, proposalId);
   if (!result.ok) return result;
@@ -30,7 +30,7 @@ export async function mergeProposalAction(input: z.infer<typeof proposalRef>): P
 
 export async function closeProposalAction(input: z.infer<typeof proposalRef>): Promise<{ ok: boolean }> {
   const { projectId, proposalId } = proposalRef.parse(input);
-  const access = await requireProjectAccess(projectId);
+  const access = await requireProjectAccess(projectId, { write: true });
 
   await closeProposal(await createClient(), access, proposalId);
 

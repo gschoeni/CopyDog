@@ -57,7 +57,7 @@ async function accessForSave(
   projectId: string,
 ): Promise<{ access: ProjectAccess } | { authRequired: true }> {
   try {
-    return { access: await requireProjectAccess(projectId) };
+    return { access: await requireProjectAccess(projectId, { write: true }) };
   } catch (err) {
     if (err instanceof UnauthenticatedError) return { authRequired: true };
     throw err;
@@ -128,7 +128,7 @@ export async function createVersionAction(
   input: z.infer<typeof createVersionInput>,
 ): Promise<{ slug: string; markdown: string }> {
   const { projectId, pageSlug, sectionSlug, label, copyFrom, existingSlugs } = createVersionInput.parse(input);
-  const { oxen, view } = await requireProjectAccess(projectId);
+  const { oxen, view } = await requireProjectAccess(projectId, { write: true });
 
   const base =
     label
@@ -171,7 +171,7 @@ const publishInput = z.object({
  */
 export async function publishAction(input: z.infer<typeof publishInput>): Promise<{ ok: boolean }> {
   const { projectId, message } = publishInput.parse(input);
-  const access = await requireProjectAccess(projectId);
+  const access = await requireProjectAccess(projectId, { write: true });
   await publishDraftAndIndex(await createClient(), access, message);
   return { ok: true };
 }
@@ -185,7 +185,7 @@ const proposeInput = z.object({
 /** Publishes any pending edits, then opens a proposal from the caller's draft to main. */
 export async function proposeAction(input: z.infer<typeof proposeInput>): Promise<{ proposalId: string }> {
   const { projectId, title, description } = proposeInput.parse(input);
-  const access = await requireProjectAccess(projectId);
+  const access = await requireProjectAccess(projectId, { write: true });
   return openProposal(await createClient(), access, { title, description });
 }
 
@@ -204,7 +204,7 @@ export async function adoptVersionAction(
   input: z.infer<typeof adoptInput>,
 ): Promise<{ slug: string; markdown: string }> {
   const { projectId, pageSlug, sectionSlug, versionSlug, authorId, label, existingSlugs } = adoptInput.parse(input);
-  const { oxen, view } = await requireProjectAccess(projectId);
+  const { oxen, view } = await requireProjectAccess(projectId, { write: true });
 
   const base =
     label
@@ -233,7 +233,7 @@ const syncInput = z.object({
 /** Replaces this page in the caller's draft with main's published state. */
 export async function syncPageFromMainAction(input: z.infer<typeof syncInput>): Promise<{ ok: boolean }> {
   const { projectId, pageSlug } = syncInput.parse(input);
-  const { oxen, view } = await requireProjectAccess(projectId);
+  const { oxen, view } = await requireProjectAccess(projectId, { write: true });
   await syncPageFromMain(oxen, view, pageSlug);
   return { ok: true };
 }
@@ -258,7 +258,7 @@ export type ImportResult = { ok: true; sections: number } | { ok: false; error: 
  */
 export async function importPageAction(input: z.infer<typeof importPageInput>): Promise<ImportResult> {
   const { projectId, pageSlug, source } = importPageInput.parse(input);
-  const { oxen, view } = await requireProjectAccess(projectId);
+  const { oxen, view } = await requireProjectAccess(projectId, { write: true });
   const llm = getLlmClient();
 
   let extracted: ExtractedSection[];
@@ -367,7 +367,7 @@ export async function generateWireframeAction(
   input: z.infer<typeof generateWireframeInput>,
 ): Promise<{ html: string }> {
   const { projectId, pageSlug } = generateWireframeInput.parse(input);
-  const { oxen, view } = await requireProjectAccess(projectId);
+  const { oxen, view } = await requireProjectAccess(projectId, { write: true });
 
   const doc = await readDoc(oxen, view, pageSlug);
   const sections: SectionForLayout[] = await Promise.all(
@@ -397,7 +397,7 @@ const addPageInput = z.object({
 
 export async function addPageAction(input: z.infer<typeof addPageInput>): Promise<{ slug: string }> {
   const { projectId, title, parentSlug } = addPageInput.parse(input);
-  const { oxen, view } = await requireProjectAccess(projectId);
+  const { oxen, view } = await requireProjectAccess(projectId, { write: true });
   return addPage(oxen, view, title, parentSlug);
 }
 
@@ -413,7 +413,7 @@ const movePageInput = z.object({
 /** Reorders / renests a page (subtree included) in the caller's draft sitemap. */
 export async function movePageAction(input: z.infer<typeof movePageInput>): Promise<{ ok: boolean }> {
   const { projectId, slug, parentSlug, beforeSlug } = movePageInput.parse(input);
-  const { oxen, view } = await requireProjectAccess(projectId);
+  const { oxen, view } = await requireProjectAccess(projectId, { write: true });
 
   const site = await readSite(oxen, view);
   if (!movePageNode(site.pages, slug, parentSlug, beforeSlug)) {

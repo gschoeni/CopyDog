@@ -52,7 +52,7 @@ export async function POST(
 
   let access;
   try {
-    access = await requireProjectAccess(projectId);
+    access = await requireProjectAccess(projectId, { write: true });
   } catch (err) {
     if (err instanceof ContentStoreUnavailableError) {
       return Response.json({ error: "The content store is unreachable — is the Oxen server running?" }, { status: 503 });

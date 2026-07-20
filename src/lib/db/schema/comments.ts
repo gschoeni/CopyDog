@@ -34,17 +34,18 @@ export const comments = pgTable(
       to: authenticatedRole,
       using: sql`public.is_project_member(${table.projectId})`,
     }),
+    // writers only — viewers read notes but don't leave them (a future
+    // "commenter" role is the backlog seat for note-leaving clients)
     pgPolicy("comments_insert_members_as_self", {
       for: "insert",
       to: authenticatedRole,
-      withCheck: sql`public.is_project_member(${table.projectId}) and ${table.authorId} = ${authUid}`,
+      withCheck: sql`public.is_project_editor(${table.projectId}) and ${table.authorId} = ${authUid}`,
     }),
-    // any member can resolve/unresolve (clients resolve their feedback loops)
     pgPolicy("comments_update_members", {
       for: "update",
       to: authenticatedRole,
-      using: sql`public.is_project_member(${table.projectId})`,
-      withCheck: sql`public.is_project_member(${table.projectId})`,
+      using: sql`public.is_project_editor(${table.projectId})`,
+      withCheck: sql`public.is_project_editor(${table.projectId})`,
     }),
     pgPolicy("comments_delete_author", {
       for: "delete",

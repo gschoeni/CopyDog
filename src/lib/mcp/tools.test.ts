@@ -75,8 +75,12 @@ function makeApi(
     keyName: "test key",
     scopes: overrides.scopes ?? (["read", "write", "collab", "merge"] as ApiKeyScope[]),
     llm: overrides.llm ?? null,
-    requireProject: async (projectId) => {
+    requireProject: async (projectId, options) => {
       if (projectId !== PROJECT_ID) throw new McpToolError("Project not found, or this key's owner is not a member.");
+      // mirror the real gate in context.ts: write mode refuses viewers
+      if (options?.write && handle.role === "viewer") {
+        throw new McpToolError("This key's owner has read-only (viewer) access to this project.");
+      }
       return handle;
     },
     listMemberships: async () => [{ id: PROJECT_ID, name: "Test", slug: "test", role: "editor" }],
@@ -120,6 +124,7 @@ describe("MCP tool surface", () => {
     handle = {
       user: { id: USER_ID, email: "tester@copydog.app" },
       project: { id: PROJECT_ID, name: "Test", slug: "test", oxenRepo: REPO },
+      role: "editor",
       oxen,
       view,
       db: fakeDb(recorded),
@@ -150,6 +155,25 @@ describe("MCP tool surface", () => {
     it("merge scope is required for merge_proposal and no other scope grants it", async () => {
       const server = buildMcpServer(makeApi(handle, recorded, { scopes: ["read", "write", "collab"] }));
       expect((await server.listTools()).map((t) => t.name)).not.toContain("merge_proposal");
+    });
+  });
+
+  describe("viewer role gating", () => {
+    it("a viewer's key is refused on mutating tools even with full scopes, but reads still work", async () => {
+      const server = buildMcpServer(makeApi({ ...handle, role: "viewer" }, recorded));
+
+      const write = await server.callTool("rewrite_section", {
+        project_id: PROJECT_ID,
+        page_slug: "home",
+        section_slug: "hero",
+        label: "Nope",
+        markdown: "# nope\n",
+      });
+      expect(write.isError).toBe(true);
+      expect(write.content[0]!.text).toContain("read-only (viewer)");
+
+      const read = await server.callTool("get_page", { project_id: PROJECT_ID, page_slug: "home" });
+      expect(read.isError).toBeUndefined();
     });
   });
 

@@ -5,8 +5,12 @@ import { authUid, authenticatedRole } from "drizzle-orm/supabase";
 import { profiles } from "./profiles";
 import { projects } from "./projects";
 
-/** v1 keeps roles simple: everyone edits; owners can also manage the project. */
-export const projectRole = pgEnum("project_role", ["owner", "editor"]);
+/**
+ * Three roles: owners manage the project, editors write, viewers only read.
+ * "May write" checks go through public.is_project_editor (owner or editor);
+ * viewer is the read-only client seat.
+ */
+export const projectRole = pgEnum("project_role", ["owner", "editor", "viewer"]);
 
 export const projectMembers = pgTable(
   "project_members",

@@ -38,7 +38,7 @@ export const sectionVersions = pgTable(
     pgPolicy("section_versions_insert_own", {
       for: "insert",
       to: authenticatedRole,
-      withCheck: sql`public.is_project_member(${table.projectId}) and ${table.authorId} = ${authUid}`,
+      withCheck: sql`public.is_project_editor(${table.projectId}) and ${table.authorId} = ${authUid}`,
     }),
     pgPolicy("section_versions_update_own", {
       for: "update",

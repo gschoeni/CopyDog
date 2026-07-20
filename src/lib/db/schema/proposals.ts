@@ -43,15 +43,15 @@ export const proposals = pgTable(
     pgPolicy("proposals_insert_members_as_self", {
       for: "insert",
       to: authenticatedRole,
-      withCheck: sql`public.is_project_member(${table.projectId}) and ${table.authorId} = ${authUid}`,
+      withCheck: sql`public.is_project_editor(${table.projectId}) and ${table.authorId} = ${authUid}`,
     }),
-    // v1: every editor can merge or close — the review moment is social,
-    // not gated (matches "everyone is an editor")
+    // every editor can merge or close — the review moment is social, not
+    // gated; viewers watch, they don't resolve
     pgPolicy("proposals_update_members", {
       for: "update",
       to: authenticatedRole,
-      using: sql`public.is_project_member(${table.projectId})`,
-      withCheck: sql`public.is_project_member(${table.projectId})`,
+      using: sql`public.is_project_editor(${table.projectId})`,
+      withCheck: sql`public.is_project_editor(${table.projectId})`,
     }),
   ],
 );

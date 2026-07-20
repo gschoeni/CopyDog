@@ -5,9 +5,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * sidebar facepile, and anywhere else faces render. One select string and one
  * mapper, so the surfaces can't drift apart.
  */
+/** Owners manage, editors write, viewers only read. */
+export type ProjectRole = "owner" | "editor" | "viewer";
+
 export interface ProjectMember {
   userId: string;
-  role: "owner" | "editor";
+  role: ProjectRole;
   displayName: string;
   avatarUrl: string | null;
 }
@@ -16,7 +19,7 @@ export const MEMBER_SELECT = "user_id, role, profile:profiles(display_name, avat
 
 interface MemberRow {
   user_id: string;
-  role: "owner" | "editor";
+  role: ProjectRole;
   profile: { display_name: string; avatar_url: string | null } | null;
 }
 

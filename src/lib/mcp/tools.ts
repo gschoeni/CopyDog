@@ -660,7 +660,13 @@ export function buildMcpServer(api: McpToolApi): McpToolServer {
       }
       try {
         if (tool.extraCost) await api.consumeRate(tool.extraCost);
-        let text = await tool.run(args, api);
+        // a mutating tool only ever sees a write-mode project gate, so a
+        // viewer-role member is refused centrally — current and future
+        // tools alike, regardless of the key's scopes
+        const toolApi: McpToolApi = tool.mutates
+          ? { ...api, requireProject: (projectId, options) => api.requireProject(projectId, { ...options, write: true }) }
+          : api;
+        let text = await tool.run(args, toolApi);
         if (tool.mutates) {
           const detail = Object.fromEntries(
             Object.entries(args).filter(([key]) => AUDITABLE_ARG_KEYS.has(key)),

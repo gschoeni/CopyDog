@@ -2,7 +2,13 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { ContentStoreUnavailableError, requireProjectAccessAs, type ProjectAccess } from "@/lib/content/access";
+import {
+  ContentStoreUnavailableError,
+  ReadOnlyMemberError,
+  requireProjectAccessAs,
+  type AccessOptions,
+  type ProjectAccess,
+} from "@/lib/content/access";
 import { API_KEY_SCOPES, type ApiKeyScope } from "@/lib/db/schema/api-keys";
 import { getLlmClient } from "@/lib/llm";
 import type { LlmClient } from "@/lib/llm/client";
@@ -36,8 +42,12 @@ export interface McpToolApi {
   keyName: string;
   scopes: ApiKeyScope[];
   llm: LlmClient | null;
-  /** Membership gate — the only door to project data. Throws McpToolError. */
-  requireProject(projectId: string): Promise<ProjectHandle>;
+  /**
+   * Membership gate — the only door to project data. Throws McpToolError.
+   * `write: true` additionally refuses viewer-role members; buildMcpServer
+   * forces it for every tool declaring `mutates`.
+   */
+  requireProject(projectId: string, options?: AccessOptions): Promise<ProjectHandle>;
   /** The one project-less read: the caller's own memberships. */
   listMemberships(): Promise<{ id: string; name: string; slug: string; role: string }[]>;
   /** Draws from the key's per-minute budget; throws RateLimitExceededError. */
@@ -59,9 +69,9 @@ export async function authenticateMcp(bearerKey: string): Promise<McpToolApi | n
     scopes: identity.scopes.filter(isScope),
     llm: getLlmClient(),
 
-    async requireProject(projectId) {
+    async requireProject(projectId, options) {
       try {
-        const access = await requireProjectAccessAs(admin, identity.userId, projectId);
+        const access = await requireProjectAccessAs(admin, identity.userId, projectId, options);
         return { ...access, db: admin };
       } catch (err) {
         // the store being down is infrastructure, not a 404 — collapsing it
@@ -69,6 +79,11 @@ export async function authenticateMcp(bearerKey: string): Promise<McpToolApi | n
         if (err instanceof ContentStoreUnavailableError) {
           console.error("mcp content store unavailable", err);
           throw new McpToolError("The content store is temporarily unavailable — try again shortly.");
+        }
+        // a viewer seat outranks the key's scopes: say so plainly instead
+        // of pretending the project doesn't exist
+        if (err instanceof ReadOnlyMemberError) {
+          throw new McpToolError("This key's owner has read-only (viewer) access to this project.");
         }
         // other failures carry internals (repo names) meant for our logs
         console.error("mcp project access failed", err);

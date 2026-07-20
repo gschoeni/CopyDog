@@ -1,0 +1,7 @@
+ALTER TYPE "public"."project_role" ADD VALUE 'viewer';--> statement-breakpoint
+ALTER POLICY "chat_messages_insert_own" ON "chat_messages" TO authenticated WITH CHECK ("chat_messages"."user_id" = (select auth.uid()) and public.is_project_editor("chat_messages"."project_id"));--> statement-breakpoint
+ALTER POLICY "comments_insert_members_as_self" ON "comments" TO authenticated WITH CHECK (public.is_project_editor("comments"."project_id") and "comments"."author_id" = (select auth.uid()));--> statement-breakpoint
+ALTER POLICY "comments_update_members" ON "comments" TO authenticated USING (public.is_project_editor("comments"."project_id")) WITH CHECK (public.is_project_editor("comments"."project_id"));--> statement-breakpoint
+ALTER POLICY "proposals_insert_members_as_self" ON "proposals" TO authenticated WITH CHECK (public.is_project_editor("proposals"."project_id") and "proposals"."author_id" = (select auth.uid()));--> statement-breakpoint
+ALTER POLICY "proposals_update_members" ON "proposals" TO authenticated USING (public.is_project_editor("proposals"."project_id")) WITH CHECK (public.is_project_editor("proposals"."project_id"));--> statement-breakpoint
+ALTER POLICY "section_versions_insert_own" ON "section_versions" TO authenticated WITH CHECK (public.is_project_editor("section_versions"."project_id") and "section_versions"."author_id" = (select auth.uid()));
