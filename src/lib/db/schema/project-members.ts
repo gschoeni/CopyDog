@@ -39,5 +39,15 @@ export const projectMembers = pgTable(
       to: authenticatedRole,
       using: sql`public.is_project_owner(${table.projectId}) or ${table.userId} = ${authUid}`,
     }),
+    // owners set other members' roles; never their own row, so a project
+    // can't demote its way to zero owners. Protecting the project creator
+    // (projects.owner_id) is app logic in the settings actions, not RLS —
+    // demoting the creator is a footgun, not a privilege escalation.
+    pgPolicy("project_members_update_owner_not_self", {
+      for: "update",
+      to: authenticatedRole,
+      using: sql`public.is_project_owner(${table.projectId}) and ${table.userId} <> ${authUid}`,
+      withCheck: sql`public.is_project_owner(${table.projectId}) and ${table.userId} <> ${authUid}`,
+    }),
   ],
 );

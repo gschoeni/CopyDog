@@ -6,23 +6,29 @@ import { useState } from "react";
 
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { ChevronLeftIcon, TrashIcon } from "@/components/ui/icons";
+import { ChevronDownIcon, ChevronLeftIcon, TrashIcon } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import type { ProjectMember } from "@/lib/members";
 
 import { DeleteProjectDialog } from "../../delete-project-dialog";
-import { inviteMemberAction, removeMemberAction, renameProjectAction } from "./actions";
+import { inviteMemberAction, removeMemberAction, renameProjectAction, updateMemberRoleAction } from "./actions";
 
 export function ProjectSettings({
   projectId,
   name,
   isOwner,
+  isCreator,
+  creatorId,
   currentUserId,
   members,
 }: {
   projectId: string;
   name: string;
+  /** Has the owner role: manages people (invite, remove, set roles). */
   isOwner: boolean;
+  /** Created the project (projects.owner_id): also renames and deletes. */
+  isCreator: boolean;
+  creatorId: string;
   currentUserId: string;
   members: ProjectMember[];
 }) {
@@ -40,9 +46,15 @@ export function ProjectSettings({
         Who&apos;s working on this project, and how it&apos;s set up.
       </p>
 
-      <ProjectNameSection projectId={projectId} name={name} isOwner={isOwner} />
-      <PeopleSection projectId={projectId} isOwner={isOwner} currentUserId={currentUserId} members={members} />
-      {isOwner && <DangerZone projectId={projectId} name={name} />}
+      <ProjectNameSection projectId={projectId} name={name} isOwner={isCreator} />
+      <PeopleSection
+        projectId={projectId}
+        isOwner={isOwner}
+        creatorId={creatorId}
+        currentUserId={currentUserId}
+        members={members}
+      />
+      {isCreator && <DangerZone projectId={projectId} name={name} />}
     </div>
   );
 }
@@ -87,7 +99,7 @@ function ProjectNameSection({ projectId, name, isOwner }: { projectId: string; n
         <h2 className="text-sm font-semibold">Project name</h2>
         <p className="mt-2 text-sm text-ink-secondary">
           {name}
-          <span className="ml-2 text-ink-tertiary">· only the owner can rename it</span>
+          <span className="ml-2 text-ink-tertiary">· only the project&apos;s creator can rename it</span>
         </p>
       </section>
     );
@@ -130,11 +142,13 @@ function ProjectNameSection({ projectId, name, isOwner }: { projectId: string; n
 function PeopleSection({
   projectId,
   isOwner,
+  creatorId,
   currentUserId,
   members,
 }: {
   projectId: string;
   isOwner: boolean;
+  creatorId: string;
   currentUserId: string;
   members: ProjectMember[];
 }) {
@@ -144,6 +158,15 @@ function PeopleSection({
   const [error, setError] = useState<string | null>(null);
   // userId of the row whose remove/leave is awaiting its second click
   const [armed, setArmed] = useState<string | null>(null);
+
+  // optimistic role while the change round-trips; cleared when props catch up
+  // (React's "adjust state when props change" render-time pattern)
+  const [pendingRole, setPendingRole] = useState<{ userId: string; role: "owner" | "editor" } | null>(null);
+  const [prevMembers, setPrevMembers] = useState(members);
+  if (prevMembers !== members) {
+    setPrevMembers(members);
+    setPendingRole(null);
+  }
 
   async function invite(email: string): Promise<boolean> {
     if (!email.trim() || busy) return false;
@@ -162,6 +185,33 @@ function PeopleSection({
     } catch {
       setError("Couldn't invite that person. Please try again.");
       return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function changeRole(member: ProjectMember, role: "owner" | "editor") {
+    if (busy || member.role === role) return;
+    setBusy(true);
+    setNotice(null);
+    setError(null);
+    setPendingRole({ userId: member.userId, role });
+    try {
+      const result = await updateMemberRoleAction({ projectId, userId: member.userId, role });
+      if (!result.ok) {
+        setError(result.error);
+        setPendingRole(null);
+        return;
+      }
+      setNotice(
+        role === "owner"
+          ? `${member.displayName} is an owner now — they can manage the team too.`
+          : `${member.displayName} is an editor now.`,
+      );
+      router.refresh();
+    } catch {
+      setError("Couldn't change their role. Please try again.");
+      setPendingRole(null);
     } finally {
       setBusy(false);
     }
@@ -225,10 +275,12 @@ function PeopleSection({
       <ul aria-label="Project members" className="mt-4 divide-y divide-border rounded-lg border border-border bg-surface">
         {members.map((member) => {
           const isSelf = member.userId === currentUserId;
+          const isCreatorRow = member.userId === creatorId;
           const isArmed = armed === member.userId;
-          // the owner removes anyone else; a member can only remove themself
-          // (role guards against owner_id/role drift ever offering the owner a leave)
-          const canRemove = isOwner ? !isSelf : isSelf && member.role !== "owner";
+          // the creator anchors the project: role locked, membership permanent.
+          // Owners manage everyone else; anyone else can remove themself.
+          const canChangeRole = isOwner && !isSelf && !isCreatorRow;
+          const canRemove = isSelf ? !isCreatorRow : isOwner && !isCreatorRow;
           return (
             <li key={member.userId} className="flex items-center gap-3 px-4 py-3">
               <Avatar userId={member.userId} name={member.displayName} avatarUrl={member.avatarUrl} className="size-7 text-xs" />
@@ -236,9 +288,28 @@ function PeopleSection({
                 {member.displayName}
                 {isSelf && <span className="ml-1.5 text-ink-tertiary">(you)</span>}
               </span>
-              <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.15em] text-ink-tertiary">
-                {member.role}
-              </span>
+              {canChangeRole ? (
+                <span className="relative shrink-0">
+                  <select
+                    value={pendingRole?.userId === member.userId ? pendingRole.role : member.role}
+                    aria-label={`Change ${member.displayName}'s role`}
+                    disabled={busy}
+                    onChange={(e) => void changeRole(member, e.target.value as "owner" | "editor")}
+                    className="cursor-pointer appearance-none rounded-md border border-transparent bg-transparent py-1 pl-2 pr-6 text-[10px] font-semibold uppercase tracking-[0.15em] text-ink-tertiary transition-colors hover:border-border hover:text-ink focus:border-accent focus:outline-none disabled:cursor-default disabled:opacity-50"
+                  >
+                    <option value="owner">Owner</option>
+                    <option value="editor">Editor</option>
+                  </select>
+                  <ChevronDownIcon aria-hidden className="pointer-events-none absolute right-1.5 top-1/2 size-3 -translate-y-1/2 text-ink-tertiary" />
+                </span>
+              ) : (
+                <span
+                  title={isCreatorRow ? "Created the project" : undefined}
+                  className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.15em] text-ink-tertiary"
+                >
+                  {member.role}
+                </span>
+              )}
               {canRemove &&
                 (isArmed ? (
                   <span className="flex shrink-0 items-center gap-1.5">

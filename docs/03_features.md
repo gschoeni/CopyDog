@@ -87,6 +87,12 @@ people-management lives:
 
 * **Roster** — everyone on the project with their avatar, name, and role
   (owner / editor, the only two roles in v1; everyone edits, owners manage).
+* **Roles** — an owner can change any other member's role between owner and
+  editor from the roster (RLS: owners only, never their own row). Promoted
+  owners manage people — invite, remove, change roles. Renaming and deleting
+  stay with the project's *creator* (`projects.owner_id`), whose role is
+  locked and whose membership can't be removed — a project always has its
+  anchor.
   Avatars are the real OAuth photo when there is one, otherwise the person's
   initial on one of eight muted hues picked by hashing their user id — same
   person, same color, light and dark (`src/components/ui/avatar.tsx`, themed

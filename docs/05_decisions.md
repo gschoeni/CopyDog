@@ -374,3 +374,16 @@ can invite, the invitee must have signed in once (pending-invite emails
 stay backlog). Avatars ship with it: photo when OAuth gave us one, else
 initial on a hue hashed from the user id (`ui/avatar.tsx`, `--avatar-*`
 tokens) — the docs' "faces everywhere" spec, first realized here.
+
+## 2026-07-19 — Two tiers of "owner": role vs creator
+
+**The role manages people; the creator anchors the project.** Promoting a
+member to the owner role (new: roster role dropdown, owner-only via the
+`project_members_update_owner_not_self` RLS policy) grants what
+`is_project_owner` grants — invite, remove members, change roles. Renaming
+and deleting stay with `projects.owner_id`, the creator, because those RLS
+policies key off that column. The creator's role is locked and their
+membership unremovable (app-level guards in the settings actions — a
+demoted creator is a footgun, not an escalation, so RLS doesn't carry it).
+Nobody can change their own role (that one IS RLS), so a project can't
+demote its way to zero owners.

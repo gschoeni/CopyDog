@@ -1,0 +1,1 @@
+CREATE POLICY "project_members_update_owner_not_self" ON "project_members" AS PERMISSIVE FOR UPDATE TO "authenticated" USING (public.is_project_owner("project_members"."project_id") and "project_members"."user_id" <> (select auth.uid())) WITH CHECK (public.is_project_owner("project_members"."project_id") and "project_members"."user_id" <> (select auth.uid()));

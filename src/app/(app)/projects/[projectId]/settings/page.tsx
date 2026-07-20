@@ -37,7 +37,10 @@ export default async function ProjectSettingsPage({
     <ProjectSettings
       projectId={project.id}
       name={project.name}
-      isOwner={project.owner_id === user.id}
+      // owner role = people-management; the creator additionally renames/deletes
+      isOwner={members.some((member) => member.userId === user.id && member.role === "owner")}
+      isCreator={project.owner_id === user.id}
+      creatorId={project.owner_id as string}
       currentUserId={user.id}
       members={members}
     />

@@ -45,17 +45,28 @@ test("settings: rename, invite, leave, and remove a member", async ({ browser })
   await alice.page.getByRole("button", { name: "Invite" }).click();
   const bobRow = roster.getByRole("listitem").filter({ hasText: bobName });
   await expect(bobRow).toBeVisible({ timeout: 10_000 });
-  await expect(bobRow.getByText("editor")).toBeVisible();
+  await expect(bobRow.getByLabel(`Change ${bobName}'s role`)).toHaveValue("editor");
 
   // inviting him again is honest about it, not a false "Added"
   await alice.page.getByLabel("Invite by email").fill(bobEmail);
   await alice.page.getByRole("button", { name: "Invite" }).click();
   await expect(alice.page.getByText("They're already on this project.")).toBeVisible({ timeout: 10_000 });
 
+  // the owner can change Bob's role — promote to owner, then back to editor;
+  // her own (creator) row offers no role control
+  const bobRole = alice.page.getByLabel(`Change ${bobName}'s role`);
+  await expect(alice.page.getByLabel(/Change .*'s role/)).toHaveCount(1);
+  await bobRole.selectOption("owner");
+  await expect(alice.page.getByText(/is an owner now/)).toBeVisible({ timeout: 10_000 });
+  await expect(bobRole).toHaveValue("owner");
+  await bobRole.selectOption("editor");
+  await expect(alice.page.getByText(/is an editor now/)).toBeVisible({ timeout: 10_000 });
+  await expect(bobRole).toHaveValue("editor");
+
   // Bob sees the settings page, but none of the owner's controls
   await bob.page.goto(`${projectUrl}/settings`);
   await expect(bob.page.getByRole("heading", { name: "Settings" })).toBeVisible();
-  await expect(bob.page.getByText("only the owner can rename it")).toBeVisible();
+  await expect(bob.page.getByText("only the project's creator can rename it")).toBeVisible();
   await expect(bob.page.getByRole("button", { name: "Delete project" })).toHaveCount(0);
 
   // Bob leaves — two clicks — and lands on a project list without it

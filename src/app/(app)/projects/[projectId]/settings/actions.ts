@@ -102,6 +102,13 @@ export async function removeMemberAction(input: { projectId: string; userId: str
   if (!user) return { ok: false, error: "You're signed out — sign in and try again." };
   const left = userId === user.id;
 
+  // the creator anchors the project (rename/delete hang off owner_id):
+  // their membership is not removable, not even by themselves
+  const { data: project } = await supabase.from("projects").select("owner_id").eq("id", projectId).maybeSingle();
+  if (project?.owner_id === userId) {
+    return { ok: false, error: left ? "You created this project — delete it instead of leaving." : "The project's creator can't be removed." };
+  }
+
   const { data, error } = await supabase
     .from("project_members")
     .delete()
@@ -113,10 +120,64 @@ export async function removeMemberAction(input: { projectId: string; userId: str
     return { ok: false, error: left ? "Couldn't leave the project. Please try again." : "Couldn't remove them. Please try again." };
   }
   if (!data?.length) {
-    return { ok: false, error: left ? "Owners can't leave their own project." : "Only the project's owner can remove someone else." };
+    return { ok: false, error: left ? "Couldn't leave the project." : "Only a project owner can remove someone else." };
   }
 
   revalidatePath(`/projects/${projectId}`, "layout");
   if (left) revalidatePath("/projects");
   return { ok: true, left };
+}
+
+const roleInput = z.object({
+  projectId: z.uuid(),
+  userId: z.uuid(),
+  role: z.enum(["owner", "editor"]),
+});
+
+export type UpdateMemberRoleResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Sets another member's role. RLS enforces the security boundary (owners
+ * only, never your own row); this action adds the app-level guard that the
+ * project's creator stays an owner — rename and delete hang off owner_id,
+ * so demoting the creator would strand those powers on an "editor".
+ *
+ * Owner here means people-management: promoted owners invite, remove, and
+ * set roles. Renaming and deleting stay with the creator.
+ */
+export async function updateMemberRoleAction(input: {
+  projectId: string;
+  userId: string;
+  role: "owner" | "editor";
+}): Promise<UpdateMemberRoleResult> {
+  const { projectId, userId, role } = roleInput.parse(input);
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "You're signed out — sign in and try again." };
+  if (userId === user.id) return { ok: false, error: "You can't change your own role." };
+
+  const { data: project } = await supabase.from("projects").select("owner_id").eq("id", projectId).maybeSingle();
+  if (project?.owner_id === userId) {
+    return { ok: false, error: "The project creator's role can't be changed." };
+  }
+
+  const { data, error } = await supabase
+    .from("project_members")
+    .update({ role })
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .select("user_id");
+  if (error) {
+    console.error("member role update failed", { projectId, userId, role, error });
+    return { ok: false, error: "Couldn't change their role. Please try again." };
+  }
+  if (!data?.length) {
+    return { ok: false, error: "Only a project owner can change roles." };
+  }
+
+  revalidatePath(`/projects/${projectId}`, "layout");
+  return { ok: true };
 }
