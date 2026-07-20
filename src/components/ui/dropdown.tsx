@@ -129,7 +129,7 @@ export function Dropdown<T extends string>({
           id={listboxId}
           role="listbox"
           aria-label={label}
-          className="absolute right-0 top-full z-50 mt-1 min-w-max rounded-xl bg-ink p-1.5 shadow-raised"
+          className="absolute right-0 top-full z-50 mt-1 min-w-max rounded-xl border border-menu-border bg-menu p-1.5 shadow-raised"
         >
           {options.map((option, index) => (
             <li
@@ -138,8 +138,8 @@ export function Dropdown<T extends string>({
               aria-selected={option.value === value}
               onPointerEnter={() => setActiveIndex(index)}
               onClick={() => pick(option)}
-              className={`flex cursor-pointer items-center gap-2 rounded-lg py-1.5 pl-2 pr-3 text-[11px] font-semibold uppercase tracking-[0.15em] text-ink-inverse transition-colors ${
-                index === activeIndex ? "bg-ink-inverse/15" : ""
+              className={`flex cursor-pointer items-center gap-2 rounded-lg py-1.5 pl-2 pr-3 text-[11px] font-semibold uppercase tracking-[0.15em] text-menu-fg transition-colors ${
+                index === activeIndex ? "bg-menu-fg/15" : ""
               }`}
             >
               <CheckIcon

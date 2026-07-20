@@ -49,6 +49,13 @@
   --avatar-fg-l: 0.44;
   --avatar-fg-c: 0.11;
 
+  /* floating menus (ui/dropdown.tsx) — a dark surface that pops over the
+     light page; in dark mode it stays dark but ELEVATED, never a white
+     blob (matches how macOS/Notion menus behave) */
+  --color-menu: oklch(0.25 0.01 60);
+  --color-menu-fg: oklch(0.97 0.003 85);
+  --color-menu-border: transparent;
+
   /* elevation */
   --shadow-soft: 0 1px 2px oklch(0.2 0.01 60 / 0.05), 0 4px 16px oklch(0.2 0.01 60 / 0.06);
   --shadow-raised: 0 2px 4px oklch(0.2 0.01 60 / 0.06), 0 12px 32px oklch(0.2 0.01 60 / 0.1);
@@ -89,6 +96,10 @@
   --avatar-fg-l: 0.86;
   --avatar-fg-c: 0.08;
 
+  --color-menu: oklch(0.3 0.006 60);
+  --color-menu-fg: oklch(0.94 0.004 85);
+  --color-menu-border: oklch(0.4 0.007 60);
+
   --shadow-soft: 0 1px 2px oklch(0 0 0 / 0.3), 0 4px 16px oklch(0 0 0 / 0.35);
   --shadow-raised: 0 2px 4px oklch(0 0 0 / 0.35), 0 12px 32px oklch(0 0 0 / 0.5);
 }
@@ -114,6 +125,9 @@
   --color-danger-hover: var(--color-danger-hover);
   --color-danger-fg: var(--color-danger-fg);
   --color-success: var(--color-success);
+  --color-menu: var(--color-menu);
+  --color-menu-fg: var(--color-menu-fg);
+  --color-menu-border: var(--color-menu-border);
 
   --shadow-soft: var(--shadow-soft);
   --shadow-raised: var(--shadow-raised);
