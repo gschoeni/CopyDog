@@ -49,12 +49,12 @@
   --avatar-fg-l: 0.44;
   --avatar-fg-c: 0.11;
 
-  /* floating menus (ui/dropdown.tsx) — a dark surface that pops over the
-     light page; in dark mode it stays dark but ELEVATED, never a white
-     blob (matches how macOS/Notion menus behave) */
-  --color-menu: oklch(0.25 0.01 60);
-  --color-menu-fg: oklch(0.97 0.003 85);
-  --color-menu-border: transparent;
+  /* floating menus (ui/dropdown.tsx) — an elevated surface in the page's
+     own scheme: white over the light page, raised dark over the dark one
+     (matches how macOS/Notion menus behave) */
+  --color-menu: oklch(1 0 0);
+  --color-menu-fg: oklch(0.22 0.01 60);
+  --color-menu-border: oklch(0.915 0.005 85);
 
   /* elevation */
   --shadow-soft: 0 1px 2px oklch(0.2 0.01 60 / 0.05), 0 4px 16px oklch(0.2 0.01 60 / 0.06);

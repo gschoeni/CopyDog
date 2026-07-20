@@ -408,6 +408,7 @@ for note-leaving clients.
 
 **One dropdown to rule the roles.** The roster and invite role pickers
 are a new hand-rolled `ui/dropdown.tsx` (listbox semantics, keyboard
-complete) styled as a quiet tag that opens an inverse-surface menu —
-dark over light, light over dark — with a check beside the current
-choice. No native `<select>` styling fights, no dependency.
+complete) styled as a quiet tag that opens an elevated menu in the
+page's own scheme — white over light, raised dark over dark, via the
+`--color-menu*` tokens — with a check beside the current choice. No
+native `<select>` styling fights, no dependency.
