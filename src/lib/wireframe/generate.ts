@@ -57,7 +57,7 @@ export class LlmGenerator implements WireframeGenerator {
           content: userContent(
             this.options.references,
             `Design a wireframe for a page with this copy. Return the HTML fragment only.` +
-              `${referenceNote(this.options.references)}${direction}\n\n${copySummary}${current}`,
+              `${referenceNote(this.options.references, "page")}${direction}\n\n${copySummary}${current}`,
           ),
         },
       ],

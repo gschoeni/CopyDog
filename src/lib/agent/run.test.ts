@@ -462,7 +462,11 @@ describe("runAgentTurn", () => {
       const designerMessages = requests[1]!.messages as { role: string; content: unknown }[];
       const designerPrompt = designerMessages.at(-1)!;
       expect(designerPrompt.content).toContainEqual({ type: "image_url", image_url: { url: dataUrl } });
-      expect(JSON.stringify(designerPrompt.content)).toContain("Match its *composition*");
+      // …and the brief telling it to reproduce that reference, placeholders and all
+      // (the wording itself is covered by wireframe/references.test.ts)
+      const prompt = JSON.stringify(designerPrompt.content);
+      expect(prompt).toContain("REFERENCE MATCHING");
+      expect(prompt).toContain("wf-media");
     });
 
     it("designs anyway, and says so, when a named reference is missing", async () => {

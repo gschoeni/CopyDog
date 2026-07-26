@@ -102,7 +102,7 @@ export async function generateSectionLayout(
         content: userContent(
           options.references,
           `Design ONE wireframe section — output only that single <section class="wf-section" data-copy="${section.slug}"> fragment, ` +
-            `no navbar, no footer, no other sections.${referenceNote(options.references)}\n\nInstruction: ${options.instruction}\n\n` +
+            `no navbar, no footer, no other sections.${referenceNote(options.references, "section")}\n\nInstruction: ${options.instruction}\n\n` +
             `### Section slug: ${section.slug} (${section.title})\n${copy}${current}`,
         ),
       },

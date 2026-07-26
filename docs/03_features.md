@@ -73,8 +73,15 @@ model sees the real thing; the browser only ever holds a small descriptor.
 - References reach the **designer**, not just the chat model:
   `design_section` and `redesign_page` take `referenceIds` and the layout
   generator gets the actual image or document, so the wireframe is authored
-  while looking at the reference. It is told to take composition — rhythm,
-  grouping, where the weight sits — and never the words.
+  while looking at the reference. The brief (`wireframe/references.ts`) tells
+  it to study the reference first — column counts, which side the imagery
+  sits on, alignment, grid sizes, tinted vs plain bands, vertical order — and
+  reproduce that structure exactly. **Every image in the reference comes back
+  as a placeholder** (`wf-media`, `wf-avatar`, `wf-logo-box`, `wf-input`),
+  because imagery is what gives a band its proportions: a split hero that
+  loses its media collapses into a centred one. It explicitly overrides the
+  spec's "vary the patterns" rule, which is right for invention and wrong for
+  reproduction. Copy and branding are still never taken.
 - `read_reference` pulls one back into view mid-conversation.
 - Limits are the model's, not the transport's: 24 MB PDFs, 10 MB images, 4
   references per message.
