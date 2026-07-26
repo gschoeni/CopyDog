@@ -8,6 +8,7 @@ import {
   pageLinkOptions,
   pagePath,
   parseSiteFile,
+  removePageNode,
   serializeSiteFile,
   type PageRef,
 } from "./site";
@@ -120,6 +121,25 @@ describe("site tree", () => {
     const pages: PageRef[] = [{ slug: "a", title: "A", children: [{ slug: "b", title: "B" }] }];
     movePageNode(pages, "b", null, null);
     expect(pages[0]).toEqual({ slug: "a", title: "A" });
+  });
+
+  it("removes a page together with its whole subtree", () => {
+    const pages = tree();
+    const removed = removePageNode(pages, "about");
+    expect(flattenPages([removed!]).map(({ page }) => page.slug)).toEqual(["about", "team", "history", "early-days"]);
+    expect(pages.map((p) => p.slug)).toEqual(["home", "pricing"]);
+  });
+
+  it("removes a nested page and drops the emptied children array", () => {
+    const pages = tree();
+    expect(removePageNode(pages, "early-days")?.slug).toBe("early-days");
+    expect(findPage(pages, "history")).toEqual({ slug: "history", title: "History" });
+  });
+
+  it("returns null when removing a slug that isn't in the tree", () => {
+    const pages = tree();
+    expect(removePageNode(pages, "missing")).toBeNull();
+    expect(pages).toEqual(tree()); // untouched
   });
 
   it("inserts new pages at top level or under a parent", () => {

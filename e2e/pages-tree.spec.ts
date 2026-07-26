@@ -83,6 +83,46 @@ test("subpages nest and drag-reorder in the sidebar tree", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Fold About" })).toBeVisible();
 });
 
+test("deleting a page takes its subpages, behind a confirmation", async ({ page }) => {
+  await signIn(page);
+
+  await page.getByPlaceholder("Acme landing page").fill(`Delete page ${Date.now()}`);
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
+
+  // the only page can't be deleted — there'd be nothing left to land on
+  await page.locator('[data-page-row="home"]').hover();
+  await expect(page.getByRole("button", { name: "Delete Home" })).toHaveCount(0);
+
+  await addTopLevelPage(page, "About");
+  await page.locator('[data-page-row="about"]').hover();
+  await page.getByRole("button", { name: "Add subpage inside About" }).click();
+  await page.getByLabel("New page name").fill("Team");
+  await page.getByLabel("New page name").press("Enter");
+  await expect(page).toHaveURL(/\/pages\/team$/, { timeout: 15_000 });
+  await expect.poll(() => rowOrder(page)).toEqual(["home", "about", "team"]);
+
+  // cancelling leaves the tree alone
+  await page.locator('[data-page-row="about"]').hover();
+  await page.getByRole("button", { name: "Delete About" }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete page About" });
+  await expect(dialog).toContainText("This also deletes its subpage");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(() => rowOrder(page)).toEqual(["home", "about", "team"]);
+
+  // confirming takes About and Team, and moves off the deleted active page
+  await page.locator('[data-page-row="about"]').hover();
+  await page.getByRole("button", { name: "Delete About" }).click();
+  await page.getByRole("button", { name: "Delete page" }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 15_000 });
+  await expect.poll(() => rowOrder(page)).toEqual(["home"]);
+
+  // and it survives a reload — the sitemap was rewritten in the draft
+  await page.reload();
+  await expect.poll(() => rowOrder(page), { timeout: 15_000 }).toEqual(["home"]);
+});
+
 test("pages and subpages keep independent copy across client navigation", async ({ page }) => {
   await signIn(page);
 

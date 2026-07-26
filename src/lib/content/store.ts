@@ -96,6 +96,43 @@ export async function replaceDoc(oxen: OxenClient, view: DraftView, pageSlug: st
   await oxen.deleteWorkspaceFiles(view.repo, view.workspaceId, orphans);
 }
 
+/**
+ * Stages removal of everything the given pages own — doc.json, the wireframe,
+ * every content file their structure references, plus anything else sitting
+ * under pages/{slug}/ whether already committed or only staged.
+ *
+ * Deleting a page is the one place we prune eagerly instead of at publish:
+ * once a page leaves site.json, `pruneOrphanContent` stops considering it, so
+ * anything missed here would sit on the branch forever. Callers pass the whole
+ * subtree at once — the branch and workspace sweeps are one round trip each.
+ */
+export async function deletePageFiles(oxen: OxenClient, view: DraftView, pageSlugs: string[]): Promise<void> {
+  if (pageSlugs.length === 0) return;
+  const paths = new Set<string>();
+  for (const pageSlug of pageSlugs) {
+    paths.add(pageDocPath(pageSlug));
+    paths.add(pageWireframePath(pageSlug));
+    try {
+      for (const path of docContentPaths(pageSlug, await readDoc(oxen, view, pageSlug))) paths.add(path);
+    } catch {
+      // unreadable doc — the sweeps below are the backstop
+    }
+    // a page that was never published has nothing committed; a missing dir is fine
+    const committed = await listFilesAt(oxen, view.repo, view.branch, `pages/${pageSlug}`).catch(() => [] as string[]);
+    for (const path of committed) paths.add(path);
+  }
+
+  // staged writes doc.json doesn't know about yet — a section saved seconds
+  // before the delete, its structure autosave still debouncing in the editor
+  const prefixes = pageSlugs.map((pageSlug) => `pages/${pageSlug}/`);
+  const changes = await oxen.workspaceChanges(view.repo, view.workspaceId);
+  for (const path of [...changes.added, ...changes.modified]) {
+    if (prefixes.some((prefix) => path.startsWith(prefix))) paths.add(path);
+  }
+
+  await oxen.deleteWorkspaceFiles(view.repo, view.workspaceId, [...paths]);
+}
+
 /** Returns the section version's markdown, or null if the file doesn't exist yet. */
 export async function readSectionVersion(
   oxen: OxenClient,

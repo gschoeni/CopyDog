@@ -9,7 +9,7 @@ import { fetchImportHtml, ImportFetchError } from "@/lib/import/fetch-url";
 import { extractSectionsFromImage, extractSectionsWithLlm } from "@/lib/import/llm-extract";
 import { serializeElements } from "@/lib/copy/markdown";
 import { openProposal, publishDraftAndIndex } from "@/lib/content/collab";
-import { addPage } from "@/lib/content/pages";
+import { addPage, deletePage, type DeletePageResult } from "@/lib/content/pages";
 import {
   adoptVersion,
   draftBranchName,
@@ -399,6 +399,21 @@ export async function addPageAction(input: z.infer<typeof addPageInput>): Promis
   const { projectId, title, parentSlug } = addPageInput.parse(input);
   const { oxen, view } = await requireProjectAccess(projectId, { write: true });
   return addPage(oxen, view, title, parentSlug);
+}
+
+const deletePageInput = z.object({
+  projectId: z.uuid(),
+  slug: slugSchema,
+});
+
+/**
+ * Deletes a page and its subpages from the caller's draft sitemap. Staged
+ * like every other edit — teammates keep seeing the page until publish.
+ */
+export async function deletePageAction(input: z.infer<typeof deletePageInput>): Promise<DeletePageResult> {
+  const { projectId, slug } = deletePageInput.parse(input);
+  const { oxen, view } = await requireProjectAccess(projectId, { write: true });
+  return deletePage(oxen, view, slug);
 }
 
 const movePageInput = z.object({

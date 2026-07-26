@@ -100,6 +100,27 @@ The greyscale design system the agent composes with: heroes, split layouts
 avatar bylines, logo strips, stats, FAQ rows, pricing cards, and email-capture
 forms — all `wf-*` classes, sanitizer-enforced, swappable as a module.
 
+## Pages sidebar
+
+The site's pages as a tree, nesting to any depth. Rows stay quiet at rest and
+reveal their controls on hover: a grip that drags to reorder (row edges) or
+nest (row middle), a ⊕ that adds a subpage inline, and a trash that deletes.
+
+Deleting always goes through a confirmation modal (`delete-page-dialog.tsx`),
+which names the page, says how many subpages go with it, and reminds the user
+the page stays in their teammates' view until they publish. The trash is
+hidden when a page's subtree is the whole site — a site with no pages has no
+route to land on, and the server refuses the same case independently. Deleting
+the page you're on lands you on its nearest surviving neighbour, preferring
+the row above.
+
+Structurally the delete is `deletePage` in `src/lib/content/pages.ts`: the
+sitemap entry leaves `site.json` first (it decides what exists), then every
+content file of every page in the subtree is staged for removal — committed
+files, staged files, and everything `doc.json` references. That eager prune is
+deliberate: once a page leaves the sitemap, publish's `pruneOrphanContent`
+stops considering it, so anything missed would live on the branch forever.
+
 ## Dual Panel
 
 The user should be able to toggle between the copy editor and the wireframe builder OR see both at the same time in a dual panel mode.

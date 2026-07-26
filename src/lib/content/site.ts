@@ -118,6 +118,15 @@ function detachPage(pages: PageRef[], slug: string): PageRef | null {
 }
 
 /**
+ * Removes a page and everything nested under it, mutating the tree. Returns
+ * the removed node (so callers can walk its subtree for cleanup), or null
+ * when the slug isn't in the tree.
+ */
+export function removePageNode(pages: PageRef[], slug: string): PageRef | null {
+  return detachPage(pages, slug);
+}
+
+/**
  * Moves a page (with its subtree) to a new position, mutating the tree:
  * under `parentSlug` (null = top level), before the `beforeSlug` sibling
  * (null = append). Returns false — leaving the tree untouched — when the

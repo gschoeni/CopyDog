@@ -13,12 +13,21 @@ import {
 } from "react";
 
 import { Avatar } from "@/components/ui/avatar";
-import { ChevronDownIcon, GripIcon, PanelLeftIcon, PlusIcon, ProposeIcon, SettingsIcon } from "@/components/ui/icons";
+import {
+  ChevronDownIcon,
+  GripIcon,
+  PanelLeftIcon,
+  PlusIcon,
+  ProposeIcon,
+  SettingsIcon,
+  TrashIcon,
+} from "@/components/ui/icons";
 import { ResizeHandle, usePanelSize } from "@/components/ui/resize-handle";
-import { flattenPages, movePageNode, type PageRef } from "@/lib/content/site";
+import { flattenPages, movePageNode, removePageNode, type PageRef } from "@/lib/content/site";
 import type { ProjectMember } from "@/lib/members";
 
 import { addPageAction, movePageAction } from "./actions";
+import { DeletePageDialog } from "./delete-page-dialog";
 import { usePageSaveNavigation } from "./save-navigation";
 
 export function PagesSidebar({
@@ -300,6 +309,33 @@ function PageTree({
     [folded, setFoldedPersistent],
   );
 
+  /* --- delete: confirm in a modal, then prune optimistically --- */
+  const [deleting, setDeleting] = useState<PageRef | null>(null);
+  const pageCount = useMemo(() => flattenPages(tree).length, [tree]);
+
+  const finishDelete = useCallback(
+    (page: PageRef) => {
+      const gone = new Set(flattenPages([page]).map((entry) => entry.page.slug));
+      const order = flattenPages(tree).map((entry) => entry.page.slug);
+      const next = structuredClone(tree);
+      removePageNode(next, page.slug);
+      setOverride(next);
+      setDeleting(null);
+
+      if (!gone.has(activeSlug)) {
+        router.refresh();
+        return;
+      }
+      // the page under the cursor just went away — land on its nearest
+      // surviving neighbour, preferring the one above (where the eye is)
+      const at = order.indexOf(page.slug);
+      const above = order.slice(0, at).findLast((slug) => !gone.has(slug));
+      const target = above ?? order.find((slug) => !gone.has(slug));
+      if (target) void navigate(`/projects/${projectId}/pages/${target}`);
+    },
+    [tree, activeSlug, projectId, navigate, router],
+  );
+
   /* --- drag state --- */
   const rowRefs = useRef(new Map<string, HTMLElement>());
   const [dragging, setDragging] = useState<string | null>(null);
@@ -383,6 +419,9 @@ function PageTree({
       const isFolded = folded.has(page.slug);
       const isDrop = drop?.slug === page.slug;
       const addingHere = adding?.parent === page.slug;
+      const subtree = flattenPages([page]).length;
+      // a site with nothing left in it has no route to land on
+      const canDelete = pageCount > subtree;
       return (
         <div key={page.slug}>
           <div
@@ -459,6 +498,17 @@ function PageTree({
                 >
                   <PlusIcon className="size-3.5" />
                 </button>
+                {canDelete && (
+                  <button
+                    type="button"
+                    aria-label={`Delete ${page.title}`}
+                    title="Delete page"
+                    onClick={() => setDeleting(page)}
+                    className="flex size-5 shrink-0 items-center justify-center rounded text-ink-tertiary/80 opacity-0 transition-opacity hover:bg-surface-hover hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                  >
+                    <TrashIcon className="size-3.5" />
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -486,6 +536,16 @@ function PageTree({
         >
           + New page
         </button>
+      )}
+      {deleting && (
+        <DeletePageDialog
+          projectId={projectId}
+          slug={deleting.slug}
+          title={deleting.title}
+          subpages={flattenPages([deleting]).length - 1}
+          onClose={() => setDeleting(null)}
+          onDeleted={() => finishDelete(deleting)}
+        />
       )}
     </nav>
   );
