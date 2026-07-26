@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type KeyboardEvent, type Ref } from "react";
 
-import { contextRefLabel, MAX_CONTEXT_REFS, type ChatContextRef } from "@/lib/agent/context";
+import {
+  contextRefLabel,
+  isReferenceRef,
+  MAX_CONTEXT_REFS,
+  MAX_REFERENCE_REFS,
+  type ChatContextRef,
+  type ReferenceContextRef,
+} from "@/lib/agent/context";
 import type { ChatInteraction } from "@/lib/agent/interactions";
 import {
   ArrowDownIcon,
@@ -22,6 +29,7 @@ import type { ChatStreamEvent } from "@/lib/agent/events";
 import { createClient } from "@/lib/supabase/client";
 
 import { AssistantMarkdown } from "./assistant-markdown";
+import { AttachReferenceButton, ReferenceMediaIcon, attachFile, attachUrl } from "./chat-attachments";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -55,6 +63,11 @@ const STARTERS = [
   { label: "Add a section", prompt: "Add a new section that would make this page more complete." },
 ];
 
+/** A dropped/pasted payload the composer knows how to attach. */
+function droppedFile(transfer: DataTransfer | null): File | null {
+  return transfer?.files?.[0] ?? null;
+}
+
 /** A streaming assistant that edits the user's private draft. */
 export function ChatPanel({
   projectId,
@@ -83,6 +96,9 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [pendingContext, setPendingContext] = useState<ChatContextRef[]>([]);
+  const [attaching, setAttaching] = useState(0);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [showJump, setShowJump] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -101,7 +117,8 @@ export function ChatPanel({
     addContext: (contextRef: ChatContextRef) => {
       setShowHistory(false);
       setPendingContext((current) => {
-        if (current.length >= MAX_CONTEXT_REFS) return current;
+        // references have their own, tighter cap — they don't crowd out selections
+        if (current.filter((ref) => !isReferenceRef(ref)).length >= MAX_CONTEXT_REFS) return current;
         const key = JSON.stringify(contextRef);
         if (current.some((existing) => JSON.stringify(existing) === key)) return current;
         return [...current, contextRef];
@@ -174,6 +191,7 @@ export function ChatPanel({
     userInteractedRef.current = true;
     setDraft("");
     setPendingContext([]);
+    setAttachError(null);
     void loadConversation(id);
   };
 
@@ -187,11 +205,48 @@ export function ChatPanel({
     setDraft("");
     setPendingContext([]);
     setError(null);
+    setAttachError(null);
     setShowHistory(false);
     stickToBottomRef.current = true;
     scrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   };
+
+  // ---- reference material --------------------------------------------------
+  // An attachment resolves server-side into whatever the model can read and
+  // comes back as a small descriptor; the bytes live in the user's draft, so
+  // nothing heavy ever sits in React state or in the transcript.
+  const referenceCount = pendingContext.filter(isReferenceRef).length;
+
+  const runAttach = useCallback(
+    async (task: () => Promise<ReferenceContextRef>) => {
+      if (referenceCount >= MAX_REFERENCE_REFS) {
+        setAttachError(`Up to ${MAX_REFERENCE_REFS} references per message.`);
+        return;
+      }
+      // the reference is stored under this conversation — once one is in
+      // flight, the history bootstrap must not switch threads underneath it
+      userInteractedRef.current = true;
+      const conversation = activeConversationRef.current;
+      setAttachError(null);
+      setAttaching((count) => count + 1);
+      try {
+        const reference = await task();
+        if (activeConversationRef.current !== conversation) return;
+        setPendingContext((current) => [...current, reference]);
+        window.requestAnimationFrame(() => textareaRef.current?.focus());
+      } catch (err) {
+        setAttachError(err instanceof Error ? err.message : "Couldn't attach that.");
+      } finally {
+        setAttaching((count) => count - 1);
+      }
+    },
+    [referenceCount],
+  );
+
+  const attachTarget = { projectId, pageSlug, conversationId };
+  const handleAttachFile = (file: File) => void runAttach(() => attachFile(attachTarget, file));
+  const handleAttachUrl = (url: string) => void runAttach(() => attachUrl(attachTarget, url));
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     const scroller = scrollRef.current;
@@ -225,6 +280,7 @@ export function ChatPanel({
     setPendingContext([]);
     setBusy(true);
     setError(null);
+    setAttachError(null);
     userInteractedRef.current = true;
     setThreads((current) => current.some((thread) => thread.id === conversationId)
       ? current
@@ -360,7 +416,24 @@ export function ChatPanel({
           onSelect={selectConversation}
         />
       ) : (
-        <>
+        <div
+          className="relative flex min-h-0 flex-1 flex-col"
+          onDragOver={(event) => {
+            if (!event.dataTransfer.types.includes("Files") || busy) return;
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+          }}
+          onDrop={(event) => {
+            if (!event.dataTransfer.types.includes("Files")) return;
+            event.preventDefault();
+            setDragging(false);
+            const file = droppedFile(event.dataTransfer);
+            if (file) handleAttachFile(file);
+          }}
+        >
         <div className="relative min-h-0 flex-1">
           <div
             ref={scrollRef}
@@ -413,15 +486,20 @@ export function ChatPanel({
         <form className="border-t border-border bg-surface px-3 pb-3 pt-2.5" onSubmit={(event) => { event.preventDefault(); void send(draft, pendingContext); }}>
           <div className="rounded-xl border border-border-strong bg-bg px-3 pb-2.5 pt-3 shadow-soft transition-[border-color,box-shadow] focus-within:border-accent focus-within:shadow-raised">
             {pendingContext.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Attached page context">
+              <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Attached context and references">
                 {pendingContext.map((contextRef, index) => (
                   <ContextChip
-                    key={`${contextRef.sectionSlug ?? "loose"}-${index}`}
+                    key={`${contextRefLabel(contextRef)}-${index}`}
                     contextRef={contextRef}
                     onRemove={() => setPendingContext((current) => current.filter((_, i) => i !== index))}
                   />
                 ))}
               </div>
+            )}
+            {attachError && (
+              <p role="alert" className="mb-2 text-[11px] leading-4 text-danger">
+                {attachError}
+              </p>
             )}
             <textarea
               ref={textareaRef}
@@ -429,6 +507,12 @@ export function ChatPanel({
               value={draft}
               onChange={(event) => updateDraft(event.target.value)}
               onKeyDown={handleComposerKeyDown}
+              onPaste={(event) => {
+                const file = droppedFile(event.clipboardData);
+                if (!file) return; // plain text paste falls through to the textarea
+                event.preventDefault();
+                handleAttachFile(file);
+              }}
               placeholder="Ask the assistant to edit this page…"
               aria-label="Message the assistant"
               disabled={busy}
@@ -436,10 +520,24 @@ export function ChatPanel({
               rows={1}
               className="block max-h-40 min-h-6 w-full resize-none overflow-y-auto bg-transparent text-sm leading-6 text-ink outline-none placeholder:text-ink-tertiary disabled:cursor-not-allowed"
             />
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <span className="text-[11px] text-ink-tertiary">
-                {busy ? "Assistant is working" : draft.length > 3600 ? `${draft.length}/4000` : "Enter to send · Shift + Enter for line break"}
-              </span>
+            <div className="mt-1.5 flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-1">
+                <AttachReferenceButton
+                  disabled={busy || referenceCount >= MAX_REFERENCE_REFS}
+                  busy={attaching > 0}
+                  onAttachFile={handleAttachFile}
+                  onAttachUrl={handleAttachUrl}
+                />
+                <span className="truncate text-[11px] text-ink-tertiary">
+                  {attaching > 0
+                    ? "Attaching…"
+                    : busy
+                      ? "Assistant is working"
+                      : draft.length > 3600
+                        ? `${draft.length}/4000`
+                        : "Enter to send · Shift + Enter for line break"}
+                </span>
+              </div>
               <button type="submit" disabled={!canSend} aria-label={busy ? "Assistant is working" : "Send"} title="Send message" className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-fg transition-[background-color,transform] hover:bg-accent-hover active:scale-95 disabled:cursor-not-allowed disabled:bg-surface-hover disabled:text-ink-tertiary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
                 <ArrowUpIcon />
               </button>
@@ -447,7 +545,14 @@ export function ChatPanel({
           </div>
           <p className="mt-2 px-1 text-center text-[10px] leading-4 text-ink-tertiary">Changes are saved as versions in your private draft.</p>
         </form>
-        </>
+
+        {dragging && (
+          <div className="pointer-events-none absolute inset-2 z-20 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-accent bg-bg/85 text-center backdrop-blur-sm">
+            <span className="text-sm font-medium text-ink">Drop to attach</span>
+            <span className="text-xs text-ink-secondary">An image or PDF to build from</span>
+          </div>
+        )}
+        </div>
       )}
     </SidePanel>
   );
@@ -543,9 +648,9 @@ function Message({
     return (
       <div className="flex flex-col items-end gap-1.5">
         {(message.context?.length ?? 0) > 0 && (
-          <div className="flex max-w-[88%] flex-wrap justify-end gap-1" aria-label="Attached page context">
+          <div className="flex max-w-[88%] flex-wrap justify-end gap-1" aria-label="Attached context and references">
             {message.context!.map((contextRef, index) => (
-              <ContextChip key={`${contextRef.sectionSlug ?? "loose"}-${index}`} contextRef={contextRef} />
+              <ContextChip key={`${contextRefLabel(contextRef)}-${index}`} contextRef={contextRef} />
             ))}
           </div>
         )}
@@ -620,19 +725,30 @@ function InteractionCard({
 }
 
 /**
- * One attached selection as a pill: icon, section, snippet. The raw text
- * lives in the tooltip; the serialized prompt never shows in the UI.
+ * One attachment as a pill: icon, name, and — for a page selection — the
+ * snippet it carries. The raw text lives in the tooltip; the serialized
+ * prompt never shows in the UI. References look distinct from selections
+ * because they mean something different: outside material, not this page.
  */
 function ContextChip({ contextRef, onRemove }: { contextRef: ChatContextRef; onRemove?: () => void }) {
   const label = contextRefLabel(contextRef);
-  const snippet = contextRef.text?.replace(/\s+/g, " ").trim() ?? null;
+  const reference = isReferenceRef(contextRef) ? contextRef : null;
+  const snippet = contextRef.kind === "page" ? contextRef.text?.replace(/\s+/g, " ").trim() ?? null : null;
   return (
     <span
-      title={snippet ?? "Whole section"}
-      className={`inline-flex h-6 max-w-56 items-center gap-1.5 rounded-md border border-border bg-surface pl-1.5 text-[11px] text-ink-secondary shadow-soft ${onRemove ? "pr-1" : "pr-1.5"}`}
+      title={reference ? reference.sourceUrl ?? reference.label : snippet ?? "Whole section"}
+      className={`inline-flex h-6 max-w-56 items-center gap-1.5 rounded-md border pl-1.5 text-[11px] shadow-soft ${
+        reference ? "border-accent/30 bg-accent-soft text-ink-secondary" : "border-border bg-surface text-ink-secondary"
+      } ${onRemove ? "pr-1" : "pr-1.5"}`}
     >
-      <span aria-hidden className="shrink-0 text-ink-tertiary">
-        {snippet === null ? <WireframeModeIcon className="size-3" /> : <TextLinesIcon className="size-3" />}
+      <span aria-hidden className={`shrink-0 ${reference ? "text-accent" : "text-ink-tertiary"}`}>
+        {reference ? (
+          <ReferenceMediaIcon media={reference.media} className="size-3" />
+        ) : snippet === null ? (
+          <WireframeModeIcon className="size-3" />
+        ) : (
+          <TextLinesIcon className="size-3" />
+        )}
       </span>
       <span className="truncate">
         <span className="font-medium text-ink">{label}</span>

@@ -16,10 +16,24 @@ import { OxenClient } from "@/lib/oxen/client";
 import { provisionProjectRepo } from "@/lib/oxen/provision";
 import { OxenStub } from "@/lib/oxen/stub";
 
+import { createReferenceLibrary, resolveUploadedReference, saveReference } from "./references";
 import { runAgentTurn } from "./run";
 
 const AUTHOR = { name: "greg", email: "greg@copydog.app" };
 const REPO = "agent-x1";
+const CONVERSATION = "11111111-2222-3333-4444-555555555555";
+
+/** One tool call, as the model would emit it. */
+function toolCall(name: string, args: object, id = "call_1") {
+  return {
+    model: "m",
+    choices: [{ message: { content: null, tool_calls: [{ id, type: "function", function: { name, arguments: JSON.stringify(args) } }] } }],
+  };
+}
+
+function say(content: string) {
+  return { model: "m", choices: [{ message: { content } }] };
+}
 
 /** A scripted LLM: emits queued responses, capturing what it was sent. */
 function scriptedLlm(responses: object[]): { llm: LlmClient; requests: { messages: unknown[]; tools?: unknown[] }[] } {
@@ -285,5 +299,111 @@ describe("runAgentTurn", () => {
     const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm }, [], "rewrite the footer");
     expect(turn.mutated).toBe(false);
     expect(turn.reply).toContain("did you mean Hero");
+  });
+
+  describe("reference material", () => {
+    /** Attaches a screenshot to this conversation and hands back the tool context. */
+    async function withReference() {
+      const reference = resolveUploadedReference({
+        filename: "competitor.png",
+        mime: "image/png",
+        bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+      });
+      await saveReference(oxen, view, CONVERSATION, reference);
+      return { reference, references: createReferenceLibrary(oxen, view, CONVERSATION) };
+    }
+
+    it("carries an attached image into the turn's user message", async () => {
+      const { reference, references } = await withReference();
+      const { llm, requests } = scriptedLlm([say("Nice reference — here's what I'd take from it.")]);
+
+      await runAgentTurn({ oxen, view, pageSlug: "home", llm, references }, [], [
+        { type: "image_url", image_url: { url: reference.dataUrl! } },
+        { type: "text", text: "build the page from this" },
+      ]);
+
+      const userMessage = (requests[0]!.messages as { role: string; content: unknown }[]).at(-1)!;
+      expect(userMessage.role).toBe("user");
+      // media leads, prose follows — the ordering the API asks for
+      expect(userMessage.content).toEqual([
+        { type: "image_url", image_url: { url: reference.dataUrl } },
+        { type: "text", text: "build the page from this" },
+      ]);
+    });
+
+    it("read_reference puts the image back in front of the model", async () => {
+      const { reference, references } = await withReference();
+      const { llm, requests } = scriptedLlm([
+        toolCall("read_reference", { referenceId: reference.id }),
+        say("Checked it again — the pricing table is a 3-up."),
+      ]);
+
+      const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm, references }, [], "look at it again");
+
+      expect(turn.mutated).toBe(false);
+      const followUp = (requests[1]!.messages as { role: string; content: unknown }[]).at(-1)!;
+      expect(followUp.role).toBe("user");
+      expect(followUp.content).toContainEqual({ type: "image_url", image_url: { url: reference.dataUrl } });
+    });
+
+    it("tells the agent when a reference id no longer resolves", async () => {
+      const { references } = await withReference();
+      const { llm, requests } = scriptedLlm([
+        toolCall("read_reference", { referenceId: "ref_gone" }),
+        say("That one's gone — mind re-attaching it?"),
+      ]);
+
+      await runAgentTurn({ oxen, view, pageSlug: "home", llm, references }, [], "look at the deck");
+
+      expect(JSON.stringify(requests[1]!.messages)).toContain("No reference with id");
+    });
+
+    it("design_section shows the reference to the designer, not just its description", async () => {
+      const { reference, references } = await withReference();
+      const { llm, requests } = scriptedLlm([
+        toolCall("design_section", {
+          sectionSlug: "hero",
+          instruction: "match the reference's split hero",
+          referenceIds: [reference.id],
+        }),
+        say(`<section class="wf-section" data-copy="hero"><div class="wf-container wf-split"><div class="wf-stack" data-overflow><h1 class="wf-h1" data-element="h1"></h1></div><div class="wf-media" aria-hidden="true"></div></div></section>`),
+        say("Hero is a split now, matching the reference."),
+      ]);
+
+      const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm, references }, [], "make it look like this");
+
+      expect(turn.mutated).toBe(true);
+      expect(await readWireframe(oxen, view, "home")).toContain("wf-split");
+      // the designer's own request carried the pixels and the composition brief
+      const designerMessages = requests[1]!.messages as { role: string; content: unknown }[];
+      const designerPrompt = designerMessages.at(-1)!;
+      expect(designerPrompt.content).toContainEqual({ type: "image_url", image_url: { url: reference.dataUrl } });
+      expect(JSON.stringify(designerPrompt.content)).toContain("Match its *composition*");
+    });
+
+    it("designs anyway, and says so, when a named reference is missing", async () => {
+      const { references } = await withReference();
+      const { llm, requests } = scriptedLlm([
+        toolCall("redesign_page", { instruction: "more rhythm", referenceIds: ["ref_gone"] }),
+        say(`<section class="wf-section wf-section-tint" data-copy="hero"><div class="wf-container wf-center" data-overflow><h1 class="wf-h1" data-element="h1"></h1></div></section>`),
+        say("Tinted the hero."),
+      ]);
+
+      const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm, references }, [], "give it rhythm");
+
+      expect(turn.mutated).toBe(true);
+      // the layout request has no image part — and the agent is told why
+      expect(JSON.stringify(requests[1]!.messages)).not.toContain("image_url");
+      expect(JSON.stringify(requests[2]!.messages)).toContain("no longer available");
+    });
+
+    it("degrades gracefully where there is no reference library at all (MCP)", async () => {
+      const { llm, requests } = scriptedLlm([
+        toolCall("read_reference", { referenceId: "ref_anything" }),
+        say("I don't have that here."),
+      ]);
+      await runAgentTurn({ oxen, view, pageSlug: "home", llm }, [], "read the reference");
+      expect(JSON.stringify(requests[1]!.messages)).toContain("No reference with id");
+    });
   });
 });

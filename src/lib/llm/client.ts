@@ -7,9 +7,17 @@
 
 export type LlmRole = "system" | "user" | "assistant" | "tool";
 
+/**
+ * A part of a multimodal message. Documents and images must come BEFORE text
+ * parts — the provider is explicit about that ordering producing better
+ * results. `file` carries PDFs: either inline base64 (`file_data`, a
+ * `data:application/pdf;base64,…` URL) or a publicly fetchable `file_url`.
+ * https://docs.oxen.ai/examples/inference/chat_completions#documents-pdfs
+ */
 export type LlmContentPart =
   | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } };
+  | { type: "image_url"; image_url: { url: string } }
+  | { type: "file"; file: { filename?: string; file_data?: string; file_url?: string } };
 
 export interface LlmToolCall {
   id: string;
@@ -24,6 +32,15 @@ export interface LlmMessage {
   tool_calls?: LlmToolCall[];
   /** tool result messages reference the call they answer */
   tool_call_id?: string;
+}
+
+/**
+ * Builds a user message body from optional attachments plus prose, keeping
+ * images and documents ahead of the text as the API asks. With no
+ * attachments it stays a plain string, so text-only callers are unchanged.
+ */
+export function userContent(parts: LlmContentPart[] | undefined, text: string): string | LlmContentPart[] {
+  return parts?.length ? [...parts, { type: "text", text }] : text;
 }
 
 export interface LlmTool {

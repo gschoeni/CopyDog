@@ -4,16 +4,38 @@ import { request as httpsRequest, type RequestOptions } from "node:https";
 import { Readable } from "node:stream";
 
 /**
- * Safe URL fetching for site imports. Guards against SSRF: only http(s),
- * no private/loopback hosts (unless ALLOW_LOCAL_IMPORT=1 for dev/e2e),
- * every hostname's *resolved addresses* checked too (a public name can
- * point at a private IP), and — crucially — the connection is PINNED to the
- * exact address we vetted, so a rebinding DNS server can't hand `fetch` a
- * different (private) answer after the check passes. Redirects are followed
+ * Safe URL fetching for site imports and assistant references. Guards against
+ * SSRF: only http(s), no private/loopback hosts (unless ALLOW_LOCAL_IMPORT=1
+ * for dev/e2e), every hostname's *resolved addresses* checked too (a public
+ * name can point at a private IP), and — crucially — the connection is PINNED
+ * to the exact address we vetted, so a rebinding DNS server can't hand `fetch`
+ * a different (private) answer after the check passes. Redirects are followed
  * manually so each hop faces the same guards; bounded total time and size.
  */
 
-const MAX_BYTES = 2_000_000;
+/** What a fetched URL turned out to be. Anything else is refused. */
+export type ImportResourceKind = "html" | "image" | "pdf";
+
+export interface ImportResource {
+  kind: ImportResourceKind;
+  /** The response's content type, normalized (no charset). */
+  contentType: string;
+  bytes: Uint8Array;
+}
+
+/**
+ * Per-kind ceilings. HTML is text we extract from; images and PDFs travel to
+ * the inference API, so their limits track what it accepts (24 MB documents).
+ * Reached mid-stream: the read aborts rather than buffering a hostile body.
+ */
+const MAX_BYTES_BY_KIND: Record<ImportResourceKind, number> = {
+  html: 2_000_000,
+  image: 8_000_000,
+  pdf: 24_000_000,
+};
+
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+
 const TIMEOUT_MS = 10_000;
 const MAX_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
@@ -98,11 +120,31 @@ function pinnedFetch(addresses: string[]): typeof fetch {
     });
 }
 
+/** Convenience wrapper for the page-import path, which only ever wants HTML. */
 export async function fetchImportHtml(
   rawUrl: string,
   fetchImpl?: typeof fetch,
   lookupImpl: LookupImpl = defaultLookup,
 ): Promise<string> {
+  const resource = await fetchImportResource(rawUrl, { accept: ["html"], fetchImpl, lookupImpl });
+  return new TextDecoder().decode(resource.bytes);
+}
+
+/**
+ * Fetches a URL under every guard above and classifies what came back. The
+ * assistant accepts all three kinds — an HTML page becomes extracted copy, an
+ * image or PDF becomes something the model can actually look at — so the
+ * caller says which kinds it can handle and gets a clear error otherwise.
+ */
+export async function fetchImportResource(
+  rawUrl: string,
+  options: {
+    accept?: ImportResourceKind[];
+    fetchImpl?: typeof fetch;
+    lookupImpl?: LookupImpl;
+  } = {},
+): Promise<ImportResource> {
+  const { accept = ["html", "image", "pdf"], fetchImpl, lookupImpl = defaultLookup } = options;
   let url = assertSafeImportUrl(rawUrl);
 
   // one deadline for the whole redirect chain (not a fresh 10s per hop), so a
@@ -120,7 +162,7 @@ export async function fetchImportHtml(
       res = await doFetch(url, {
         redirect: "manual",
         signal: deadline,
-        headers: { "User-Agent": "CopyDog-Importer/1.0", Accept: "text/html" },
+        headers: { "User-Agent": "CopyDog-Importer/1.0", Accept: acceptHeader(accept) },
       });
     } catch {
       throw new ImportFetchError("Couldn't reach that URL.");
@@ -141,26 +183,50 @@ export async function fetchImportHtml(
   if (!res.ok) {
     throw new ImportFetchError(`The site responded with ${res.status}.`);
   }
-  const type = res.headers.get("content-type") ?? "";
-  if (!type.includes("text/html") && !type.includes("application/xhtml")) {
-    throw new ImportFetchError("That URL isn't an HTML page.");
+
+  const contentType = (res.headers.get("content-type") ?? "").split(";")[0]!.trim().toLowerCase();
+  const kind = classifyContentType(contentType);
+  if (kind === null || !accept.includes(kind)) {
+    throw new ImportFetchError(
+      accept.length === 1 && accept[0] === "html"
+        ? "That URL isn't an HTML page."
+        : "That URL isn't a web page, image, or PDF.",
+    );
   }
 
   const reader = res.body?.getReader();
-  if (!reader) return "";
+  if (!reader) return { kind, contentType, bytes: new Uint8Array() };
+  const limit = MAX_BYTES_BY_KIND[kind];
   const chunks: Uint8Array[] = [];
   let received = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
     received += value.byteLength;
-    if (received > MAX_BYTES) {
+    if (received > limit) {
       void reader.cancel();
-      throw new ImportFetchError("That page is too large to import.");
+      throw new ImportFetchError(
+        kind === "html" ? "That page is too large to import." : "That file is too large to attach.",
+      );
     }
     chunks.push(value);
   }
-  return new TextDecoder().decode(concat(chunks, received));
+  return { kind, contentType, bytes: concat(chunks, received) };
+}
+
+function classifyContentType(type: string): ImportResourceKind | null {
+  if (type === "text/html" || type === "application/xhtml+xml") return "html";
+  if (type === "application/pdf") return "pdf";
+  if (IMAGE_TYPES.has(type)) return "image";
+  return null;
+}
+
+function acceptHeader(kinds: ImportResourceKind[]): string {
+  const parts: string[] = [];
+  if (kinds.includes("html")) parts.push("text/html");
+  if (kinds.includes("image")) parts.push("image/*");
+  if (kinds.includes("pdf")) parts.push("application/pdf");
+  return parts.join(",");
 }
 
 function concat(chunks: Uint8Array[], total: number): Uint8Array {

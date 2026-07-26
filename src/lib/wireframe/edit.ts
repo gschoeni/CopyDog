@@ -1,9 +1,10 @@
 import { parse, HTMLElement as ParsedElement } from "node-html-parser";
 
-import { LLM_MODELS, type LlmClient } from "@/lib/llm/client";
+import { LLM_MODELS, userContent, type LlmClient, type LlmContentPart } from "@/lib/llm/client";
 import { serializeElements } from "@/lib/copy/markdown";
 
 import type { SectionForLayout } from "./heuristic";
+import { referenceNote } from "./references";
 import { sanitizeWireframeHtml } from "./sanitize";
 import { DESIGN_SYSTEM_SPEC } from "./spec";
 
@@ -84,7 +85,7 @@ export function upsertWireframeSection(
 export async function generateSectionLayout(
   llm: LlmClient,
   section: SectionForLayout,
-  options: { instruction: string; currentHtml?: string },
+  options: { instruction: string; currentHtml?: string; references?: LlmContentPart[] },
 ): Promise<string> {
   const copy = serializeElements(section.elements) || "(no copy yet)";
   const current = options.currentHtml
@@ -98,10 +99,12 @@ export async function generateSectionLayout(
       { role: "system", content: DESIGN_SYSTEM_SPEC },
       {
         role: "user",
-        content:
+        content: userContent(
+          options.references,
           `Design ONE wireframe section — output only that single <section class="wf-section" data-copy="${section.slug}"> fragment, ` +
-          `no navbar, no footer, no other sections.\n\nInstruction: ${options.instruction}\n\n` +
-          `### Section slug: ${section.slug} (${section.title})\n${copy}${current}`,
+            `no navbar, no footer, no other sections.${referenceNote(options.references)}\n\nInstruction: ${options.instruction}\n\n` +
+            `### Section slug: ${section.slug} (${section.title})\n${copy}${current}`,
+        ),
       },
     ],
   });

@@ -170,3 +170,20 @@ export function sectionVersionPath(pageSlug: string, sectionSlug: string, versio
 export function elementsRunPath(pageSlug: string, runSlug: string): string {
   return `pages/${pageSlug}/elements/${runSlug}.md`;
 }
+
+/**
+ * Assistant reference material (screenshots, PDFs, fetched pages) lives under
+ * this prefix in the user's workspace: scratch input the agent designs from,
+ * not page content. It is deliberately *never committed* — publish prunes it
+ * and `hasUnpublishedChanges` ignores it — so attaching a competitor's
+ * screenshot neither lights up Publish nor lands in a proposal diff.
+ */
+export const REFERENCES_DIR = "refs";
+
+export function referencePath(conversationId: string, referenceId: string): string {
+  return `${REFERENCES_DIR}/${conversationId}/${referenceId}.json`;
+}
+
+export function isReferencePath(path: string): boolean {
+  return path === REFERENCES_DIR || path.startsWith(`${REFERENCES_DIR}/`);
+}

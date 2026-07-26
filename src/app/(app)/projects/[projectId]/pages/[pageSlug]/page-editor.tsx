@@ -21,7 +21,7 @@ import {
   WireframeModeIcon,
 } from "@/components/ui/icons";
 import { ResizeHandle, usePanelSize } from "@/components/ui/resize-handle";
-import type { ChatContextRef } from "@/lib/agent/context";
+import type { PageContextRef } from "@/lib/agent/context";
 import type { Element } from "@/lib/copy/elements";
 import type { DocContent, DocSection } from "@/lib/content/doc";
 import type { PageLinkOption } from "@/lib/content/site";
@@ -200,11 +200,12 @@ export function PageEditor({
   // ---- "Add to chat": selections attach to the assistant as context chips --
   const chatRef = useRef<ChatPanelHandle>(null);
   const addContextToChat = useCallback(
-    (payload: Pick<ChatContextRef, "source" | "sectionSlug" | "text"> & { elementType?: string | null }) => {
+    (payload: Pick<PageContextRef, "source" | "sectionSlug" | "text"> & { elementType?: string | null }) => {
       const sectionTitle = payload.sectionSlug ? metaRef.current.get(payload.sectionSlug)?.title ?? null : null;
       setAssistantOpen(true);
       localStorage.setItem(`copydog:assistant:${projectId}`, "1");
       chatRef.current?.addContext({
+        kind: "page",
         source: payload.source,
         sectionSlug: payload.sectionSlug,
         sectionTitle,

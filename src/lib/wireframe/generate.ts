@@ -1,8 +1,9 @@
-import { LLM_MODELS, LlmClient } from "@/lib/llm/client";
+import { LLM_MODELS, LlmClient, userContent, type LlmContentPart } from "@/lib/llm/client";
 import { serializeElements } from "@/lib/copy/markdown";
 
 import { listWireframeSections, stripCodeFences } from "./edit";
 import { generateWireframeHeuristic, type SectionForLayout } from "./heuristic";
+import { referenceNote } from "./references";
 import { sanitizeWireframeHtml } from "./sanitize";
 import { DESIGN_SYSTEM_SPEC } from "./spec";
 
@@ -30,6 +31,8 @@ export class LlmGenerator implements WireframeGenerator {
       instruction?: string;
       /** the page's current wireframe — redesigns start from it instead of a blank slate */
       currentHtml?: string;
+      /** reference material (screenshots, PDFs, page copy) to design against */
+      references?: LlmContentPart[];
     } = {},
   ) {}
 
@@ -51,7 +54,11 @@ export class LlmGenerator implements WireframeGenerator {
         { role: "system", content: DESIGN_SYSTEM_SPEC },
         {
           role: "user",
-          content: `Design a wireframe for a page with this copy. Return the HTML fragment only.${direction}\n\n${copySummary}${current}`,
+          content: userContent(
+            this.options.references,
+            `Design a wireframe for a page with this copy. Return the HTML fragment only.` +
+              `${referenceNote(this.options.references)}${direction}\n\n${copySummary}${current}`,
+          ),
         },
       ],
     });

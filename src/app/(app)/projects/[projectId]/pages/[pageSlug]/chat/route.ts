@@ -1,12 +1,14 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
-import { chatContextListSchema, describeContextRefs, type ChatContextRef } from "@/lib/agent/context";
+import { chatContextListSchema, describeContextRefs, isReferenceRef, type ChatContextRef } from "@/lib/agent/context";
 import type { ChatStreamEvent } from "@/lib/agent/events";
 import { describeInteraction, type ChatInteraction } from "@/lib/agent/interactions";
+import { createReferenceLibrary, referenceContentParts } from "@/lib/agent/references";
 import { runAgentTurn } from "@/lib/agent/run";
 import { ContentStoreUnavailableError, requireProjectAccess } from "@/lib/content/access";
 import { getLlmClient } from "@/lib/llm";
+import { userContent } from "@/lib/llm/client";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -91,9 +93,14 @@ export async function POST(
     role: row.role,
     content: modelContent(row),
   }));
-  const userContent = context?.length
-    ? [describeContextRefs(context), message].join("\n\n")
-    : message;
+  // references travel as real image/document parts; everything else (page
+  // selections, the reference roster) is prose prepended to the user's message
+  const references = createReferenceLibrary(oxen, view, conversationId);
+  const attached = await references.loadMany((context ?? []).filter(isReferenceRef).map((ref) => ref.id));
+  const userMessage = userContent(
+    referenceContentParts(attached),
+    context?.length ? [describeContextRefs(context), message].join("\n\n") : message,
+  );
 
   const userInserted = await supabase.from("chat_messages").insert({
     project_id: projectId,
@@ -113,7 +120,7 @@ export async function POST(
     async start(controller) {
       const send = (event: ChatStreamEvent) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
       try {
-        const turn = await runAgentTurn({ oxen, view, pageSlug, llm }, history, userContent, send);
+        const turn = await runAgentTurn({ oxen, view, pageSlug, llm, references }, history, userMessage, send);
         if (turn.interaction) send({ type: "interaction", interaction: turn.interaction });
         const inserted = await supabase.from("chat_messages").insert({
           project_id: projectId,

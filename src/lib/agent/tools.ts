@@ -11,13 +11,14 @@ import {
   type DraftView,
 } from "@/lib/content/store";
 import { MARKDOWN_DIALECT, parseElementsMarkdown } from "@/lib/copy/markdown";
-import type { LlmClient, LlmTool } from "@/lib/llm/client";
+import type { LlmClient, LlmContentPart, LlmTool } from "@/lib/llm/client";
 import type { OxenClient } from "@/lib/oxen/client";
 import { generateSectionLayout, listWireframeSections, upsertWireframeSection } from "@/lib/wireframe/edit";
 import { generateWireframe, LlmGenerator, HeuristicGenerator } from "@/lib/wireframe/generate";
 import type { SectionForLayout } from "@/lib/wireframe/heuristic";
 
 import type { ChatInteraction } from "./interactions";
+import { referenceContentParts, type ReferenceLibrary } from "./references";
 
 /**
  * The agent's hands. Every tool operates on the calling user's draft view —
@@ -36,6 +37,8 @@ export interface ToolContext {
   pageSlug: string;
   /** Null when no LLM is configured — only the design tools need it. */
   llm: LlmClient | null;
+  /** This conversation's reference material; absent on surfaces without chat (MCP). */
+  references?: ReferenceLibrary | null;
 }
 
 export interface ToolOutcome {
@@ -43,6 +46,12 @@ export interface ToolOutcome {
   mutated: boolean;
   /** This tool needs a human response before the agent can continue. */
   interaction?: ChatInteraction;
+  /**
+   * Content the tool is putting back in front of the model — pixels or a
+   * document, which a tool result (text only) can't carry. The loop appends
+   * these as a follow-up user message.
+   */
+  attach?: LlmContentPart[];
 }
 
 interface RegisteredTool {
@@ -84,6 +93,14 @@ function safeParse(raw: string): Record<string, unknown> {
 const markdownField = (what: string) =>
   z.string().max(50_000).describe(`${what} as markdown: ${MARKDOWN_DIALECT}`);
 
+const referenceIdsField = z
+  .array(z.string().max(64))
+  .max(4)
+  .optional()
+  .describe(
+    "ids of attached reference material (from the roster in the conversation) the designer should look at while laying this out",
+  );
+
 const TOOLS: Record<string, RegisteredTool> = {
   rewrite_section: defineTool({
     description:
@@ -118,6 +135,7 @@ const TOOLS: Record<string, RegisteredTool> = {
         .min(1)
         .max(2000)
         .describe("what the section's layout should become; mention the design-system pattern when you have one in mind"),
+      referenceIds: referenceIdsField,
     }),
     activity: (args) => `Designing ${args.sectionSlug ?? "a section"}…`,
     run: designSection,
@@ -128,9 +146,20 @@ const TOOLS: Record<string, RegisteredTool> = {
       "Redesign the whole page's wireframe per an instruction (e.g. 'more visual rhythm, alternate tinted bands', 'lay the whole page out for the first time'). Starts from the current wireframe when one exists. Copy is untouched; the layout regenerates around it.",
     args: z.object({
       instruction: z.string().min(1).max(2000).describe("page-level layout direction to apply"),
+      referenceIds: referenceIdsField,
     }),
     activity: () => "Redesigning the page layout…",
     run: redesignPage,
+  }),
+
+  read_reference: defineTool({
+    description:
+      "Look at a piece of reference material the user attached earlier in this conversation — a screenshot, a PDF, or a page's copy. Its full contents come back into view. Use it when you need to check a detail you no longer have in front of you. To *design* against a reference you don't need this: pass its id to design_section or redesign_page instead, and the designer sees it directly.",
+    args: z.object({
+      referenceId: z.string().min(1).max(64).describe("id of the reference, from the roster in the conversation"),
+    }),
+    activity: () => "Looking at the reference…",
+    run: readReference,
   }),
 
   ask_user_choice: defineTool({
@@ -236,8 +265,49 @@ async function addSection(args: { title: string; markdown: string }, ctx: ToolCo
   return { result: `Added section "${args.title}" (${slug}).`, mutated: true };
 }
 
+/**
+ * Loads the references a design tool named, along with a note about any that
+ * no longer resolve — publishing prunes reference material, so an id from
+ * earlier in a long conversation can legitimately go missing. Saying so beats
+ * silently designing without the thing the user asked us to look at.
+ */
+async function resolveReferences(
+  ctx: ToolContext,
+  referenceIds: string[] | undefined,
+): Promise<{ parts?: LlmContentPart[]; note: string }> {
+  if (!referenceIds?.length) return { note: "" };
+  if (!ctx.references) {
+    return { note: " (reference material isn't available on this surface, so I designed without it)" };
+  }
+  const loaded = await ctx.references.loadMany(referenceIds);
+  const found = new Set(loaded.map((reference) => reference.id));
+  const missing = referenceIds.filter((id) => !found.has(id));
+  const note = missing.length
+    ? ` (reference ${missing.join(", ")} is no longer available — publishing clears attachments; ask the user to re-attach it)`
+    : "";
+  return { parts: loaded.length ? referenceContentParts(loaded) : undefined, note };
+}
+
+async function readReference(args: { referenceId: string }, ctx: ToolContext): Promise<ToolOutcome> {
+  const reference = ctx.references ? await ctx.references.load(args.referenceId) : null;
+  if (!reference) {
+    return {
+      result: `No reference with id "${args.referenceId}" in this conversation. Publishing clears attachments — ask the user to attach it again.`,
+      mutated: false,
+    };
+  }
+  if (reference.media === "text") {
+    return { result: `Reference "${reference.label}":\n\n${reference.text ?? "(empty)"}`, mutated: false };
+  }
+  return {
+    result: `Reference "${reference.label}" is in front of you again in the next message.`,
+    mutated: false,
+    attach: referenceContentParts([reference]),
+  };
+}
+
 async function designSection(
-  args: { sectionSlug: string; instruction: string },
+  args: { sectionSlug: string; instruction: string; referenceIds?: string[] },
   ctx: ToolContext,
 ): Promise<ToolOutcome> {
   if (!ctx.llm) {
@@ -267,10 +337,12 @@ async function designSection(
 
   const wireframe = (await readWireframe(ctx.oxen, ctx.view, ctx.pageSlug)) ?? "";
   const current = listWireframeSections(wireframe).find((s) => s.slug === section.slug)?.html;
+  const references = await resolveReferences(ctx, args.referenceIds);
 
   const sectionHtml = await generateSectionLayout(ctx.llm, forLayout, {
     instruction: args.instruction,
     currentHtml: current,
+    references: references.parts,
   });
 
   const docOrder = docSections(doc)
@@ -280,12 +352,15 @@ async function designSection(
 
   const note = relinked ? " (it was unlinked — I linked it back into the wireframe)" : "";
   return {
-    result: `Redesigned the "${section.title}" section${note}: ${args.instruction}\n\nIts layout is now:\n${sectionHtml}`,
+    result: `Redesigned the "${section.title}" section${note}${references.note}: ${args.instruction}\n\nIts layout is now:\n${sectionHtml}`,
     mutated: true,
   };
 }
 
-async function redesignPage(args: { instruction: string }, ctx: ToolContext): Promise<ToolOutcome> {
+async function redesignPage(
+  args: { instruction: string; referenceIds?: string[] },
+  ctx: ToolContext,
+): Promise<ToolOutcome> {
   if (!ctx.llm) {
     return { result: "No designer LLM is configured on this server, so layout tools are unavailable.", mutated: false };
   }
@@ -309,11 +384,15 @@ async function redesignPage(args: { instruction: string }, ctx: ToolContext): Pr
   }
 
   const currentHtml = (await readWireframe(ctx.oxen, ctx.view, ctx.pageSlug)) || undefined;
+  const references = await resolveReferences(ctx, args.referenceIds);
   const html = await generateWireframe(
-    [new LlmGenerator(ctx.llm, { instruction: args.instruction, currentHtml }), new HeuristicGenerator()],
+    [
+      new LlmGenerator(ctx.llm, { instruction: args.instruction, currentHtml, references: references.parts }),
+      new HeuristicGenerator(),
+    ],
     sections,
   );
   await writeWireframe(ctx.oxen, ctx.view, ctx.pageSlug, html);
 
-  return { result: `Redesigned the wireframe: ${args.instruction}`, mutated: true };
+  return { result: `Redesigned the wireframe${references.note}: ${args.instruction}`, mutated: true };
 }

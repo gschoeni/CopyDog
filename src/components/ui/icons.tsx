@@ -348,3 +348,48 @@ export function KeyIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+/** Paperclip — attach reference material to the assistant. */
+export function PaperclipIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M20.5 11.5 12 20a5.5 5.5 0 0 1-7.8-7.8l8.6-8.6a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6l7.9-7.9" />
+    </Icon>
+  );
+}
+
+/** Framed picture — an image reference. */
+export function ImageIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <circle cx="8.5" cy="9.5" r="1.5" />
+      <path d="m4 17 4.5-4.5a2 2 0 0 1 2.8 0L16 17" />
+      <path d="m14.5 15.5 1.7-1.7a2 2 0 0 1 2.8 0L21 16" />
+    </Icon>
+  );
+}
+
+/** Page with a folded corner — a PDF reference. */
+export function DocumentIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+      <path d="M9 13h6" />
+      <path d="M9 17h4" />
+    </Icon>
+  );
+}
+
+/** Globe — a reference fetched from the web. */
+export function GlobeIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3.5 9h17" />
+      <path d="M3.5 15h17" />
+      <path d="M12 3c2.4 2.4 3.6 5.4 3.6 9S14.4 18.6 12 21c-2.4-2.4-3.6-5.4-3.6-9S9.6 5.4 12 3Z" />
+    </Icon>
+  );
+}

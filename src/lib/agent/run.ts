@@ -1,5 +1,5 @@
 import { readDoc, readElementsRun, readSectionVersion, readWireframe } from "@/lib/content/store";
-import { LLM_MODELS, type LlmMessage } from "@/lib/llm/client";
+import { LLM_MODELS, type LlmContentPart, type LlmMessage } from "@/lib/llm/client";
 
 import { AGENT_TOOLS, executeTool, toolActivityLabel, type ToolContext } from "./tools";
 import type { ChatInteraction } from "./interactions";
@@ -40,6 +40,17 @@ Writing copy:
 - When a real design or copy decision has 2–4 sensible paths, call ask_user_choice. Give each option a short label
   and concrete trade-off. Do not duplicate the options in prose — the user gets a dedicated interactive choice card.
 
+Working from reference material:
+- The user can attach a screenshot, a PDF, or a link. Each one is listed with a reference id. Pass those ids to
+  design_section / redesign_page so the designer sees the reference itself while laying the page out — that is
+  how a reference becomes a wireframe. read_reference is for when you need to re-examine one yourself.
+- A reference on an EMPTY page means "build me this": read it, add_section for every band you see with real
+  starter copy, then one redesign_page carrying the reference ids. Deliver the whole first draft in one turn.
+- On a page that already has copy, never wipe it because a reference arrived. Say what you'd take from it and
+  ask — or use ask_user_choice — before replacing anything.
+- Take structure, rhythm, and composition from references. Write the copy yourself: their words are theirs.
+  The exception is when the user says the reference is their own material and asks you to bring it across.
+
 Keep replies short and concrete: say what you did and why it works. No filler.`;
 
 export interface AgentTurn {
@@ -58,7 +69,8 @@ export type AgentEvent =
 export async function runAgentTurn(
   ctx: ToolContext,
   history: { role: "user" | "assistant"; content: string }[],
-  userMessage: string,
+  /** Plain prose, or prose preceded by attachment parts (images, documents). */
+  userMessage: string | LlmContentPart[],
   onEvent?: (event: AgentEvent) => void,
 ): Promise<AgentTurn> {
   // the chat agent is only mounted when an LLM is configured — assert it so the
@@ -89,6 +101,9 @@ export async function runAgentTurn(
     }
 
     messages.push({ role: "assistant", content: result.content || null, tool_calls: result.toolCalls });
+    // every tool result must follow its assistant message before anything else,
+    // so attachments a tool pulled back into view are held until they're all in
+    const attachments: LlmContentPart[] = [];
     for (const call of result.toolCalls) {
       onEvent?.({ type: "status", label: toolActivityLabel(call.function.name, call.function.arguments) });
       let outcome;
@@ -104,7 +119,14 @@ export async function runAgentTurn(
         mutated = true;
         onEvent?.({ type: "mutated" });
       }
+      if (outcome.attach?.length) attachments.push(...outcome.attach);
       messages.push({ role: "tool", content: outcome.result, tool_call_id: call.id });
+    }
+    if (attachments.length > 0) {
+      messages.push({
+        role: "user",
+        content: [...attachments, { type: "text", text: "(the reference material you asked to see)" }],
+      });
     }
   }
 

@@ -7,6 +7,7 @@ import {
   SITE_FILE_PATH,
   elementsRunPath,
   flattenPages,
+  isReferencePath,
   pageDocPath,
   pageWireframePath,
   parseSiteFile,
@@ -178,7 +179,21 @@ export async function publishDraft(
   options: { message: string; author: CommitAuthor },
 ): Promise<void> {
   await pruneOrphanContent(oxen, view);
+  await pruneReferences(oxen, view);
   await oxen.commitWorkspace(view.repo, view.workspaceId, view.branch, options);
+}
+
+/**
+ * Unstages assistant reference material (refs/) before a commit. References
+ * are scratch input the agent designs from — a competitor's screenshot, a
+ * brand PDF — and have no business in the team's history or in a proposal
+ * diff. Dropping them here, rather than never staging them, is what lets a
+ * conversation re-read its own references right up until publish.
+ */
+async function pruneReferences(oxen: OxenClient, view: DraftView): Promise<void> {
+  const changes = await oxen.workspaceChanges(view.repo, view.workspaceId);
+  const staged = [...changes.added, ...changes.modified].filter(isReferencePath);
+  await oxen.deleteWorkspaceFiles(view.repo, view.workspaceId, staged);
 }
 
 /**
@@ -215,10 +230,14 @@ async function pruneOrphanContent(oxen: OxenClient, view: DraftView): Promise<vo
   await oxen.deleteWorkspaceFiles(view.repo, view.workspaceId, orphans);
 }
 
-/** True when the workspace holds edits that haven't been published yet. */
+/**
+ * True when the workspace holds edits that haven't been published yet.
+ * Reference material doesn't count — attaching a screenshot to the assistant
+ * is not an edit to the page, and it never reaches a commit anyway.
+ */
 export async function hasUnpublishedChanges(oxen: OxenClient, view: DraftView): Promise<boolean> {
   const changes = await oxen.workspaceChanges(view.repo, view.workspaceId);
-  return changes.added.length + changes.modified.length + changes.removed.length > 0;
+  return [...changes.added, ...changes.modified, ...changes.removed].some((path) => !isReferencePath(path));
 }
 
 /**

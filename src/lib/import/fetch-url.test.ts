@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { assertSafeImportUrl, fetchImportHtml, ImportFetchError } from "./fetch-url";
+import { assertSafeImportUrl, fetchImportHtml, fetchImportResource, ImportFetchError } from "./fetch-url";
 
 const originalAllow = process.env.ALLOW_LOCAL_IMPORT;
 
@@ -122,5 +122,55 @@ describe("fetchImportHtml", () => {
     await expect(fetchImportHtml("https://evil.example.com", fetchImpl, mappedLookup)).rejects.toThrow(
       "can't be imported",
     );
+  });
+});
+
+describe("fetchImportResource", () => {
+  const serving = (body: BodyInit, contentType: string): typeof fetch =>
+    async () => new Response(body, { status: 200, headers: { "Content-Type": contentType } });
+
+  const fetchAny = (fetchImpl: typeof fetch) =>
+    fetchImportResource("https://example.com/asset", { fetchImpl, lookupImpl: publicLookup });
+
+  it("classifies html, images, and pdfs", async () => {
+    await expect(fetchAny(serving("<h1>Hi</h1>", "text/html; charset=utf-8"))).resolves.toMatchObject({
+      kind: "html",
+      contentType: "text/html",
+    });
+    await expect(fetchAny(serving(new Uint8Array([1, 2, 3]), "image/png"))).resolves.toMatchObject({ kind: "image" });
+    await expect(fetchAny(serving(new Uint8Array([4, 5]), "application/pdf"))).resolves.toMatchObject({ kind: "pdf" });
+  });
+
+  it("refuses anything else", async () => {
+    await expect(fetchAny(serving("{}", "application/json"))).rejects.toThrow("web page, image, or PDF");
+    await expect(fetchAny(serving("bin", "application/octet-stream"))).rejects.toThrow(ImportFetchError);
+  });
+
+  it("honours the caller's accepted kinds", async () => {
+    await expect(
+      fetchImportResource("https://example.com/a.png", {
+        accept: ["html"],
+        fetchImpl: serving(new Uint8Array([1]), "image/png"),
+        lookupImpl: publicLookup,
+      }),
+    ).rejects.toThrow("isn't an HTML page");
+  });
+
+  it("applies the per-kind size ceiling — an image may exceed the html limit", async () => {
+    const threeMegabytes = new Uint8Array(3_000_000);
+    await expect(fetchAny(serving(threeMegabytes, "image/png"))).resolves.toMatchObject({ kind: "image" });
+    await expect(fetchAny(serving(new Uint8Array(9_000_000), "image/png"))).rejects.toThrow("too large to attach");
+  });
+
+  it("keeps every SSRF guard — a redirect to a private host still dies", async () => {
+    delete process.env.ALLOW_LOCAL_IMPORT;
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.startsWith("https://example.com")) {
+        return new Response(null, { status: 302, headers: { Location: "http://169.254.169.254/" } });
+      }
+      throw new Error(`private hop was fetched: ${url}`);
+    };
+    await expect(fetchAny(fetchImpl)).rejects.toThrow(ImportFetchError);
   });
 });
