@@ -18,7 +18,7 @@ import { generateWireframe, LlmGenerator, HeuristicGenerator } from "@/lib/wiref
 import type { SectionForLayout } from "@/lib/wireframe/heuristic";
 
 import type { ChatInteraction } from "./interactions";
-import { referenceContentParts, type ReferenceLibrary } from "./references";
+import type { ReferenceLibrary } from "./references";
 
 /**
  * The agent's hands. Every tool operates on the calling user's draft view —
@@ -285,7 +285,7 @@ async function resolveReferences(
   const note = missing.length
     ? ` (reference ${missing.join(", ")} is no longer available — publishing clears attachments; ask the user to re-attach it)`
     : "";
-  return { parts: loaded.length ? referenceContentParts(loaded) : undefined, note };
+  return { parts: loaded.length ? await ctx.references.contentParts(loaded) : undefined, note };
 }
 
 async function readReference(args: { referenceId: string }, ctx: ToolContext): Promise<ToolOutcome> {
@@ -302,7 +302,7 @@ async function readReference(args: { referenceId: string }, ctx: ToolContext): P
   return {
     result: `Reference "${reference.label}" is in front of you again in the next message.`,
     mutated: false,
-    attach: referenceContentParts([reference]),
+    attach: await ctx.references!.contentParts([reference]),
   };
 }
 

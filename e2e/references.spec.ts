@@ -65,6 +65,31 @@ test("an uploaded image reaches the model as pixels", async ({ page }) => {
   await expect(assistant.getByText("competitor.png", { exact: true })).toBeVisible({ timeout: 20_000 });
 });
 
+test("a file larger than one request body uploads in chunks", async ({ page }) => {
+  const assistant = await openAssistant(page, `Reference large ${Date.now()}`);
+
+  // 6 MB — past the 4.5 MB a route handler can take in one request, so this
+  // only works because the browser slices it and Oxen reassembles. The stub
+  // re-hashes what it assembled, so a bad slice or a wrong hash fails here.
+  const big = Buffer.alloc(6_000_000);
+  for (let i = 0; i < big.length; i += 512) big[i] = i % 251;
+
+  await assistant.getByRole("button", { name: "Attach a reference" }).click();
+  await assistant
+    .locator('input[type="file"]')
+    .setInputFiles({ name: "huge-deck.pdf", mimeType: "application/pdf", buffer: big });
+
+  await expect(assistant.getByText("huge-deck.pdf", { exact: true })).toBeVisible({ timeout: 60_000 });
+
+  await assistant.getByLabel("Message the assistant").fill("Build from this deck");
+  await assistant.getByRole("button", { name: "Send" }).click();
+
+  // "(pdf)" only appears when a real document part arrived intact
+  await expect(assistant.getByText("Reference received: huge-deck.pdf (pdf) (stub)")).toBeVisible({
+    timeout: 60_000,
+  });
+});
+
 test("rejects a file type that isn't reference material", async ({ page }) => {
   const assistant = await openAssistant(page, `Reference reject ${Date.now()}`);
 

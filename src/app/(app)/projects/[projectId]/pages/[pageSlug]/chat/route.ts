@@ -4,7 +4,7 @@ import { z } from "zod";
 import { chatContextListSchema, describeContextRefs, isReferenceRef, type ChatContextRef } from "@/lib/agent/context";
 import type { ChatStreamEvent } from "@/lib/agent/events";
 import { describeInteraction, type ChatInteraction } from "@/lib/agent/interactions";
-import { createReferenceLibrary, referenceContentParts } from "@/lib/agent/references";
+import { createReferenceLibrary } from "@/lib/agent/references";
 import { runAgentTurn } from "@/lib/agent/run";
 import { ContentStoreUnavailableError, requireProjectAccess } from "@/lib/content/access";
 import { getLlmClient } from "@/lib/llm";
@@ -98,7 +98,7 @@ export async function POST(
   const references = createReferenceLibrary(oxen, view, conversationId);
   const attached = await references.loadMany((context ?? []).filter(isReferenceRef).map((ref) => ref.id));
   const userMessage = userContent(
-    referenceContentParts(attached),
+    await references.contentParts(attached),
     context?.length ? [describeContextRefs(context), message].join("\n\n") : message,
   );
 

@@ -92,18 +92,32 @@ export const UPLOAD_PDF_TYPE = "application/pdf";
 export const UPLOAD_ACCEPT = [...UPLOAD_IMAGE_TYPES, UPLOAD_PDF_TYPE].join(",");
 
 /**
- * Uploads cross a Vercel route handler, whose request body caps at 4.5 MB —
- * a bigger file would pass locally and fail in production, so it's refused up
- * front with an honest message. URL-sourced references are fetched
- * server-side and skip this ceiling entirely.
+ * The ceiling is the inference API's, not our transport's: files reach Oxen
+ * in chunks (see `references/upload`), so nothing here is bounded by a
+ * request-body limit. 24 MB is the documented maximum for a document; images
+ * get a saner cap because a 10 MB screenshot is already enormous.
  */
-export const MAX_UPLOAD_BYTES = 4_000_000;
+export const UPLOAD_LIMITS: Record<Extract<ReferenceMedia, "image" | "pdf">, number> = {
+  image: 10_000_000,
+  pdf: 24_000_000,
+};
+
+/**
+ * Bytes per upload chunk. Comfortably under the 4.5 MB request-body limit a
+ * Vercel route handler enforces, and far under Oxen's 10 MiB segment size.
+ */
+export const UPLOAD_CHUNK_BYTES = 3_500_000;
 
 export function uploadMedia(mime: string): Extract<ReferenceMedia, "image" | "pdf"> | null {
   const type = mime.split(";")[0]!.trim().toLowerCase();
   if ((UPLOAD_IMAGE_TYPES as readonly string[]).includes(type)) return "image";
   if (type === UPLOAD_PDF_TYPE) return "pdf";
   return null;
+}
+
+/** The one wording for "too big", wherever it's hit. */
+export function tooLargeMessage(media: Extract<ReferenceMedia, "image" | "pdf">): string {
+  return `${media === "pdf" ? "PDFs" : "Images"} up to ${Math.round(UPLOAD_LIMITS[media] / 1_000_000)} MB.`;
 }
 
 /** Short chip label: the section title or reference name, else a source fallback. */

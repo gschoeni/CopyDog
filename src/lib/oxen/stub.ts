@@ -12,8 +12,8 @@ import type { OxenBranch, OxenCommit, OxenDirEntry } from "./types";
  */
 
 interface StubCommit extends OxenCommit {
-  /** full file tree at this commit: path -> content */
-  files: Map<string, string>;
+  /** full file tree at this commit: path -> content bytes */
+  files: Map<string, Uint8Array>;
 }
 
 interface StubWorkspace {
@@ -22,7 +22,7 @@ interface StubWorkspace {
   branchName: string;
   baseCommitId: string;
   /** staged content by path; `null` marks a staged removal */
-  staged: Map<string, string | null>;
+  staged: Map<string, Uint8Array | null>;
 }
 
 interface StubRepo {
@@ -31,6 +31,8 @@ interface StubRepo {
   branches: Map<string, string>; // branch name -> commit id
   commits: Map<string, StubCommit>;
   workspaces: Map<string, StubWorkspace>;
+  /** version store: content hash -> uploaded chunks by byte offset */
+  versionChunks: Map<string, Map<number, Uint8Array>>;
 }
 
 export class OxenStub {
@@ -49,8 +51,14 @@ export class OxenStub {
     }
   };
 
-  /** Direct read of a committed file, for test assertions. */
+  /** Direct read of a committed file as text, for test assertions. */
   fileAt(repoName: string, branch: string, path: string): string | undefined {
+    const bytes = this.bytesAt(repoName, branch, path);
+    return bytes === undefined ? undefined : new TextDecoder().decode(bytes);
+  }
+
+  /** Direct read of a committed file's bytes, for binary assertions. */
+  bytesAt(repoName: string, branch: string, path: string): Uint8Array | undefined {
     const repo = this.repos.get(repoName);
     const commitId = repo?.branches.get(branch);
     return commitId ? repo?.commits.get(commitId)?.files.get(path) : undefined;
@@ -93,6 +101,8 @@ export class OxenStub {
         return this.listDir(repo, rest);
       case "workspaces":
         return this.routeWorkspaces(req, repo, rest);
+      case "versions":
+        return this.routeVersions(req, repo, rest);
       default:
         throw new StubHttpError(404, `unknown resource: ${resource}`);
     }
@@ -112,9 +122,12 @@ export class OxenStub {
       branches: new Map(),
       commits: new Map(),
       workspaces: new Map(),
+      versionChunks: new Map(),
     };
     // seed files land in the root commit, mirroring hub's RepoNew.files
-    const seeded = new Map((body.files ?? []).map((file) => [file.path, file.contents]));
+    const seeded = new Map(
+      (body.files ?? []).map((file) => [file.path, new TextEncoder().encode(file.contents)] as const),
+    );
     const initial = this.makeCommit(repo, [], "Initialized repo", body.user.name, body.user.email, seeded);
     repo.branches.set("main", initial.id);
     this.repos.set(body.name, repo);
@@ -155,7 +168,7 @@ export class OxenStub {
     const { commit, path } = this.resolveResource(repo, resourceSegments);
     const content = commit.files.get(path);
     if (content === undefined) throw new StubHttpError(404, `file not found: ${path}`);
-    return new Response(content, { status: 200, headers: { "Content-Type": "application/octet-stream" } });
+    return new Response(content as BodyInit, { status: 200, headers: { "Content-Type": "application/octet-stream" } });
   }
 
   private listDir(repo: StubRepo, resourceSegments: string[]): Response {
@@ -172,7 +185,7 @@ export class OxenStub {
         filename: head,
         hash: "",
         is_dir: isDir,
-        size: isDir ? 0 : (commit.files.get(filePath)?.length ?? 0),
+        size: isDir ? 0 : (commit.files.get(filePath)?.byteLength ?? 0),
         data_type: isDir ? "dir" : "text",
         mime_type: isDir ? "inode/directory" : "text/plain",
         extension: isDir ? "" : (head.split(".").pop() ?? ""),
@@ -246,7 +259,7 @@ export class OxenStub {
         const file = form.get("file");
         if (!(file instanceof File)) throw new StubHttpError(400, "missing multipart part: file");
         const fullPath = path ? `${path}/${file.name}` : file.name;
-        ws.staged.set(fullPath, await file.text());
+        ws.staged.set(fullPath, new Uint8Array(await file.arrayBuffer()));
         return json({ status: "success", paths: [fullPath] });
       }
       if (req.method === "GET") {
@@ -254,7 +267,7 @@ export class OxenStub {
         if (staged === null) throw new StubHttpError(404, `file not found: ${path}`);
         const content = staged ?? repo.commits.get(ws.baseCommitId)!.files.get(path);
         if (content === undefined) throw new StubHttpError(404, `file not found: ${path}`);
-        return new Response(content, { status: 200 });
+        return new Response(content as BodyInit, { status: 200 });
       }
       if (req.method === "DELETE" && path === "") {
         // stages removals; paths absent from both stage and base are reported back
@@ -298,6 +311,63 @@ export class OxenStub {
     throw new StubHttpError(404, "unsupported workspaces route");
   }
 
+  /**
+   * The large-file upload protocol: chunks are PUT with their byte offset,
+   * `complete` reassembles them and — given a workspace_id — stages the file.
+   * The hash check is real, because it's the thing that catches a client
+   * hashing the bytes differently from Oxen (XXH3-128, Rust `{:x}` format).
+   */
+  private async routeVersions(req: Request, repo: StubRepo, rest: string[]): Promise<Response> {
+    const versionId = rest[0];
+    if (!versionId) throw new StubHttpError(404, "unsupported versions route");
+
+    if (rest[1] === "create" && req.method === "POST") {
+      return json({ status: "success", status_message: "resource_found" });
+    }
+
+    if (rest[1] === "chunks" && req.method === "PUT") {
+      const offset = Number(new URL(req.url).searchParams.get("offset") ?? "0");
+      const chunks = repo.versionChunks.get(versionId) ?? new Map<number, Uint8Array>();
+      chunks.set(offset, new Uint8Array(await req.arrayBuffer()));
+      repo.versionChunks.set(versionId, chunks);
+      return json({ status: "success", status_message: "resource_created" });
+    }
+
+    if (rest[1] === "complete" && req.method === "POST") {
+      const body = (await req.json()) as {
+        files: { file_name: string; dst_dir?: string; num_chunks: number }[];
+        workspace_id?: string;
+      };
+      const file = body.files[0];
+      if (!file || body.files.length !== 1) {
+        throw new StubHttpError(400, "Expected a single file in the request");
+      }
+      const chunks = repo.versionChunks.get(versionId) ?? new Map<number, Uint8Array>();
+      if (chunks.size !== file.num_chunks) {
+        throw new StubHttpError(
+          400,
+          `Number of chunks does not match expected number of chunks: ${chunks.size} != ${file.num_chunks}`,
+        );
+      }
+      const assembled = concatChunks(chunks);
+      const actual = await hashVersionId(assembled);
+      if (actual !== versionId) {
+        throw new StubHttpError(500, `Hash mismatch writing version ${versionId} (got ${actual})`);
+      }
+      repo.versionChunks.delete(versionId);
+
+      if (body.workspace_id) {
+        const ws = repo.workspaces.get(body.workspace_id);
+        if (!ws) throw new StubHttpError(404, `Workspace not found: ${body.workspace_id}`);
+        const dir = file.dst_dir?.replace(/\/$/, "") ?? "";
+        ws.staged.set(dir ? `${dir}/${file.file_name}` : file.file_name, assembled);
+      }
+      return json({ status: "success", status_message: "resource_found" });
+    }
+
+    throw new StubHttpError(404, "unsupported versions route");
+  }
+
   // -- helpers ---------------------------------------------------------------
 
   /** Resource paths embed the revision: longest matching branch name wins, then commit ids. */
@@ -318,7 +388,7 @@ export class OxenStub {
     message: string,
     author: string,
     email: string,
-    files: Map<string, string>,
+    files: Map<string, Uint8Array>,
   ): StubCommit {
     const commit: StubCommit = {
       id: `commit-${++this.commitCounter}`,
@@ -346,6 +416,25 @@ class StubHttpError extends Error {
 function toApiCommit(commit: StubCommit): OxenCommit {
   const { files: _files, ...rest } = commit;
   return rest;
+}
+
+/** Chunks in byte order, concatenated — the server's `combine_version_chunks`. */
+function concatChunks(chunks: Map<number, Uint8Array>): Uint8Array {
+  const ordered = [...chunks.entries()].sort(([a], [b]) => a - b).map(([, bytes]) => bytes);
+  const total = ordered.reduce((sum, bytes) => sum + bytes.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const bytes of ordered) {
+    out.set(bytes, offset);
+    offset += bytes.byteLength;
+  }
+  return out;
+}
+
+/** Oxen's version id: XXH3-128 of the contents, Rust `{:x}` (no leading zeros). */
+async function hashVersionId(bytes: Uint8Array): Promise<string> {
+  const { xxhash128 } = await import("hash-wasm");
+  return (await xxhash128(bytes)).replace(/^0+/, "");
 }
 
 function json(body: unknown, status = 200): Response {

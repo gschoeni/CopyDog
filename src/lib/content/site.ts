@@ -193,6 +193,16 @@ export function referencePath(conversationId: string, referenceId: string): stri
   return `${REFERENCES_DIR}/${conversationId}/${referenceId}.json`;
 }
 
+/**
+ * Where a reference's bytes sit, beside its manifest. Pass an empty
+ * `fileName` for the directory itself — chunked uploads name the destination
+ * directory and let Oxen place the file inside it.
+ */
+export function referenceBlobPath(conversationId: string, referenceId: string, fileName: string): string {
+  const dir = `${REFERENCES_DIR}/${conversationId}/${referenceId}`;
+  return fileName ? `${dir}/${fileName}` : dir;
+}
+
 export function isReferencePath(path: string): boolean {
   return path === REFERENCES_DIR || path.startsWith(`${REFERENCES_DIR}/`);
 }

@@ -197,6 +197,65 @@ export class OxenClient {
     return res.text();
   }
 
+  /** Same, for files that aren't text — screenshots, PDFs. */
+  async readWorkspaceFileBytes(repo: string, workspaceId: string, path: string): Promise<Uint8Array> {
+    const res = await this.rawRequest(
+      "GET",
+      `${this.repoPath(repo)}/workspaces/${encodeURIComponent(workspaceId)}/files/${encodePath(path)}`,
+    );
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  // -- large uploads -------------------------------------------------------
+
+  /**
+   * Uploads one chunk of a version file. `versionId` is the file's full-content
+   * XXH3-128 hash and `offset` its byte position; chunks may arrive in any order
+   * and the server reassembles them on `completeVersionUpload`, which verifies
+   * the hash. This is how `oxen push` moves large files, and it's the only way
+   * bytes larger than one HTTP request body can reach the store.
+   */
+  async uploadVersionChunk(
+    repo: string,
+    versionId: string,
+    offset: number,
+    chunk: Uint8Array | ArrayBuffer | Blob,
+  ): Promise<void> {
+    await this.rawRequest(
+      "PUT",
+      `${this.repoPath(repo)}/versions/${encodeURIComponent(versionId)}/chunks?offset=${offset}`,
+      {
+        body: chunk instanceof Blob ? chunk : new Blob([chunk as BlobPart]),
+        contentType: "application/octet-stream",
+      },
+    );
+  }
+
+  /**
+   * Assembles previously-uploaded chunks into the version file and stages it
+   * into a workspace at `dstDir/fileName` — no commit involved. Fails if the
+   * chunk count is off or the reassembled bytes don't hash to `versionId`.
+   */
+  async completeVersionUpload(
+    repo: string,
+    versionId: string,
+    options: { fileName: string; dstDir: string; numChunks: number; workspaceId: string },
+  ): Promise<void> {
+    await this.request("POST", `${this.repoPath(repo)}/versions/${encodeURIComponent(versionId)}/complete`, {
+      json: {
+        files: [
+          {
+            hash: versionId,
+            file_name: options.fileName,
+            dst_dir: options.dstDir,
+            num_chunks: options.numChunks,
+          },
+        ],
+        workspace_id: options.workspaceId,
+      },
+    });
+  }
+
   /** Paths currently staged in a workspace (the user's unpublished edits). */
   async workspaceChanges(repo: string, workspaceId: string): Promise<{ added: string[]; modified: string[]; removed: string[] }> {
     const data = await this.request<{

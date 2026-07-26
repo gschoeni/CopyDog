@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 
+import { createXXHash128 } from "hash-wasm";
+
 import {
-  MAX_UPLOAD_BYTES,
   UPLOAD_ACCEPT,
+  UPLOAD_CHUNK_BYTES,
+  UPLOAD_LIMITS,
+  tooLargeMessage,
   uploadMedia,
   type ReferenceContextRef,
   type ReferenceMedia,
@@ -32,33 +36,62 @@ export interface AttachTarget {
   conversationId: string;
 }
 
-/** Posts a file to the attach route. Rejects with a user-facing message. */
-export async function attachFile(target: AttachTarget, file: File): Promise<ReferenceContextRef> {
-  if (uploadMedia(file.type) === null) {
-    throw new Error("Attach a PNG, JPG, WEBP, GIF, or PDF.");
-  }
-  if (file.size > MAX_UPLOAD_BYTES) {
-    throw new Error(`Uploads up to ${Math.round(MAX_UPLOAD_BYTES / 1_000_000)} MB — link to bigger files instead.`);
-  }
-  const body = new FormData();
-  body.append("file", file);
-  body.append("conversationId", target.conversationId);
-  return post(target, { body });
-}
+/**
+ * Uploads a file and attaches it as a reference.
+ *
+ * A route handler can only take 4.5 MB per request, so the file goes to Oxen
+ * the way `oxen push` sends large files: hash the whole thing (XXH3-128),
+ * slice it, PUT each slice with its byte offset, then ask the server to
+ * reassemble. Oxen re-hashes what it assembled and refuses anything that
+ * doesn't match, so a dropped chunk fails loudly instead of silently
+ * corrupting a reference. Size is bounded by what the model accepts, not by
+ * what an HTTP request can carry.
+ */
+export async function attachFile(
+  target: AttachTarget,
+  file: File,
+  onProgress?: (fraction: number) => void,
+): Promise<ReferenceContextRef> {
+  const media = uploadMedia(file.type);
+  if (media === null) throw new Error("Attach a PNG, JPG, WEBP, GIF, or PDF.");
+  if (file.size === 0) throw new Error("That file is empty.");
+  if (file.size > UPLOAD_LIMITS[media]) throw new Error(tooLargeMessage(media));
 
-/** Posts a URL to the attach route; the server fetches and classifies it. */
-export async function attachUrl(target: AttachTarget, url: string): Promise<ReferenceContextRef> {
-  return post(target, {
-    body: JSON.stringify({ url, conversationId: target.conversationId }),
-    headers: { "Content-Type": "application/json" },
+  const hash = await hashFile(file);
+  const base = `/projects/${target.projectId}/pages/${target.pageSlug}/chat/references`;
+
+  let numChunks = 0;
+  for (let offset = 0; offset < file.size; offset += UPLOAD_CHUNK_BYTES) {
+    const slice = file.slice(offset, Math.min(offset + UPLOAD_CHUNK_BYTES, file.size));
+    const res = await fetch(`${base}/upload?hash=${hash}&offset=${offset}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: slice,
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(data?.error ?? "Upload failed — please try again.");
+    }
+    numChunks++;
+    onProgress?.(Math.min(1, (offset + slice.size) / file.size));
+  }
+
+  return attach(target, {
+    upload: { hash, filename: file.name, mime: file.type, byteSize: file.size, numChunks },
   });
 }
 
-async function post(target: AttachTarget, init: RequestInit): Promise<ReferenceContextRef> {
-  const res = await fetch(
-    `/projects/${target.projectId}/pages/${target.pageSlug}/chat/references`,
-    { method: "POST", ...init },
-  );
+/** Attaches a URL; the server fetches and classifies it (SSRF-guarded). */
+export async function attachUrl(target: AttachTarget, url: string): Promise<ReferenceContextRef> {
+  return attach(target, { url });
+}
+
+async function attach(target: AttachTarget, body: object): Promise<ReferenceContextRef> {
+  const res = await fetch(`/projects/${target.projectId}/pages/${target.pageSlug}/chat/references`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...body, conversationId: target.conversationId }),
+  });
   const data = (await res.json().catch(() => null)) as
     | { reference?: ReferenceContextRef; error?: string }
     | null;
@@ -66,6 +99,21 @@ async function post(target: AttachTarget, init: RequestInit): Promise<ReferenceC
     throw new Error(data?.error ?? "Couldn't attach that. Please try again.");
   }
   return data.reference;
+}
+
+/**
+ * The file's XXH3-128, which is the id Oxen stores it under. Hashed in slices
+ * so a large PDF never sits in memory twice, and formatted the way Oxen does
+ * (Rust's `{:x}` on a u128 — no leading zeros).
+ */
+async function hashFile(file: File): Promise<string> {
+  const hasher = await createXXHash128();
+  hasher.init();
+  for (let offset = 0; offset < file.size; offset += UPLOAD_CHUNK_BYTES) {
+    const slice = file.slice(offset, Math.min(offset + UPLOAD_CHUNK_BYTES, file.size));
+    hasher.update(new Uint8Array(await slice.arrayBuffer()));
+  }
+  return hasher.digest("hex").replace(/^0+/, "");
 }
 
 /**

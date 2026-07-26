@@ -1,3 +1,4 @@
+import { xxhash128 } from "hash-wasm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { docSections } from "@/lib/content/doc";
@@ -16,7 +17,7 @@ import { OxenClient } from "@/lib/oxen/client";
 import { provisionProjectRepo } from "@/lib/oxen/provision";
 import { OxenStub } from "@/lib/oxen/stub";
 
-import { createReferenceLibrary, resolveUploadedReference, saveReference } from "./references";
+import { createReferenceLibrary, saveUploadedReference } from "./references";
 import { runAgentTurn } from "./run";
 
 const AUTHOR = { name: "greg", email: "greg@copydog.app" };
@@ -304,21 +305,29 @@ describe("runAgentTurn", () => {
   describe("reference material", () => {
     /** Attaches a screenshot to this conversation and hands back the tool context. */
     async function withReference() {
-      const reference = resolveUploadedReference({
+      const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+      const hash = (await xxhash128(bytes)).replace(/^0+/, "");
+      await oxen.uploadVersionChunk(REPO, hash, 0, bytes);
+      const reference = await saveUploadedReference(oxen, view, CONVERSATION, {
+        hash,
         filename: "competitor.png",
         mime: "image/png",
-        bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+        byteSize: bytes.byteLength,
+        numChunks: 1,
       });
-      await saveReference(oxen, view, CONVERSATION, reference);
-      return { reference, references: createReferenceLibrary(oxen, view, CONVERSATION) };
+      return {
+        reference,
+        dataUrl: `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`,
+        references: createReferenceLibrary(oxen, view, CONVERSATION),
+      };
     }
 
     it("carries an attached image into the turn's user message", async () => {
-      const { reference, references } = await withReference();
+      const { reference, dataUrl, references } = await withReference();
       const { llm, requests } = scriptedLlm([say("Nice reference — here's what I'd take from it.")]);
 
       await runAgentTurn({ oxen, view, pageSlug: "home", llm, references }, [], [
-        { type: "image_url", image_url: { url: reference.dataUrl! } },
+        { type: "image_url", image_url: { url: dataUrl } },
         { type: "text", text: "build the page from this" },
       ]);
 
@@ -326,13 +335,13 @@ describe("runAgentTurn", () => {
       expect(userMessage.role).toBe("user");
       // media leads, prose follows — the ordering the API asks for
       expect(userMessage.content).toEqual([
-        { type: "image_url", image_url: { url: reference.dataUrl } },
+        { type: "image_url", image_url: { url: dataUrl } },
         { type: "text", text: "build the page from this" },
       ]);
     });
 
     it("read_reference puts the image back in front of the model", async () => {
-      const { reference, references } = await withReference();
+      const { reference, dataUrl, references } = await withReference();
       const { llm, requests } = scriptedLlm([
         toolCall("read_reference", { referenceId: reference.id }),
         say("Checked it again — the pricing table is a 3-up."),
@@ -343,7 +352,7 @@ describe("runAgentTurn", () => {
       expect(turn.mutated).toBe(false);
       const followUp = (requests[1]!.messages as { role: string; content: unknown }[]).at(-1)!;
       expect(followUp.role).toBe("user");
-      expect(followUp.content).toContainEqual({ type: "image_url", image_url: { url: reference.dataUrl } });
+      expect(followUp.content).toContainEqual({ type: "image_url", image_url: { url: dataUrl } });
     });
 
     it("tells the agent when a reference id no longer resolves", async () => {
@@ -359,7 +368,7 @@ describe("runAgentTurn", () => {
     });
 
     it("design_section shows the reference to the designer, not just its description", async () => {
-      const { reference, references } = await withReference();
+      const { reference, dataUrl, references } = await withReference();
       const { llm, requests } = scriptedLlm([
         toolCall("design_section", {
           sectionSlug: "hero",
@@ -377,7 +386,7 @@ describe("runAgentTurn", () => {
       // the designer's own request carried the pixels and the composition brief
       const designerMessages = requests[1]!.messages as { role: string; content: unknown }[];
       const designerPrompt = designerMessages.at(-1)!;
-      expect(designerPrompt.content).toContainEqual({ type: "image_url", image_url: { url: reference.dataUrl } });
+      expect(designerPrompt.content).toContainEqual({ type: "image_url", image_url: { url: dataUrl } });
       expect(JSON.stringify(designerPrompt.content)).toContain("Match its *composition*");
     });
 

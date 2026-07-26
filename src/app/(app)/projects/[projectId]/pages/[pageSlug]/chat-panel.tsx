@@ -98,6 +98,7 @@ export function ChatPanel({
   const [draft, setDraft] = useState("");
   const [pendingContext, setPendingContext] = useState<ChatContextRef[]>([]);
   const [attaching, setAttaching] = useState(0);
+  const [attachProgress, setAttachProgress] = useState(0);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
@@ -230,6 +231,7 @@ export function ChatPanel({
       userInteractedRef.current = true;
       const conversation = activeConversationRef.current;
       setAttachError(null);
+      setAttachProgress(0);
       setAttaching((count) => count + 1);
       try {
         const reference = await task();
@@ -246,7 +248,8 @@ export function ChatPanel({
   );
 
   const attachTarget = { projectId, pageSlug, conversationId };
-  const handleAttachFile = (file: File) => void runAttach(() => attachFile(attachTarget, file));
+  const handleAttachFile = (file: File) =>
+    void runAttach(() => attachFile(attachTarget, file, setAttachProgress));
   const handleAttachUrl = (url: string) => void runAttach(() => attachUrl(attachTarget, url));
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
@@ -531,7 +534,9 @@ export function ChatPanel({
                 />
                 <span className="truncate text-[11px] text-ink-tertiary">
                   {attaching > 0
-                    ? "Attaching…"
+                    ? attachProgress > 0 && attachProgress < 1
+                      ? `Uploading… ${Math.round(attachProgress * 100)}%`
+                      : "Attaching…"
                     : busy
                       ? "Assistant is working"
                       : draft.length > 3600
