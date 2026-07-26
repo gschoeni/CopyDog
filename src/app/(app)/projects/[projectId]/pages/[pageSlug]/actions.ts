@@ -309,7 +309,7 @@ export async function importPageAction(input: z.infer<typeof importPageInput>): 
   await replaceDoc(oxen, view, pageSlug, { version: 2, content });
 
   // lay it out
-  const html = await generateWireframe(
+  const layout = await generateWireframe(
     selectGenerator(llm),
     extracted.map((section, i) => ({
       slug: (content[i] as Extract<DocContent, { kind: "section" }>).slug,
@@ -317,7 +317,7 @@ export async function importPageAction(input: z.infer<typeof importPageInput>): 
       elements: section.elements,
     })),
   );
-  await writeWireframe(oxen, view, pageSlug, html);
+  await writeWireframe(oxen, view, pageSlug, layout.html);
 
   return { ok: true, sections: content.length };
 }
@@ -382,7 +382,7 @@ export async function generateWireframeAction(
       })),
   );
 
-  const html = await generateWireframe(selectGenerator(getLlmClient()), sections);
+  const { html } = await generateWireframe(selectGenerator(getLlmClient()), sections);
   await writeWireframe(oxen, view, pageSlug, html);
 
   return { html };

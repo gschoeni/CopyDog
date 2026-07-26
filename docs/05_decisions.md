@@ -506,3 +506,58 @@ single seam where that switch happens.
 
 **Limits now describe the model, not the plumbing:** 24 MB PDFs (the documented
 document maximum), 10 MB images.
+
+## 2026-07-25 — One model per task, and why a Figma export was coming back generic
+
+**The reported symptom** was that building a wireframe from "a very large PNG
+export from Figma" produced a layout that didn't match. The cause was not the
+prompt.
+
+**Measured, not assumed.** A synthetic 7-band landing page was rendered at
+several aspect ratios, screenshotted whole, and read back band by band
+(layout type, column count, which side the media sits on):
+
+| page shape          | claude-sonnet-4-6 | gemini-3-1-pro | gemini-3-flash |
+|---------------------|-------------------|----------------|----------------|
+| 1440x3990  (1:3)    | 7/7               | 7/7            | 7/7            |
+| 1440x7770  (1:5)    | 7/7               | 7/7            | 7/7            |
+| 1440x13090 (1:9)    | **HTTP 400**      | 7/7            | 7/7            |
+| 1440x22890 (1:16)   | **HTTP 400**      | 7/7            | 7/7            |
+
+Anthropic refuses an image whose dimension exceeds 8000px — which is most of
+what "export the whole page" produces. Gemini reads the same file, and still
+reads it at 22890px tall.
+
+**The failure was invisible, which is the actual bug.** `generateWireframe`
+tries generators in order and falls back to the rule-based one on any error.
+So the 400 was swallowed and the user got a generic heuristic layout that had
+never seen their screenshot, with nothing said about it. `generateWireframe`
+now returns `{ html, fallback, error }`, and `redesign_page` puts a note in
+the tool result telling the agent to say plainly that the layout does not
+follow the reference. A quiet fallback is worse than a loud failure.
+
+**Tiling was tested and rejected.** Slicing the export into overlapping
+full-width tiles with a low-res overview — the standard advice for dense
+documents — made every model *worse*: 0–3/7 versus 7/7 whole. A page is one
+continuous layout, and cutting it up destroys the vertical rhythm the designer
+is meant to reproduce. (It also needs the images labelled as one page, or the
+model describes only the last one.) We send the whole image.
+
+**Models are now per-task, each overridable by environment**
+(`src/lib/llm/models.ts`): `copy` and `wireframe` stay on claude-sonnet-4-6 —
+tool calling and code generation, where it's strong — while
+`wireframeFromReference` and `vision` go to gemini-3-1-pro-preview. Routing
+turns on whether the request carries something to *look at*
+(`hasVisualParts`), not on whether a reference exists.
+
+**Which is why a URL doesn't route to vision at all.** For a fetched page the
+DOM is the layout, stated more precisely than pixels can imply it, so
+`import/outline.ts` now sends a structural outline alongside the copy — band
+order, repeat counts ("a row of 4 repeated items, each with an image"), and
+whether the picture leads or follows the text, which is the split direction.
+Previously a URL reference contributed copy only and could not inform layout
+at all. It stays on the code-strong model.
+
+**What we cannot get from HTML** is visual geometry — column widths, actual
+alignment — because we fetch markup without rendering CSS. The outline reports
+what the markup supports and stays quiet about the rest rather than guessing.

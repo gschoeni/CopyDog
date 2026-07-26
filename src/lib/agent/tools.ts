@@ -385,14 +385,25 @@ async function redesignPage(
 
   const currentHtml = (await readWireframe(ctx.oxen, ctx.view, ctx.pageSlug)) || undefined;
   const references = await resolveReferences(ctx, args.referenceIds);
-  const html = await generateWireframe(
+  const layout = await generateWireframe(
     [
       new LlmGenerator(ctx.llm, { instruction: args.instruction, currentHtml, references: references.parts }),
       new HeuristicGenerator(),
     ],
     sections,
   );
-  await writeWireframe(ctx.oxen, ctx.view, ctx.pageSlug, html);
+  await writeWireframe(ctx.oxen, ctx.view, ctx.pageSlug, layout.html);
 
-  return { result: `Redesigned the wireframe${references.note}: ${args.instruction}`, mutated: true };
+  // the rule-based generator never saw the reference, so a silent fallback
+  // looks exactly like "you ignored my screenshot" — say what happened
+  const fallbackNote = layout.fallback
+    ? `\n\nNOTE: the designer failed (${layout.error}) and a generic rule-based layout was used instead${
+        references.parts ? ", so this layout does NOT follow the reference" : ""
+      }. Tell the user plainly rather than describing this as a match.`
+    : "";
+
+  return {
+    result: `Redesigned the wireframe${references.note}: ${args.instruction}${fallbackNote}`,
+    mutated: true,
+  };
 }

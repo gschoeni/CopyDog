@@ -1,6 +1,7 @@
 import { parse, HTMLElement as ParsedElement } from "node-html-parser";
 
-import { LLM_MODELS, userContent, type LlmClient, type LlmContentPart } from "@/lib/llm/client";
+import { userContent, type LlmClient, type LlmContentPart } from "@/lib/llm/client";
+import { modelForLayout } from "@/lib/llm/models";
 import { serializeElements } from "@/lib/copy/markdown";
 
 import type { SectionForLayout } from "./heuristic";
@@ -93,7 +94,7 @@ export async function generateSectionLayout(
     : "";
 
   const result = await llm.chat({
-    model: LLM_MODELS.wireframe,
+    model: modelForLayout(options.references),
     maxTokens: 2000,
     messages: [
       { role: "system", content: DESIGN_SYSTEM_SPEC },

@@ -1,4 +1,5 @@
-import { LLM_MODELS, LlmClient, userContent, type LlmContentPart } from "@/lib/llm/client";
+import { LlmClient, userContent, type LlmContentPart } from "@/lib/llm/client";
+import { modelForLayout } from "@/lib/llm/models";
 import { serializeElements } from "@/lib/copy/markdown";
 
 import { listWireframeSections, stripCodeFences } from "./edit";
@@ -48,7 +49,7 @@ export class LlmGenerator implements WireframeGenerator {
       ? `\n\nThe page's current wireframe is below. Treat it as the starting point: keep sections the direction doesn't mention as they are, and redesign the ones it does.\n\n${this.options.currentHtml}`
       : "";
     const result = await this.llm.chat({
-      model: LLM_MODELS.wireframe,
+      model: modelForLayout(this.options.references),
       maxTokens: 8000,
       messages: [
         { role: "system", content: DESIGN_SYSTEM_SPEC },
@@ -91,19 +92,42 @@ export function selectGenerator(llm: LlmClient | null): WireframeGenerator[] {
   return llm ? [new LlmGenerator(llm), new HeuristicGenerator()] : [new HeuristicGenerator()];
 }
 
-export async function generateWireframe(generators: WireframeGenerator[], sections: SectionForLayout[]): Promise<string> {
+export interface WireframeResult {
+  html: string;
+  /**
+   * The preferred generator failed and a later one answered. It matters
+   * because the rule-based generator has never seen the reference material —
+   * a page laid out this way is generic, and saying nothing about it reads as
+   * "the designer ignored my screenshot".
+   */
+  fallback: boolean;
+  /** Why the preferred generator failed, for the caller to pass on. */
+  error?: string;
+}
+
+export async function generateWireframe(
+  generators: WireframeGenerator[],
+  sections: SectionForLayout[],
+): Promise<WireframeResult> {
   // blank lines are editor layout, not copy — layouts see real elements only
   const layoutSections = sections.map((s) => ({
     ...s,
     elements: s.elements.filter((el) => !(el.type === "p" && !el.text)),
   }));
   let lastError: unknown;
-  for (const generator of generators) {
+  for (const [index, generator] of generators.entries()) {
     try {
-      return await generator.generate(layoutSections);
+      const html = await generator.generate(layoutSections);
+      return index === 0
+        ? { html, fallback: false }
+        : { html, fallback: true, error: errorText(lastError) };
     } catch (err) {
       lastError = err;
     }
   }
   throw lastError instanceof Error ? lastError : new Error("wireframe generation failed");
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err ?? "unknown error");
 }

@@ -5,6 +5,7 @@ import type { DraftView } from "@/lib/content/store";
 import { serializeElements } from "@/lib/copy/markdown";
 import { extractSectionsFromHtml } from "@/lib/import/extract";
 import { fetchImportResource, ImportFetchError } from "@/lib/import/fetch-url";
+import { outlineHtmlStructure } from "@/lib/import/outline";
 import type { LlmContentPart } from "@/lib/llm/client";
 import { OxenError, type OxenClient } from "@/lib/oxen/client";
 
@@ -182,12 +183,23 @@ export async function saveUrlReference(
   return reference;
 }
 
-/** The page's copy as markdown sections — the same extractor page import uses. */
+/**
+ * What we keep from a fetched page: its copy *and* its structure.
+ *
+ * A URL is the one reference we don't need eyes for — the markup states the
+ * band order, the repeat counts, and whether the picture leads or follows,
+ * which a screenshot only implies. Sending both means the designer can match
+ * the layout from a link, which it could not do when we kept the copy alone.
+ */
 function extractedCopy(html: string): string {
-  const text = extractSectionsFromHtml(html)
+  const copy = extractSectionsFromHtml(html)
     .map((section) => `## ${section.title}\n\n${serializeElements(section.elements)}`)
     .join("\n\n")
     .trim();
+  if (!copy) return "";
+
+  const outline = outlineHtmlStructure(html);
+  const text = outline ? `${outline}\n\nIts copy:\n\n${copy}` : copy;
   return text.length > MAX_REFERENCE_TEXT ? `${text.slice(0, MAX_REFERENCE_TEXT)}\n\n…(truncated)` : text;
 }
 

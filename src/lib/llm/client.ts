@@ -78,16 +78,6 @@ export interface LlmClientConfig {
   fetchImpl?: typeof fetch;
 }
 
-/** Model routing per task, tunable in one place. */
-export const LLM_MODELS = {
-  /** wireframe generation & HTML conversion */
-  wireframe: "claude-sonnet-4-6",
-  /** copywriting: rewrites, alternates, brainstorms */
-  copy: "claude-sonnet-4-6",
-  /** vision: screenshots / PDFs to structure */
-  vision: "claude-sonnet-4-6",
-} as const;
-
 export interface ChatOptions {
   model: string;
   messages: LlmMessage[];

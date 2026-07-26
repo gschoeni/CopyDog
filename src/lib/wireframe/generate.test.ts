@@ -1,6 +1,40 @@
 import { describe, expect, it } from "vitest";
 
-import { acceptPageWireframe } from "./generate";
+import { acceptPageWireframe, generateWireframe, type WireframeGenerator } from "./generate";
+
+const SECTIONS = [{ slug: "hero", title: "Hero", elements: [{ type: "h1" as const, text: "Hi" }] }];
+
+const answering = (html: string): WireframeGenerator => ({ generate: async () => html });
+const failing = (message: string): WireframeGenerator => ({
+  generate: async () => {
+    throw new Error(message);
+  },
+});
+
+describe("generateWireframe", () => {
+  it("reports the first generator's answer as no fallback", async () => {
+    const result = await generateWireframe([answering("<section data-copy='hero'></section>")], SECTIONS);
+    expect(result).toMatchObject({ fallback: false });
+    expect(result.error).toBeUndefined();
+  });
+
+  it("says so when the designer failed and the rule-based generator answered", async () => {
+    // The heuristic generator has never seen the reference material, so a
+    // silent fallback is indistinguishable from "the designer ignored my
+    // screenshot" — which is exactly how a rejected oversized image looked.
+    const result = await generateWireframe(
+      [failing("LLM request failed: 400"), answering("<section data-copy='hero'></section>")],
+      SECTIONS,
+    );
+    expect(result.fallback).toBe(true);
+    expect(result.error).toContain("400");
+    expect(result.html).toContain("data-copy");
+  });
+
+  it("throws when nothing can answer", async () => {
+    await expect(generateWireframe([failing("nope")], SECTIONS)).rejects.toThrow("nope");
+  });
+});
 
 describe("acceptPageWireframe", () => {
   it("accepts a page with a real <section data-copy> for every required slug", () => {

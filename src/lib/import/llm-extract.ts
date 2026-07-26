@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 import { elementSchema } from "@/lib/copy/elements";
-import { LLM_MODELS, type LlmClient, type LlmMessage } from "@/lib/llm/client";
+import type { LlmClient, LlmMessage } from "@/lib/llm/client";
+import { modelFor } from "@/lib/llm/models";
 
 import type { ExtractedSection } from "./extract";
 
@@ -38,14 +39,14 @@ Rules:
 - Keep the author's words exactly; inline **bold** / *italic* markdown may be used where the source emphasizes.`;
 
 export async function extractSectionsWithLlm(llm: LlmClient, html: string): Promise<ExtractedSection[]> {
-  return runExtraction(llm, LLM_MODELS.copy, [
+  return runExtraction(llm, modelFor("copy"), [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: `Extract the copy from this page HTML:\n\n${truncate(html, 150_000)}` },
   ]);
 }
 
 export async function extractSectionsFromImage(llm: LlmClient, imageDataUrl: string): Promise<ExtractedSection[]> {
-  return runExtraction(llm, LLM_MODELS.vision, [
+  return runExtraction(llm, modelFor("vision"), [
     { role: "system", content: SYSTEM_PROMPT },
     {
       role: "user",

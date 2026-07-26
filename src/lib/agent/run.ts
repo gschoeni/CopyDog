@@ -1,5 +1,6 @@
 import { readDoc, readElementsRun, readSectionVersion, readWireframe } from "@/lib/content/store";
-import { LLM_MODELS, type LlmContentPart, type LlmMessage } from "@/lib/llm/client";
+import { type LlmContentPart, type LlmMessage } from "@/lib/llm/client";
+import { modelFor } from "@/lib/llm/models";
 
 import { AGENT_TOOLS, executeTool, toolActivityLabel, type ToolContext } from "./tools";
 import type { ChatInteraction } from "./interactions";
@@ -96,7 +97,7 @@ export async function runAgentTurn(
   const replyParts: string[] = [];
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const options = { model: LLM_MODELS.copy, messages, tools: AGENT_TOOLS, maxTokens: 4000 };
+    const options = { model: modelFor("copy"), messages, tools: AGENT_TOOLS, maxTokens: 4000 };
     // Narration between tool calls streams too, so the turn reads as one reply.
     // Each round's narration is a finished paragraph, and the stream has to
     // carry the same separator the final reply gets — otherwise the panel
