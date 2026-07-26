@@ -90,9 +90,10 @@ test("deleting a page takes its subpages, behind a confirmation", async ({ page 
   await page.getByRole("button", { name: "Create project" }).click();
   await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
 
-  // the only page can't be deleted — there'd be nothing left to land on
+  // the only page can't be deleted — there'd be nothing left to land on. The
+  // trash still shows, disabled, so the action isn't a mystery.
   await page.locator('[data-page-row="home"]').hover();
-  await expect(page.getByRole("button", { name: "Delete Home" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete Home" })).toBeDisabled();
 
   await addTopLevelPage(page, "About");
   await page.locator('[data-page-row="about"]').hover();
@@ -117,6 +118,9 @@ test("deleting a page takes its subpages, behind a confirmation", async ({ page 
   await page.getByRole("button", { name: "Delete page" }).click();
   await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 15_000 });
   await expect.poll(() => rowOrder(page)).toEqual(["home"]);
+  // back to one page: the trash goes quiet again
+  await page.locator('[data-page-row="home"]').hover();
+  await expect(page.getByRole("button", { name: "Delete Home" })).toBeDisabled();
 
   // and it survives a reload — the sitemap was rewritten in the draft
   await page.reload();

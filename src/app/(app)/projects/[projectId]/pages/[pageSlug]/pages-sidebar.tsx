@@ -498,17 +498,23 @@ function PageTree({
                 >
                   <PlusIcon className="size-3.5" />
                 </button>
-                {canDelete && (
+                {/* the span carries the title: browsers don't tooltip a
+                    disabled button, and the "why" is the whole point here */}
+                <span title={canDelete ? "Delete page" : "A site needs at least one page"} className="flex">
                   <button
                     type="button"
+                    disabled={!canDelete}
                     aria-label={`Delete ${page.title}`}
-                    title="Delete page"
                     onClick={() => setDeleting(page)}
-                    className="flex size-5 shrink-0 items-center justify-center rounded text-ink-tertiary/80 opacity-0 transition-opacity hover:bg-surface-hover hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                    className={`flex size-5 shrink-0 items-center justify-center rounded opacity-0 transition-opacity focus-visible:opacity-100 ${
+                      canDelete
+                        ? "text-ink-tertiary/80 hover:bg-surface-hover hover:text-danger group-hover:opacity-100"
+                        : "cursor-not-allowed text-ink-tertiary/40 group-hover:opacity-50"
+                    }`}
                   >
                     <TrashIcon className="size-3.5" />
                   </button>
-                )}
+                </span>
               </>
             )}
           </div>

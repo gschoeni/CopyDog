@@ -108,11 +108,12 @@ nest (row middle), a ⊕ that adds a subpage inline, and a trash that deletes.
 
 Deleting always goes through a confirmation modal (`delete-page-dialog.tsx`),
 which names the page, says how many subpages go with it, and reminds the user
-the page stays in their teammates' view until they publish. The trash is
-hidden when a page's subtree is the whole site — a site with no pages has no
-route to land on, and the server refuses the same case independently. Deleting
-the page you're on lands you on its nearest surviving neighbour, preferring
-the row above.
+the page stays in their teammates' view until they publish. The trash goes
+disabled — visible, not hidden, with a tooltip saying why — when a page's
+subtree is the whole site: a site with no pages has no route to land on, and
+a control that vanishes reads as a missing feature rather than a rule. The
+server refuses the same case independently. Deleting the page you're on lands
+you on its nearest surviving neighbour, preferring the row above.
 
 Structurally the delete is `deletePage` in `src/lib/content/pages.ts`: the
 sitemap entry leaves `site.json` first (it decides what exists), then every
