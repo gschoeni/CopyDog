@@ -90,10 +90,16 @@ can be steered. The server limits what steering can achieve:
   only the *content types* accepted, never the host guards: HTML (2MB),
   images (8MB), PDFs (24MB) — anything else is refused, and the caller
   declares which kinds it will take (page import still says HTML only).
-- **Reference uploads** (`chat/references`) accept PNG/JPG/WEBP/GIF/PDF up to
-  4MB, behind the same project write gate as any other edit. Bytes land in
-  the uploader's own draft workspace under `refs/`, are never committed, and
-  are readable only through that user's own draft view.
+- **Reference uploads** (`chat/references`) accept PNG/JPG/WEBP/GIF up to
+  10MB and PDFs up to 24MB, behind the same project write gate as any other
+  edit. Bytes land in the uploader's own draft workspace under `refs/`, are
+  never committed, and are readable only through that user's own draft view.
+- **The chunk proxy** (`chat/references/upload`) is stateless and holds no
+  partial uploads: it forwards each slice to Oxen's version store, which is
+  content-addressed, so a chunk can only ever land under the hash of its own
+  bytes and `complete` refuses anything that doesn't hash to the id claimed.
+  An abandoned upload leaves orphaned chunks in the version store rather than
+  anything reachable.
 - **Error hygiene on the MCP surface**: only `McpToolError` messages (written
   for the agent) pass through; anything else is logged server-side and
   reported as a generic internal error. Supabase/Oxen internals never leak.

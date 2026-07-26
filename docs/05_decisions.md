@@ -469,3 +469,40 @@ message" and share the chip, storage, and serialization plumbing. Rows
 written before references existed have no `kind`, so the schema defaults it
 to `page` in a `preprocess` — the column is jsonb, so that *is* the whole
 migration.
+
+## 2026-07-25 — Reference uploads go through Oxen's own large-file protocol
+
+**The 4 MB ceiling was ours, not Oxen's.** A Vercel route handler's request
+body caps at 4.5 MB, which is why uploads were capped at 4 MB while
+URL-sourced references got the API's full 24 MB. Oxen already solves this for
+`oxen push`: `PUT /versions/{hash}/chunks?offset=N` takes a file in pieces and
+`POST /versions/{hash}/complete` puts them back together. We forward to it —
+the browser hashes and slices, our route is a stateless proxy, and nothing
+accumulates on our side.
+
+**`complete` takes a `workspace_id`, which decided the storage question.**
+Passing it makes Oxen stage the assembled file straight into the workspace, so
+references still never touch a commit. We had considered a committed
+`refs/{user_id}` branch (needed if we wanted presigned URLs, which only work on
+committed revisions); this makes that unnecessary and keeps "reference material
+never enters history" intact.
+
+**The version id must be the real hash, and that was worth verifying rather
+than assuming.** A probe against a live oxen-server showed `complete` re-hashes
+the reassembled bytes and rejects a mismatch (`Hash mismatch writing …`), and
+that a non-hex id fails earlier still — the id is parsed as a `u128`. So it's
+XXH3-128 formatted like Rust's `{:x}`, leading zeros stripped. `hash-wasm`
+matches the canonical vector and streams, so the browser hashes a 24 MB PDF
+without holding it twice. **The in-memory stub performs the same hash check**,
+which turns "our hashing agrees with Oxen's" into something the test suite
+proves rather than something we hope.
+
+**Bytes became a real file instead of base64 in the manifest.** A reference is
+now a manifest plus a blob beside it. That's what makes chunked assembly
+possible at all, and it's the shape that lets us hand the model a presigned URL
+instead of 30 MB of base64 the day Oxen can presign *workspace* files — it
+presigns only committed revisions today. `ReferenceLibrary.contentParts` is the
+single seam where that switch happens.
+
+**Limits now describe the model, not the plumbing:** 24 MB PDFs (the documented
+document maximum), 10 MB images.

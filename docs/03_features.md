@@ -76,15 +76,23 @@ model sees the real thing; the browser only ever holds a small descriptor.
   while looking at the reference. It is told to take composition — rhythm,
   grouping, where the weight sits — and never the words.
 - `read_reference` pulls one back into view mid-conversation.
-- Limits: 4 references per message, 4 MB per upload (the Vercel route-body
-  ceiling — link to bigger files, which are fetched server-side and get the
-  API's full 24 MB document allowance).
-- Storage: one JSON file per reference in the user's draft workspace under
-  `refs/{conversationId}/`. That prefix is **pruned before every publish**
-  and ignored by `hasUnpublishedChanges`, so attaching a competitor's
-  screenshot neither lights up Publish nor shows in a proposal diff.
-  Publishing therefore clears a conversation's references; the agent says
-  so when an id no longer resolves.
+- Limits are the model's, not the transport's: 24 MB PDFs, 10 MB images, 4
+  references per message.
+- **Uploads are chunked.** A route handler's request body caps at 4.5 MB, so
+  the browser hashes the file (XXH3-128), slices it, and posts each slice to
+  a stateless proxy route that forwards it to Oxen's own large-file protocol
+  (`PUT /versions/{hash}/chunks?offset=`). `POST /versions/{hash}/complete`
+  takes a `workspace_id`, so Oxen reassembles *and* stages the file in one
+  step — no commit, no temporary storage of our own. Oxen re-hashes what it
+  assembled, so a dropped chunk fails loudly instead of corrupting a
+  reference. See `docs/05_decisions.md` and Oxen's own
+  [Large File Upload](https://docs.oxen.ai/http-api/large-file-upload) page.
+- Storage: per reference, a JSON manifest at `refs/{conversationId}/{id}.json`
+  and the bytes beside it at `refs/{conversationId}/{id}/{file}`. That prefix
+  is **pruned before every publish** and ignored by `hasUnpublishedChanges`,
+  so attaching a competitor's screenshot neither lights up Publish nor shows
+  in a proposal diff. Publishing therefore clears a conversation's
+  references; the agent says so when an id no longer resolves.
 
 The Import dialog remains the blunt instrument — "replace this page from
 this source, now". References are the conversational path, where the agent
