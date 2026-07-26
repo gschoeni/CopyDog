@@ -101,6 +101,29 @@ model sees the real thing; the browser only ever holds a small descriptor.
   in a proposal diff. Publishing therefore clears a conversation's
   references; the agent says so when an id no longer resolves.
 
+**Download the trace.** The download icon in the assistant header exports the
+current conversation; each row in the history list has one too. The file is
+JSONL — one conversation per line of
+`{"messages": [...], "tools": [...], "metadata": {...}}` — which is both the
+debugging artifact and a fine-tuning example, since they want the same thing.
+It is the shape OpenAI's supervised fine-tuning takes and what Oxen's
+`text_chat_messages` script reads out of a `messages_column`, so appending
+conversations to one file builds a dataset.
+
+What it contains, and why: the reply says *what* changed, but the **tool call
+and its arguments** are the decision, and the transcript never shows them. So
+`chat_messages.trace` records, per assistant turn, the system prompt it ran
+under (including the page's copy and wireframe at that moment), every tool
+call with its arguments and result, the model for each round —
+`metadata.models` lists them all, because design tools route to a different
+model than the agent loop — plus token usage and timings. Attached bytes are
+elided to `data:image/png;base64,<elided 2.4 MB>`: the trace records that an
+image was there and how big, and the pixels are still in the draft workspace.
+A turn stores only what it added, so a conversation doesn't cost O(n²) to
+keep; the export stitches the rows back into one continuous example. Turns
+recorded before traces existed still export as plain text and are counted in
+`metadata.turnsWithoutTrace`.
+
 The Import dialog remains the blunt instrument — "replace this page from
 this source, now". References are the conversational path, where the agent
 decides what to take. Both share `import/fetch-url.ts` and the extractors.

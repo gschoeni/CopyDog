@@ -4,6 +4,7 @@ import { modelFor } from "@/lib/llm/models";
 
 import { AGENT_TOOLS, executeTool, toolActivityLabel, type ToolContext } from "./tools";
 import type { ChatInteraction } from "./interactions";
+import { TRACE_VERSION, toTraceMessage, type AgentTrace, type TraceRound } from "./trace";
 
 /**
  * The agent loop: give the model the page's current copy + wireframe and
@@ -67,6 +68,8 @@ export interface AgentTurn {
   mutated: boolean;
   /** A first-class UI interaction requested by the agent; ends this turn. */
   interaction?: ChatInteraction;
+  /** How the turn actually happened — persisted so it can be replayed and exported. */
+  trace: AgentTrace;
 }
 
 /** Live progress from a running turn, for streaming UIs. */
@@ -96,8 +99,27 @@ export async function runAgentTurn(
   let mutated = false;
   const replyParts: string[] = [];
 
+  // The turn records itself as it goes. `messages` accumulates history the
+  // earlier rows already hold, so the trace keeps only what this turn added —
+  // from `traceFrom`, the index where its own messages begin.
+  const traceFrom = messages.length - 1; // the user message opens this turn
+  const startedAt = new Date();
+  const model = modelFor("copy");
+  const rounds: TraceRound[] = [];
+  const buildTrace = (): AgentTrace => ({
+    version: TRACE_VERSION,
+    model,
+    startedAt: startedAt.toISOString(),
+    durationMs: Date.now() - startedAt.getTime(),
+    mutated,
+    toolsOffered: AGENT_TOOLS.map((tool) => tool.function.name),
+    rounds,
+    messages: [messages[0]!, ...messages.slice(traceFrom)].map(toTraceMessage),
+  });
+
   for (let round = 0; round < MAX_ROUNDS; round++) {
-    const options = { model: modelFor("copy"), messages, tools: AGENT_TOOLS, maxTokens: 4000 };
+    const roundStartedAt = Date.now();
+    const options = { model, messages, tools: AGENT_TOOLS, maxTokens: 4000 };
     // Narration between tool calls streams too, so the turn reads as one reply.
     // Each round's narration is a finished paragraph, and the stream has to
     // carry the same separator the final reply gets — otherwise the panel
@@ -117,8 +139,18 @@ export async function runAgentTurn(
 
     if (result.content) replyParts.push(result.content);
 
+    const roundRecord: TraceRound = {
+      model: result.model || model,
+      durationMs: Date.now() - roundStartedAt,
+      usage: result.usage ?? null,
+      content: result.content,
+      toolCalls: [],
+    };
+    rounds.push(roundRecord);
+
     if (result.toolCalls.length === 0) {
-      return { reply: replyParts.join(PART_SEPARATOR) || "Done.", mutated };
+      messages.push({ role: "assistant", content: result.content });
+      return { reply: replyParts.join(PART_SEPARATOR) || "Done.", mutated, trace: buildTrace() };
     }
 
     messages.push({ role: "assistant", content: result.content || null, tool_calls: result.toolCalls });
@@ -127,14 +159,29 @@ export async function runAgentTurn(
     const attachments: LlmContentPart[] = [];
     for (const call of result.toolCalls) {
       onEvent?.({ type: "status", label: toolActivityLabel(call.function.name, call.function.arguments) });
+      const callStartedAt = Date.now();
       let outcome;
       try {
         outcome = await executeTool(call.function.name, call.function.arguments, ctx);
       } catch (err) {
         outcome = { result: `Tool failed: ${err instanceof Error ? err.message : "unknown error"}`, mutated: false };
       }
+      roundRecord.toolCalls.push({
+        id: call.id,
+        name: call.function.name,
+        arguments: call.function.arguments,
+        result: outcome.result,
+        mutated: outcome.mutated,
+        durationMs: Date.now() - callStartedAt,
+      });
       if (outcome.interaction) {
-        return { reply: replyParts.join(PART_SEPARATOR), mutated, interaction: outcome.interaction };
+        messages.push({ role: "tool", content: outcome.result, tool_call_id: call.id });
+        return {
+          reply: replyParts.join(PART_SEPARATOR),
+          mutated,
+          interaction: outcome.interaction,
+          trace: buildTrace(),
+        };
       }
       if (outcome.mutated) {
         mutated = true;
@@ -155,7 +202,7 @@ export async function runAgentTurn(
   const fallback = mutated
     ? "I made the changes — take a look."
     : "I couldn't finish that — try rephrasing or breaking it into smaller steps.";
-  return { reply: replyParts.concat(fallback).join(PART_SEPARATOR), mutated };
+  return { reply: replyParts.concat(fallback).join(PART_SEPARATOR), mutated, trace: buildTrace() };
 }
 
 async function buildPageContext(ctx: ToolContext): Promise<string> {

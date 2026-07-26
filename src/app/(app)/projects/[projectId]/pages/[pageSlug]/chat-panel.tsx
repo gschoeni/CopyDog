@@ -23,6 +23,7 @@ import {
   PlusIcon,
   SparklesIcon,
   TextLinesIcon,
+  TraceDownloadIcon,
   WireframeModeIcon,
 } from "@/components/ui/icons";
 import { SidePanel } from "@/components/ui/side-panel";
@@ -67,6 +68,16 @@ const STARTERS = [
 /** A dropped/pasted payload the composer knows how to attach. */
 function droppedFile(transfer: DataTransfer | null): File | null {
   return transfer?.files?.[0] ?? null;
+}
+
+/**
+ * Pulls one conversation down as a JSONL fine-tuning example — the same file
+ * that answers "why did it do that", since the tool calls and their arguments
+ * are the decision and the transcript never shows them. Navigating to the
+ * route lets the browser handle the download from Content-Disposition.
+ */
+function downloadTrace(projectId: string, pageSlug: string, conversationId: string) {
+  window.location.href = `/projects/${projectId}/pages/${pageSlug}/chat/trace?conversationId=${conversationId}`;
 }
 
 /** A streaming assistant that edits the user's private draft. */
@@ -390,6 +401,16 @@ export function ChatPanel({
         <>
           <button
             type="button"
+            onClick={() => downloadTrace(projectId, pageSlug, conversationId)}
+            disabled={busy || !hasConversation}
+            aria-label="Download trace"
+            title="Download this conversation's trace (JSONL)"
+            className="flex size-7 items-center justify-center rounded-md text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <TraceDownloadIcon />
+          </button>
+          <button
+            type="button"
             onClick={startNewConversation}
             disabled={busy}
             aria-label="New chat"
@@ -418,6 +439,7 @@ export function ChatPanel({
           activeId={conversationId}
           onBack={() => setShowHistory(false)}
           onSelect={selectConversation}
+          onDownload={(id) => downloadTrace(projectId, pageSlug, id)}
         />
       ) : (
         <div
@@ -570,11 +592,13 @@ function HistoryView({
   activeId,
   onBack,
   onSelect,
+  onDownload,
 }: {
   threads: ChatThread[];
   activeId: string | null;
   onBack: () => void;
   onSelect: (id: string) => void;
+  onDownload: (id: string) => void;
 }) {
   return (
     <div
@@ -595,15 +619,25 @@ function HistoryView({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {threads.map((thread) => (
-          <button
-            key={thread.id}
-            type="button"
-            onClick={() => onSelect(thread.id)}
-            aria-current={thread.id === activeId ? "page" : undefined}
-            className="block w-full truncate rounded-lg px-2.5 py-2.5 text-left text-sm text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink aria-[current=page]:bg-accent-soft aria-[current=page]:font-medium aria-[current=page]:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
-            {thread.title}
-          </button>
+          <div key={thread.id} className="group/thread flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onSelect(thread.id)}
+              aria-current={thread.id === activeId ? "page" : undefined}
+              className="block min-w-0 flex-1 truncate rounded-lg px-2.5 py-2.5 text-left text-sm text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink aria-[current=page]:bg-accent-soft aria-[current=page]:font-medium aria-[current=page]:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              {thread.title}
+            </button>
+            <button
+              type="button"
+              onClick={() => onDownload(thread.id)}
+              aria-label={`Download trace for "${thread.title}"`}
+              title="Download trace (JSONL)"
+              className="flex size-7 shrink-0 items-center justify-center rounded-md text-ink-tertiary opacity-0 transition-[opacity,background-color,color] hover:bg-surface-hover hover:text-ink group-hover/thread:opacity-100 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <TraceDownloadIcon className="size-3.5" />
+            </button>
+          </div>
         ))}
       </div>
     </div>

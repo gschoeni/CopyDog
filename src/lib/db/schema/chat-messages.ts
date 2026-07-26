@@ -1,5 +1,6 @@
 import type { ChatContextRef } from "@/lib/agent/context";
 import type { ChatInteraction } from "@/lib/agent/interactions";
+import type { AgentTrace } from "@/lib/agent/trace";
 import { sql } from "drizzle-orm";
 import { index, pgEnum, pgPolicy, pgTable, text, timestamp, uuid, jsonb } from "drizzle-orm/pg-core";
 import { authUid, authenticatedRole } from "drizzle-orm/supabase";
@@ -33,6 +34,14 @@ export const chatMessages = pgTable(
     interaction: jsonb("interaction").$type<ChatInteraction | null>(),
     /** Page context the user attached to this message ("Add to chat" chips). */
     context: jsonb("context").$type<ChatContextRef[] | null>(),
+    /**
+     * On assistant rows: how the turn actually happened — the system prompt it
+     * ran under, every tool call and what it answered, the models, tokens and
+     * timings. The reply alone can't explain a decision; the tool arguments
+     * can. Exported as a fine-tuning example (see `agent/trace.ts`).
+     * Null on user rows and on turns written before traces were captured.
+     */
+    trace: jsonb("trace").$type<AgentTrace | null>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

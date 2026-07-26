@@ -130,6 +130,7 @@ export async function POST(
           role: "assistant",
           content: turn.reply,
           interaction: turn.interaction ?? null,
+          trace: turn.trace,
         });
         if (inserted.error) console.error("failed to save assistant reply", inserted.error);
         send({ type: "done", reply: turn.reply, mutated: turn.mutated, interaction: turn.interaction });

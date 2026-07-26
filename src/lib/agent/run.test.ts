@@ -154,7 +154,7 @@ describe("runAgentTurn", () => {
 
     const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm }, [], "What are my options?");
 
-    expect(turn).toEqual({
+    expect(turn).toMatchObject({
       reply: "",
       mutated: false,
       interaction: {
@@ -166,6 +166,8 @@ describe("runAgentTurn", () => {
         ],
       },
     });
+    // a turn that ends on a question is still a turn worth tracing
+    expect(turn.trace.rounds[0]!.toolCalls[0]!.name).toBe("ask_user_choice");
     expect(requests).toHaveLength(1);
     expect(JSON.stringify(requests[0]!.tools)).toContain("ask_user_choice");
   });
@@ -175,7 +177,7 @@ describe("runAgentTurn", () => {
       { model: "m", choices: [{ message: { content: "Three angles: speed, trust, delight." } }] },
     ]);
     const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm }, [], "Brainstorm hero angles");
-    expect(turn).toEqual({ reply: "Three angles: speed, trust, delight.", mutated: false });
+    expect(turn).toMatchObject({ reply: "Three angles: speed, trust, delight.", mutated: false });
   });
 
   it("design_section swaps one section's layout and leaves the rest alone", async () => {
@@ -300,6 +302,92 @@ describe("runAgentTurn", () => {
     const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm }, [], "rewrite the footer");
     expect(turn.mutated).toBe(false);
     expect(turn.reply).toContain("did you mean Hero");
+  });
+
+  describe("trace capture", () => {
+    it("records the tool call, its arguments, and its result — the decision, not just the reply", async () => {
+      const { llm } = scriptedLlm([
+        toolCall("rewrite_section", { sectionSlug: "hero", label: "Punchier", markdown: "# Ship it\n" }),
+        say("Rewrote the hero."),
+      ]);
+      const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm }, [], "punch it up");
+
+      expect(turn.trace.rounds).toHaveLength(2);
+      const call = turn.trace.rounds[0]!.toolCalls[0]!;
+      expect(call.name).toBe("rewrite_section");
+      // the arguments are what the reply can never tell you
+      expect(JSON.parse(call.arguments)).toMatchObject({ sectionSlug: "hero", label: "Punchier" });
+      expect(call.result).toContain("Created version");
+      expect(call.mutated).toBe(true);
+      expect(turn.trace.mutated).toBe(true);
+    });
+
+    it("keeps the system prompt and the page context it ran under", async () => {
+      const { llm } = scriptedLlm([say("Three angles.")]);
+      const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm }, [], "brainstorm");
+
+      const system = turn.trace.messages.find((m) => m.role === "system")!;
+      expect(String(system.content)).toContain("CopyDog's writing and layout assistant");
+      // the page as it stood — a decision is only explicable against its input
+      expect(String(system.content)).toContain("Old headline");
+    });
+
+    it("stores only this turn's messages, not history it would duplicate", async () => {
+      const { llm } = scriptedLlm([say("Sure.")]);
+      const history = [
+        { role: "user" as const, content: "an earlier question" },
+        { role: "assistant" as const, content: "an earlier answer" },
+      ];
+      const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm }, history, "the new question");
+
+      const asText = JSON.stringify(turn.trace.messages);
+      expect(asText).toContain("the new question");
+      expect(asText).not.toContain("an earlier question");
+      expect(turn.trace.messages.map((m) => m.role)).toEqual(["system", "user", "assistant"]);
+    });
+
+    it("names the model and reports what the turn cost", async () => {
+      const withUsage = {
+        model: "claude-sonnet-4-6",
+        choices: [{ message: { content: "Done." } }],
+        usage: { prompt_tokens: 1500, completion_tokens: 40, total_tokens: 1540 },
+      };
+      const { llm } = scriptedLlm([withUsage]);
+      const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm }, [], "hi");
+
+      expect(turn.trace.model).toBe("claude-sonnet-4-6");
+      expect(turn.trace.rounds[0]!.usage).toEqual({ prompt_tokens: 1500, completion_tokens: 40, total_tokens: 1540 });
+      expect(turn.trace.rounds[0]!.durationMs).toBeGreaterThanOrEqual(0);
+      expect(turn.trace.toolsOffered).toContain("rewrite_section");
+    });
+
+    it("elides attached bytes rather than storing megabytes of base64", async () => {
+      const { reference, references } = await (async () => {
+        const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+        const hash = (await xxhash128(bytes)).replace(/^0+/, "");
+        await oxen.uploadVersionChunk(REPO, hash, 0, bytes);
+        const saved = await saveUploadedReference(oxen, view, CONVERSATION, {
+          hash,
+          filename: "shot.png",
+          mime: "image/png",
+          byteSize: bytes.byteLength,
+          numChunks: 1,
+        });
+        return { reference: saved, references: createReferenceLibrary(oxen, view, CONVERSATION) };
+      })();
+      const parts = await references.contentParts([reference]);
+
+      const { llm } = scriptedLlm([say("Nice reference.")]);
+      const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm, references }, [], [
+        ...parts,
+        { type: "text", text: "build from this" },
+      ]);
+
+      const asText = JSON.stringify(turn.trace.messages);
+      expect(asText).toContain("<elided");
+      expect(asText).not.toContain("iVBORw");
+      expect(asText).toContain("build from this");
+    });
   });
 
   describe("streaming", () => {

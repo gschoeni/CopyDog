@@ -405,3 +405,15 @@ export function PawIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+/** Tray with an arrow leaving it — exporting a record out of the app. */
+export function TraceDownloadIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3v10" />
+      <path d="m8 9 4 4 4-4" />
+      <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+      <path d="M8 17h.01" />
+    </Icon>
+  );
+}

@@ -157,7 +157,7 @@ test("new chat clears the current thread and keeps it in history", async ({ page
   await expect(page.getByRole("heading", { name: "What should we create?" })).toBeVisible();
 
   await page.getByRole("button", { name: "Chat history" }).click();
-  await page.getByRole("button", { name: "Show me choices for this layout" }).click();
+  await page.getByRole("button", { name: "Show me choices for this layout", exact: true }).click();
   await expect(page.getByRole("region", { name: "Assistant choice" })).toBeVisible({ timeout: 20_000 });
 });
 
@@ -224,4 +224,60 @@ test("assistant redesigns a wireframe section through a tool call", async ({ pag
   await expect(page.getByText("the section is a split")).toBeVisible({ timeout: 20_000 });
   await expect(wireframe.locator(".wf-split")).toHaveCount(1, { timeout: 20_000 });
   await expect(wireframe.getByRole("heading", { name: "Design me" })).toBeVisible();
+});
+
+/**
+ * A trace is the debugging artifact: the reply says what changed, the tool
+ * call says why. This proves the whole path — captured during the turn,
+ * persisted, and exported as the JSONL shape fine-tuning takes.
+ */
+test("download a conversation's trace as a fine-tuning example", async ({ page }) => {
+  await signIn(page);
+  await page.getByPlaceholder("Acme landing page").fill(`Agent trace ${Date.now()}`);
+  await page.getByRole("button", { name: "Create project" }).click();
+  await expect(page).toHaveURL(/\/pages\/home$/, { timeout: 20_000 });
+  await page.getByRole("textbox", { name: "Page copy" }).click();
+  await writeSection(page, ["# Human headline"], 1);
+  await expect(page.getByText("Saved to your draft")).toBeVisible({ timeout: 10_000 });
+
+  await page.getByRole("button", { name: "Open assistant" }).click();
+  await page.getByLabel("Message the assistant").fill("Punch up this section");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("I rewrote it with a stronger promise")).toBeVisible({ timeout: 20_000 });
+
+  const download = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Download trace" }).click(),
+  ]).then(([d]) => d);
+
+  expect(download.suggestedFilename()).toMatch(/^copydog-trace-home-[0-9a-f]{8}\.jsonl$/);
+  const stream = await download.createReadStream();
+  const body = (await new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    stream.on("data", (c) => chunks.push(c as Buffer));
+    stream.on("end", () => resolve(Buffer.concat(chunks)));
+    stream.on("error", reject);
+  })).toString("utf8");
+
+  // one conversation, one line
+  expect(body.trimEnd().split("\n")).toHaveLength(1);
+  const example = JSON.parse(body) as {
+    messages: { role: string; content?: unknown; tool_calls?: unknown }[];
+    tools: { function: { name: string } }[];
+    metadata: { models: string[]; turns: number; pageSlug: string };
+  };
+
+  // the shape fine-tuning reads
+  expect(example.messages[0]!.role).toBe("system");
+  expect(example.messages.some((m) => m.role === "user")).toBe(true);
+  expect(example.messages.some((m) => m.role === "tool")).toBe(true);
+
+  // and the decision itself: which tool, with what arguments
+  const called = example.messages.find((m) => m.tool_calls);
+  expect(JSON.stringify(called!.tool_calls)).toContain("rewrite_section");
+  expect(JSON.stringify(called!.tool_calls)).toContain("Agent take");
+
+  expect(example.tools.map((t) => t.function.name)).toContain("rewrite_section");
+  expect(example.metadata).toMatchObject({ pageSlug: "home", turns: 1 });
+  expect(example.metadata.models.length).toBeGreaterThan(0);
 });
