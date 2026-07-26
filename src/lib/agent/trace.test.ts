@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { LlmTool } from "@/lib/llm/client";
 
 import {
+  agentTraceSchema,
   buildTraceExport,
   redactContent,
   serializeTraceExport,
@@ -31,6 +32,7 @@ function trace(overrides: Partial<AgentTrace> = {}): AgentTrace {
         durationMs: 900,
         usage: { prompt_tokens: 1000, completion_tokens: 120, total_tokens: 1120 },
         content: "Let me punch that up.",
+        reasoning: null,
         toolCalls: [
           {
             id: "call_1",
@@ -145,6 +147,7 @@ describe("buildTraceExport", () => {
           durationMs: 3000,
           usage: { prompt_tokens: 8000, completion_tokens: 900, total_tokens: 8900 },
           content: "",
+          reasoning: null,
           toolCalls: [],
         },
       ],
@@ -181,6 +184,80 @@ describe("buildTraceExport", () => {
     ]);
     expect(exported.metadata.turnsWithoutTrace).toBe(1);
     expect(exported.tools).toEqual([]);
+  });
+});
+
+describe("the fields that were missing from the first export", () => {
+  const context = {
+    conversationId: "c",
+    projectId: "p",
+    pageSlug: "home",
+    tools: TOOLS,
+    exportedAt: "now",
+  };
+
+  it("keeps provider cost and cached-token detail instead of stripping them", () => {
+    // the endpoint reports cost/currency/prompt_tokens_details next to the
+    // token counts; a strict usage shape silently discarded all of it
+    const withCost = trace({
+      rounds: [
+        {
+          ...trace().rounds[0]!,
+          usage: {
+            prompt_tokens: 43,
+            completion_tokens: 72,
+            total_tokens: 115,
+            cost: "0.001209000",
+            currency: "USD",
+            prompt_tokens_details: { cached_tokens: 0 },
+          },
+        },
+      ],
+    });
+    const exported = buildTraceExport(
+      [{ role: "assistant", content: "done", createdAt: "1", trace: withCost }],
+      context,
+    );
+    expect(exported.metadata.totalCostUsd).toBeCloseTo(0.001209, 6);
+    expect(exported.metadata.totalTokens).toBe(115);
+  });
+
+  it("survives a usage shape that grows a field, rather than voiding the trace", () => {
+    const parsed = agentTraceSchema.safeParse({
+      ...trace(),
+      rounds: [{ ...trace().rounds[0]!, usage: { total_tokens: 10, some_new_field: true } }],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("reads a trace recorded before rounds carried reasoning", () => {
+    const { reasoning: _dropped, ...roundWithoutReasoning } = trace().rounds[0]!;
+    const parsed = agentTraceSchema.safeParse({ ...trace(), rounds: [roundWithoutReasoning] });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.rounds[0]!.reasoning).toBeNull();
+  });
+
+  it("reports whether the model's thinking was captured at all", () => {
+    const plain = buildTraceExport([{ role: "assistant", content: "x", createdAt: "1", trace: trace() }], context);
+    expect(plain.metadata.reasoningCaptured).toBe(false);
+
+    const thinking = trace({ rounds: [{ ...trace().rounds[0]!, reasoning: "First I counted the bands…" }] });
+    const withThinking = buildTraceExport(
+      [{ role: "assistant", content: "x", createdAt: "1", trace: thinking }],
+      context,
+    );
+    expect(withThinking.metadata.reasoningCaptured).toBe(true);
+  });
+
+  it("points an elided attachment at the reference it came from", () => {
+    const describe = (url: string) =>
+      url.includes("AAAA") ? 'reference ref_abc "hero.png", 2400 bytes, at refs/conv/ref_abc/hero.png' : null;
+    const redacted = JSON.stringify(
+      redactContent([{ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }], describe),
+    );
+    expect(redacted).toContain("ref_abc");
+    expect(redacted).toContain("hero.png");
+    expect(redacted).toContain("refs/conv/ref_abc/hero.png");
   });
 });
 

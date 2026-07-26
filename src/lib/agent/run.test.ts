@@ -361,7 +361,7 @@ describe("runAgentTurn", () => {
       expect(turn.trace.toolsOffered).toContain("rewrite_section");
     });
 
-    it("elides attached bytes rather than storing megabytes of base64", async () => {
+    it("elides attached bytes but points at the reference they came from", async () => {
       const { reference, references } = await (async () => {
         const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
         const hash = (await xxhash128(bytes)).replace(/^0+/, "");
@@ -384,8 +384,12 @@ describe("runAgentTurn", () => {
       ]);
 
       const asText = JSON.stringify(turn.trace.messages);
-      expect(asText).toContain("<elided");
+      // the base64 is gone, but which screenshot it was — and where the bytes
+      // still live — is not, which is the whole point of tracing an attachment
       expect(asText).not.toContain("iVBORw");
+      expect(asText).toContain(reference.id);
+      expect(asText).toContain("shot.png");
+      expect(asText).toContain(reference.blobPath!);
       expect(asText).toContain("build from this");
     });
   });

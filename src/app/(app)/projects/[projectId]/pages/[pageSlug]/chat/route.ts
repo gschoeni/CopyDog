@@ -122,17 +122,23 @@ export async function POST(
       try {
         const turn = await runAgentTurn({ oxen, view, pageSlug, llm, references }, history, userMessage, send);
         if (turn.interaction) send({ type: "interaction", interaction: turn.interaction });
-        const inserted = await supabase.from("chat_messages").insert({
+        const row = {
           project_id: projectId,
           user_id: user.id,
           page_slug: pageSlug,
           conversation_id: conversationId,
-          role: "assistant",
+          role: "assistant" as const,
           content: turn.reply,
           interaction: turn.interaction ?? null,
-          trace: turn.trace,
-        });
-        if (inserted.error) console.error("failed to save assistant reply", inserted.error);
+        };
+        const inserted = await supabase.from("chat_messages").insert({ ...row, trace: turn.trace });
+        if (inserted.error) {
+          // the trace is debugging material; the reply is the user's
+          // conversation. Never lose the second to a problem with the first.
+          console.error("failed to save assistant reply with its trace", inserted.error);
+          const retried = await supabase.from("chat_messages").insert(row);
+          if (retried.error) console.error("failed to save assistant reply", retried.error);
+        }
         send({ type: "done", reply: turn.reply, mutated: turn.mutated, interaction: turn.interaction });
       } catch (err) {
         console.error("agent turn failed", err);

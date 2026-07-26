@@ -52,11 +52,32 @@ export interface LlmTool {
   };
 }
 
+/**
+ * Whatever the provider reported about the call. Deliberately open: the
+ * endpoint returns `cost`, `currency`, and `prompt_tokens_details.cached_tokens`
+ * alongside the token counts, and a narrower type silently threw those away.
+ */
+export interface LlmUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  [key: string]: unknown;
+}
+
 export interface ChatCompletionResult {
   content: string;
   toolCalls: LlmToolCall[];
   model: string;
-  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  usage?: LlmUsage;
+  /**
+   * The model's thinking, when the provider exposes it. Probed against Oxen's
+   * endpoint on 2026-07-26 with `reasoning_effort`, `reasoning: {effort}`,
+   * Anthropic's `thinking`, and `include_reasoning`: none produced a reasoning
+   * field on the response, for either Claude or Gemini. So this is null today
+   * — it is read here (under every name the ecosystem uses) so that the day
+   * the endpoint surfaces it, traces capture it without a code change.
+   */
+  reasoning: string | null;
 }
 
 export class LlmError extends Error {
@@ -144,10 +165,29 @@ export class LlmClient {
   }
 }
 
+interface CompletionMessage {
+  content: string | null;
+  tool_calls?: LlmToolCall[];
+  /** Whichever name this provider uses for thinking, if it exposes it at all. */
+  reasoning_content?: string | null;
+  reasoning?: string | null;
+  thinking?: string | null;
+}
+
 interface CompletionPayload {
   model: string;
-  choices: { message: { content: string | null; tool_calls?: LlmToolCall[] } }[];
-  usage?: ChatCompletionResult["usage"];
+  choices: { message: CompletionMessage }[];
+  usage?: LlmUsage;
+}
+
+/** Thinking arrives under one of three names depending on the provider. */
+function readReasoning(message: {
+  reasoning_content?: string | null;
+  reasoning?: string | null;
+  thinking?: string | null;
+}): string | null {
+  const value = message.reasoning_content ?? message.reasoning ?? message.thinking;
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function parseCompletion(data: CompletionPayload): ChatCompletionResult {
@@ -160,6 +200,7 @@ function parseCompletion(data: CompletionPayload): ChatCompletionResult {
     toolCalls: message.tool_calls ?? [],
     model: data.model,
     usage: data.usage,
+    reasoning: readReasoning(message),
   };
 }
 
@@ -168,6 +209,9 @@ interface StreamChunk {
   choices?: {
     delta?: {
       content?: string | null;
+      reasoning_content?: string | null;
+      reasoning?: string | null;
+      thinking?: string | null;
       tool_calls?: { index?: number; id?: string; function?: { name?: string; arguments?: string } }[];
     };
   }[];
@@ -180,6 +224,7 @@ async function consumeSse(body: ReadableStream<Uint8Array>, onDelta: (text: stri
   const decoder = new TextDecoder();
 
   let content = "";
+  let reasoning = "";
   let model = "";
   let usage: ChatCompletionResult["usage"];
   const toolCalls: LlmToolCall[] = [];
@@ -194,6 +239,9 @@ async function consumeSse(body: ReadableStream<Uint8Array>, onDelta: (text: stri
       content += delta.content;
       onDelta(delta.content);
     }
+    // thinking accumulates but never streams to the panel — it belongs in the
+    // trace, not in the reply the user reads
+    reasoning += readReasoning(delta) ?? "";
     for (const fragment of delta.tool_calls ?? []) {
       const index = fragment.index ?? toolCalls.length;
       const call = (toolCalls[index] ??= { id: "", type: "function", function: { name: "", arguments: "" } });
@@ -225,5 +273,5 @@ async function consumeSse(body: ReadableStream<Uint8Array>, onDelta: (text: stri
     }
   }
 
-  return { content, toolCalls: toolCalls.filter(Boolean), model, usage };
+  return { content, toolCalls: toolCalls.filter(Boolean), model, usage, reasoning: reasoning || null };
 }

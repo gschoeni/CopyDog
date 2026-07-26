@@ -116,9 +116,21 @@ and its arguments** are the decision, and the transcript never shows them. So
 under (including the page's copy and wireframe at that moment), every tool
 call with its arguments and result, the model for each round —
 `metadata.models` lists them all, because design tools route to a different
-model than the agent loop — plus token usage and timings. Attached bytes are
-elided to `data:image/png;base64,<elided 2.4 MB>`: the trace records that an
-image was there and how big, and the pixels are still in the draft workspace.
+model than the agent loop — plus token usage, provider cost
+(`metadata.totalCostUsd`) and timings.
+
+Attached bytes are elided but **not anonymised**: an image becomes
+`data:image/png;base64,<reference ref_a257… "deck.pdf", 6000000 bytes, at
+refs/{conversation}/{id}/deck.pdf>`, so which reference the model was looking
+at stays answerable and the file is still reachable in the draft workspace.
+
+**Thinking** is captured under whichever name a provider uses
+(`reasoning_content` / `reasoning` / `thinking`), on both the streaming and
+non-streaming paths. Probed against Oxen's endpoint on 2026-07-26 with
+`reasoning_effort`, `reasoning: {effort}`, Anthropic's `thinking`, and
+`include_reasoning`: none returns a reasoning field for Claude or Gemini, so
+`metadata.reasoningCaptured` is `false` today. It says so explicitly rather
+than leaving a reader to wonder whether the thinking was dropped in transit.
 A turn stores only what it added, so a conversation doesn't cost O(n²) to
 keep; the export stitches the rows back into one continuous example. Turns
 recorded before traces existed still export as plain text and are counted in

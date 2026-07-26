@@ -234,6 +234,13 @@ export interface ReferenceLibrary {
    * belong before text — so callers can append their own prose after.
    */
   contentParts(references: StoredReference[]): Promise<LlmContentPart[]>;
+  /**
+   * What a data URL this library produced actually was — reference id, label
+   * and the workspace path holding the bytes. Traces elide the base64 and put
+   * this in its place, so "which screenshot was it looking at" stays
+   * answerable and the file is still reachable.
+   */
+  describeAttachment(dataUrl: string): string | null;
 }
 
 export function createReferenceLibrary(
@@ -253,8 +260,14 @@ export function createReferenceLibrary(
     return parsed.success ? parsed.data : null;
   };
 
+  /** data URL → the reference it came from, for trace redaction. */
+  const attachments = new Map<string, string>();
+
   return {
     load,
+
+    describeAttachment: (dataUrl) => attachments.get(dataUrl) ?? null,
+
     async loadMany(referenceIds) {
       const loaded = await Promise.all([...new Set(referenceIds)].map(load));
       return loaded.filter((reference): reference is StoredReference => reference !== null);
@@ -285,6 +298,10 @@ export function createReferenceLibrary(
           .catch(() => null);
         if (!bytes) continue;
         const dataUrl = `data:${reference.mime};base64,${Buffer.from(bytes).toString("base64")}`;
+        attachments.set(
+          dataUrl,
+          `reference ${reference.id} "${reference.label}", ${reference.byteSize} bytes, at ${reference.blobPath}`,
+        );
         if (reference.media === "image") {
           media.push({ type: "image_url", image_url: { url: dataUrl } });
         } else {

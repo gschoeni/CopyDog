@@ -114,7 +114,9 @@ export async function runAgentTurn(
     mutated,
     toolsOffered: AGENT_TOOLS.map((tool) => tool.function.name),
     rounds,
-    messages: [messages[0]!, ...messages.slice(traceFrom)].map(toTraceMessage),
+    messages: [messages[0]!, ...messages.slice(traceFrom)].map((message) =>
+      toTraceMessage(message, (url) => ctx.references?.describeAttachment(url) ?? null),
+    ),
   });
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
@@ -144,6 +146,7 @@ export async function runAgentTurn(
       durationMs: Date.now() - roundStartedAt,
       usage: result.usage ?? null,
       content: result.content,
+      reasoning: result.reasoning,
       toolCalls: [],
     };
     rounds.push(roundRecord);

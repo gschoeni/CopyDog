@@ -101,9 +101,18 @@ function toExportRow(row: Row): TraceExportRow {
   return { role: row.role, content, createdAt: row.created_at, trace: parseTrace(row.trace) };
 }
 
-/** A trace that no longer matches the schema is treated as absent, not fatal. */
+/**
+ * A trace that no longer matches the schema still exports — as a turn without
+ * detail — but it is NOT the same thing as a turn that never recorded one, and
+ * quietly conflating them is how "the export is empty" becomes unexplainable.
+ * Log it loudly; the row is right there to inspect.
+ */
 function parseTrace(value: unknown): AgentTrace | null {
   if (value === null || value === undefined) return null;
   const parsed = agentTraceSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) {
+    console.error("stored trace did not match the schema; exporting that turn as text only", parsed.error.issues);
+    return null;
+  }
+  return parsed.data;
 }

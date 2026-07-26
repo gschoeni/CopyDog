@@ -24,10 +24,16 @@ export const TRACE_VERSION = 1;
 /** Beyond this a single tool result is clipped — layouts get long. */
 const MAX_TOOL_RESULT = 20_000;
 
-const usageSchema = z.object({
-  prompt_tokens: z.number(),
-  completion_tokens: z.number(),
-  total_tokens: z.number(),
+/**
+ * Whatever the provider reported. Loose on purpose — the endpoint returns
+ * `cost`, `currency`, and `prompt_tokens_details` next to the token counts,
+ * and a strict shape both discarded them and made a trace unparseable (so it
+ * exported as if it had never been recorded) the day a provider added a field.
+ */
+const usageSchema = z.looseObject({
+  prompt_tokens: z.number().optional(),
+  completion_tokens: z.number().optional(),
+  total_tokens: z.number().optional(),
 });
 
 const traceToolCallSchema = z.object({
@@ -46,6 +52,11 @@ const traceRoundSchema = z.object({
   usage: usageSchema.nullable(),
   /** What the model said this round, before any tools ran. */
   content: z.string(),
+  /**
+   * The model's thinking, when the provider exposes it. Null against Oxen's
+   * endpoint today — see `ChatCompletionResult.reasoning` for the probe.
+   */
+  reasoning: z.string().nullable().default(null),
   toolCalls: z.array(traceToolCallSchema),
 });
 
@@ -84,33 +95,44 @@ export type TraceMessage = z.infer<typeof traceMessageSchema>;
  * was. The fact that an image was present, and how big, is what a trace
  * needs; the pixels are still in the draft workspace if anyone wants them.
  */
-export function redactContent(content: LlmMessage["content"]): unknown {
+export function redactContent(content: LlmMessage["content"], describe?: AttachmentResolver): unknown {
   if (!Array.isArray(content)) return content;
-  return content.map((part) => redactPart(part));
+  return content.map((part) => redactPart(part, describe));
 }
 
-function redactPart(part: LlmContentPart): unknown {
+/**
+ * Turns the data URL that was actually sent back into a pointer to the
+ * reference it came from. Without it an elided image says only "2.4 MB was
+ * here", which is useless when the question is *which* screenshot the model
+ * was looking at.
+ */
+export type AttachmentResolver = (dataUrl: string) => string | null;
+
+function redactPart(part: LlmContentPart, describe?: AttachmentResolver): unknown {
   if (part.type === "image_url") {
-    return { type: "image_url", image_url: { url: elide(part.image_url.url) } };
+    return { type: "image_url", image_url: { url: elide(part.image_url.url, describe) } };
   }
   if (part.type === "file") {
     return {
       type: "file",
       file: {
         ...part.file,
-        ...(part.file.file_data ? { file_data: elide(part.file.file_data) } : {}),
+        ...(part.file.file_data ? { file_data: elide(part.file.file_data, describe) } : {}),
       },
     };
   }
   return part;
 }
 
-function elide(url: string): string {
+function elide(url: string, describe?: AttachmentResolver): string {
   if (!url.startsWith("data:")) return url;
   const mime = url.slice(5, url.indexOf(";")) || "application/octet-stream";
   const base64 = url.slice(url.indexOf(",") + 1);
   const bytes = Math.round((base64.length * 3) / 4);
-  return `data:${mime};base64,<elided ${formatBytes(bytes)}>`;
+  const source = describe?.(url);
+  return source
+    ? `data:${mime};base64,<${source}>`
+    : `data:${mime};base64,<elided ${formatBytes(bytes)}>`;
 }
 
 function formatBytes(bytes: number): string {
@@ -120,11 +142,11 @@ function formatBytes(bytes: number): string {
 }
 
 /** A message ready to store: binaries elided, long tool results clipped. */
-export function toTraceMessage(message: LlmMessage): TraceMessage {
+export function toTraceMessage(message: LlmMessage, describe?: AttachmentResolver): TraceMessage {
   const content =
     message.role === "tool" && typeof message.content === "string"
       ? clip(message.content, MAX_TOOL_RESULT)
-      : redactContent(message.content);
+      : redactContent(message.content, describe);
   return {
     role: message.role,
     content,
@@ -161,9 +183,18 @@ export interface TraceExport {
     /** Every model that ran, agent loop and design tools alike. */
     models: string[];
     totalTokens: number;
+    /** Provider-reported spend, when it reports any. */
+    totalCostUsd: number | null;
     totalDurationMs: number;
     /** Turns whose detail predates trace capture — reconstructed from text. */
     turnsWithoutTrace: number;
+    /**
+     * Whether any round carried the model's thinking. False everywhere today:
+     * Oxen's endpoint returns no reasoning field for Claude or Gemini under
+     * any of the usual request parameters. Stated so a reader knows the
+     * thinking is absent from the source, not dropped in transit.
+     */
+    reasoningCaptured: boolean;
   };
 }
 
@@ -182,8 +213,11 @@ export function buildTraceExport(
   const messages: TraceMessage[] = [];
   const models = new Set<string>();
   let totalTokens = 0;
+  let totalCostUsd = 0;
+  let costReported = false;
   let totalDurationMs = 0;
   let turnsWithoutTrace = 0;
+  let reasoningCaptured = false;
   let systemSeen = false;
 
   for (const [index, row] of rows.entries()) {
@@ -210,6 +244,12 @@ export function buildTraceExport(
     for (const round of row.trace.rounds) {
       models.add(round.model);
       totalTokens += round.usage?.total_tokens ?? 0;
+      if (round.reasoning) reasoningCaptured = true;
+      const cost = Number(round.usage?.cost);
+      if (Number.isFinite(cost)) {
+        totalCostUsd += cost;
+        costReported = true;
+      }
     }
 
     for (const message of row.trace.messages) {
@@ -234,8 +274,10 @@ export function buildTraceExport(
       turns: rows.filter((row) => row.role === "assistant").length,
       models: [...models].sort(),
       totalTokens,
+      totalCostUsd: costReported ? Number(totalCostUsd.toFixed(6)) : null,
       totalDurationMs,
       turnsWithoutTrace,
+      reasoningCaptured,
     },
   };
 }
