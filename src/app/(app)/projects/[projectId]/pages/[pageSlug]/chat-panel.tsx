@@ -19,6 +19,7 @@ import {
   CloseIcon,
   CopyIcon,
   HistoryIcon,
+  PawIcon,
   PlusIcon,
   SparklesIcon,
   TextLinesIcon,
@@ -779,17 +780,69 @@ function LiveMessage({ live }: { live: LiveTurn | null }) {
         <span className="text-xs font-medium text-ink">Assistant</span>
       </div>
       {live?.text && <AssistantMarkdown markdown={live.text} />}
-      <div className="mt-1 flex items-center gap-1.5 text-xs text-ink-tertiary" role="status">
-        {!live?.text && (
-          <span className="flex gap-1" aria-hidden>
-            <span className="size-1 animate-bounce rounded-full bg-current [animation-delay:-0.3s]" />
-            <span className="size-1 animate-bounce rounded-full bg-current [animation-delay:-0.15s]" />
-            <span className="size-1 animate-bounce rounded-full bg-current" />
-          </span>
-        )}
-        <span>{live?.activity ?? (live?.text ? "Writing…" : "Thinking…")}</span>
-      </div>
+      <ThinkingStatus live={live} />
     </div>
+  );
+}
+
+/**
+ * What the dog is up to while you wait. A real tool label ("Designing
+ * hero…") always wins — it's information. Only the two generic states get
+ * the playful treatment, and the shimmer makes a slow turn read as alive
+ * rather than stuck. Screen readers hear the stable line, not the churn.
+ */
+function ThinkingStatus({ live }: { live: LiveTurn | null }) {
+  const label = live?.activity ?? (live?.text ? "Writing" : null);
+  return (
+    <div className="mt-1.5 flex items-center gap-1.5 text-xs" role="status">
+      <span className="sr-only">{live?.activity ?? "Assistant is working"}</span>
+      <PawIcon className="thinking-bob size-3.5 shrink-0 text-accent" aria-hidden />
+      <span aria-hidden className="thinking-shimmer font-medium">
+        {label ?? <CyclingWord />}…
+      </span>
+      <ElapsedTime />
+    </div>
+  );
+}
+
+/** Idle-thinking verbs. A dog that fetches things, mostly. */
+const THINKING_WORDS = [
+  "Thinking",
+  "Sniffing around",
+  "Fetching",
+  "Noodling",
+  "Digging in",
+  "Chewing it over",
+  "Pondering",
+  "Rummaging",
+  "Following the scent",
+  "Mulling",
+  "Nosing about",
+  "Scheming",
+];
+
+function CyclingWord() {
+  // a random entry point so back-to-back turns don't open the same way
+  const [index, setIndex] = useState(() => Math.floor(Math.random() * THINKING_WORDS.length));
+  useEffect(() => {
+    const id = window.setInterval(() => setIndex((current) => (current + 1) % THINKING_WORDS.length), 2600);
+    return () => window.clearInterval(id);
+  }, []);
+  return <>{THINKING_WORDS[index]}</>;
+}
+
+/** Appears once a turn is slow enough that you'd start to wonder. */
+function ElapsedTime() {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setSeconds((current) => current + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+  if (seconds < 4) return null;
+  return (
+    <span aria-hidden className="tabular-nums text-ink-tertiary/70">
+      {seconds}s
+    </span>
   );
 }
 

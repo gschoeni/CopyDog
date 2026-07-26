@@ -59,7 +59,17 @@ const server = createServer(async (req, res) => {
     const calledTools = body.messages.flatMap((m) => (m.tool_calls ?? []).map((c) => c.function?.name));
     const context = JSON.stringify(body.messages);
     const lastUser = [...body.messages].reverse().find((m) => m.role === "user");
-    const lastUserText = typeof lastUser?.content === "string" ? lastUser.content : JSON.stringify(lastUser?.content ?? "");
+    // a message is either prose or attachment parts followed by prose — read
+    // the text out of both shapes, and note which media actually came along
+    const parts = (Array.isArray(lastUser?.content) ? lastUser.content : []) as {
+      type: string;
+      text?: string;
+    }[];
+    const lastUserText =
+      typeof lastUser?.content === "string"
+        ? lastUser.content
+        : parts.flatMap((part) => (part.type === "text" ? [part.text ?? ""] : [])).join("\n");
+    const lastUserMedia = parts.map((part) => part.type);
     const slugMatch = context.match(/slug: ([a-z0-9-]+)/);
     const slug = slugMatch?.[1] ?? "hero";
 
@@ -88,6 +98,12 @@ const server = createServer(async (req, res) => {
           "Ship `copy` that earns its place. (stub)",
         ].join("\n"),
       };
+    } else if (lastUserText.includes("attached reference material")) {
+      // echo the reference back so tests can prove it reached the model, and
+      // whether it arrived as real pixels rather than only as a description
+      const label = lastUserText.match(/\d+\. "([^"]+)"/)?.[1] ?? "unknown";
+      const media = lastUserMedia.includes("image_url") ? " (image)" : lastUserMedia.includes("file") ? " (pdf)" : "";
+      message = { content: `Reference received: ${label}${media} (stub)` };
     } else if (lastUserText.includes("The user attached page context")) {
       // echo the attachment back so tests can prove the agent saw it
       const quoted = lastUserText.match(/"""\n([\s\S]*?)\n"""/)?.[1];

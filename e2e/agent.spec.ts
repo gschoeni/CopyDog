@@ -62,7 +62,7 @@ test("add to chat attaches a selection the agent can see", async ({ page }) => {
     .click();
 
   // the assistant opens with a chip on the composer — raw text stays hidden
-  const composerChips = page.getByLabel("Attached page context");
+  const composerChips = page.getByLabel("Attached context and references");
   await expect(composerChips.getByText("Golden headline").first()).toBeVisible();
   await expect(page.getByLabel("Message the assistant")).toBeFocused();
 
@@ -72,12 +72,12 @@ test("add to chat attaches a selection the agent can see", async ({ page }) => {
   // the stub echoes the serialized context back — the agent really saw it
   await expect(page.getByText("Context received: Golden headline")).toBeVisible({ timeout: 20_000 });
   // the sent message keeps its chip; the composer's is cleared
-  await expect(page.getByLabel("Attached page context")).toHaveCount(1);
+  await expect(page.getByLabel("Attached context and references")).toHaveCount(1);
 
   // chips survive a reload with the conversation
   await page.reload();
   await expect(page.getByText("What does the attached selection say?")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByLabel("Attached page context")).toBeVisible();
+  await expect(page.getByLabel("Attached context and references")).toBeVisible();
 });
 
 test("wireframe selections and sections attach to chat", async ({ page }) => {
@@ -98,7 +98,7 @@ test("wireframe selections and sections attach to chat", async ({ page }) => {
   // select rendered text → labeled pill → chip with the selection
   await heading.click({ clickCount: 3 });
   await page.getByRole("button", { name: "Add to chat", exact: true }).click();
-  const chips = page.getByLabel("Attached page context");
+  const chips = page.getByLabel("Attached context and references");
   await expect(chips.getByText("Everything you need").first()).toBeVisible();
 
   // hover the section → icon affordance → whole-section chip

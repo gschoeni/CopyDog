@@ -81,11 +81,19 @@ can be steered. The server limits what steering can achieve:
   external refs. Every author — internal LLM, external agent, import —
   passes the same two acceptance gates (`acceptSectionLayout`,
   `acceptPageWireframe`).
-- **URL imports are SSRF-hardened** (`import/fetch-url.ts`): http(s) only;
-  private/loopback/link-local hosts blocked; **DNS answers checked** (a
-  public name resolving to a private IP fails closed, including v4-mapped
-  IPv6); **redirects followed manually** with every hop re-validated; ≤5
-  hops, 10s timeout, 2MB cap.
+- **URL imports and references are SSRF-hardened** (`import/fetch-url.ts`):
+  http(s) only; private/loopback/link-local hosts blocked; **DNS answers
+  checked** (a public name resolving to a private IP fails closed, including
+  v4-mapped IPv6); **connections pinned** to the vetted address so a
+  rebinding resolver can't swap it; **redirects followed manually** with
+  every hop re-validated; ≤5 hops, 10s timeout. Assistant references widen
+  only the *content types* accepted, never the host guards: HTML (2MB),
+  images (8MB), PDFs (24MB) — anything else is refused, and the caller
+  declares which kinds it will take (page import still says HTML only).
+- **Reference uploads** (`chat/references`) accept PNG/JPG/WEBP/GIF/PDF up to
+  4MB, behind the same project write gate as any other edit. Bytes land in
+  the uploader's own draft workspace under `refs/`, are never committed, and
+  are readable only through that user's own draft view.
 - **Error hygiene on the MCP surface**: only `McpToolError` messages (written
   for the agent) pass through; anything else is logged server-side and
   reported as a generic internal error. Supabase/Oxen internals never leak.
@@ -108,10 +116,17 @@ teammates (adoption depends on it). The explicit Publish step is the
 consent boundary.
 
 **Third-party processors.** Copy and imported content flow to Oxen.ai for
-inference (wireframe design, import extraction). When a user connects an
-external agent, that agent's operator (e.g. Anthropic for Claude Code)
-processes whatever the key can read. The API-keys UI says this at mint
-time; a privacy policy must list both.
+inference (wireframe design, import extraction). **Assistant references go
+there too** — an attached screenshot, PDF, or fetched page is sent to the
+inference API in full, so anything a user attaches is disclosed to that
+processor. When a user connects an external agent, that agent's operator
+(e.g. Anthropic for Claude Code) processes whatever the key can read. The
+API-keys UI says this at mint time; a privacy policy must list both.
+
+**Reference material is scratch, not record.** References live only in the
+uploader's draft workspace and are deleted at the next publish. They are
+never committed, so they don't enter Oxen history and aren't subject to the
+"version control never forgets" trade-off above.
 
 **Audit data is metadata-only by construction.** `mcp_audit_log.detail`
 records slugs/labels/titles, never copy bodies — enforced by an allowlist

@@ -58,6 +58,38 @@ in `chat_messages.context` and serialized for the model server-side, so
 the UI never shows the raw prompt and the agent knows exactly which
 section slug the user means. Attachments ride with one message only.
 
+**Reference material** — the other kind of chip. The paperclip in the
+composer (also drag-and-drop onto the panel, or ⌘V an image) attaches
+outside material to build from: a screenshot, a PDF, or a URL. Each one
+resolves once, server-side, into a form the inference API reads directly —
+pixels (`image_url`), a document (`file` + base64 data URL), or the page's
+copy extracted with the same deterministic extractor page import uses. The
+model sees the real thing; the browser only ever holds a small descriptor.
+
+- On an **empty page**, a reference means "build me this": the agent reads
+  it, adds a section per band with real starter copy, then lays the whole
+  page out in one pass. On a page that already has copy it asks before
+  replacing anything.
+- References reach the **designer**, not just the chat model:
+  `design_section` and `redesign_page` take `referenceIds` and the layout
+  generator gets the actual image or document, so the wireframe is authored
+  while looking at the reference. It is told to take composition — rhythm,
+  grouping, where the weight sits — and never the words.
+- `read_reference` pulls one back into view mid-conversation.
+- Limits: 4 references per message, 4 MB per upload (the Vercel route-body
+  ceiling — link to bigger files, which are fetched server-side and get the
+  API's full 24 MB document allowance).
+- Storage: one JSON file per reference in the user's draft workspace under
+  `refs/{conversationId}/`. That prefix is **pruned before every publish**
+  and ignored by `hasUnpublishedChanges`, so attaching a competitor's
+  screenshot neither lights up Publish nor shows in a proposal diff.
+  Publishing therefore clears a conversation's references; the agent says
+  so when an id no longer resolves.
+
+The Import dialog remains the blunt instrument — "replace this page from
+this source, now". References are the conversational path, where the agent
+decides what to take. Both share `import/fetch-url.ts` and the extractors.
+
 Each tool lives in one registry entry in `src/lib/agent/tools.ts` —
 description, zod args (the JSON Schema the model sees is derived from them),
 live status label, and implementation — so extending the agent is adding one

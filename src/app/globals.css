@@ -307,3 +307,62 @@ body {
   border-radius: 0.3em;
   padding: 0.1em 0.35em;
 }
+
+/* ------------------------------------------------------------------ */
+/* Assistant thinking states — a light sweep travels through the       */
+/* status word while the agent works, so a wait reads as alive rather  */
+/* than stalled. Motion is decorative: it stops entirely for anyone    */
+/* who asks for reduced motion, and the text stays legible either way. */
+/* ------------------------------------------------------------------ */
+
+@keyframes thinking-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.thinking-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-ink-tertiary) 0%,
+    var(--color-ink-tertiary) 35%,
+    var(--color-accent) 50%,
+    var(--color-ink-tertiary) 65%,
+    var(--color-ink-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: thinking-shimmer 2.4s linear infinite;
+}
+
+/* The dog trots in place while it works. */
+@keyframes thinking-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  50% {
+    transform: translateY(-2px) rotate(4deg);
+  }
+}
+
+.thinking-bob {
+  animation: thinking-bob 0.9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-shimmer {
+    animation: none;
+    background-image: none;
+    color: var(--color-ink-tertiary);
+  }
+
+  .thinking-bob {
+    animation: none;
+  }
+}

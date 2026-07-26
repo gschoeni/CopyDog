@@ -393,3 +393,15 @@ export function GlobeIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+/** Paw print — CopyDog at work. */
+export function PawIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon fill="currentColor" stroke="none" {...props}>
+      <ellipse cx="7" cy="8.5" rx="2.1" ry="2.7" />
+      <ellipse cx="12" cy="6.6" rx="2.1" ry="2.9" />
+      <ellipse cx="17" cy="8.5" rx="2.1" ry="2.7" />
+      <path d="M12 12c2.8 0 5.5 2 5.9 4.4.3 2-1.3 3.4-3.2 3.2-.9-.1-1.8-.4-2.7-.4s-1.8.3-2.7.4c-1.9.2-3.5-1.2-3.2-3.2C6.5 14 9.2 12 12 12Z" />
+    </Icon>
+  );
+}

@@ -412,3 +412,60 @@ complete) styled as a quiet tag that opens an elevated menu in the
 page's own scheme — white over light, raised dark over dark, via the
 `--color-menu*` tokens — with a check beside the current choice. No
 native `<select>` styling fights, no dependency.
+
+## 2026-07-25 — Assistant references: build a page from a screenshot, PDF, or link
+
+**A reference is not an import.** The Import dialog already turns a URL,
+HTML, or a screenshot into a page — bluntly, replacing everything. That
+stays. References are the conversational path: material the user hands the
+agent, which then *decides* what to take. Both share `fetch-url.ts` and the
+extractors; only the intent differs. Collapsing them into one surface would
+have lost the deterministic "just import this page, now" flow.
+
+**Everything resolves at attach time into one of three shapes.** Images
+become `image_url` parts, PDFs become `file` parts with a base64 data URL
+(the Oxen inference API takes documents natively — no pdfjs, no rasterizing,
+24MB ceiling, document-before-text ordering), and an HTML page becomes copy
+extracted by the same deterministic extractor page import uses. A URL is
+content-type sniffed and routed to whichever of the three it turns out to
+be. After that boundary nothing in the system branches on "was this a file
+or a link" — there are only three media kinds.
+
+**References reach the designer, not a description of the designer's
+input.** `design_section` / `redesign_page` take `referenceIds`, load them,
+and pass the real image or document into `generateSectionLayout` /
+`LlmGenerator`. Threading prose ("the user showed me a split hero") through
+a text-only layout call was the cheaper option and a worse product: layout
+fidelity is exactly what's lost in that translation. The designer is told to
+take composition and never words — a reference is inspiration, not a
+clipboard.
+
+**Tool results are text, so `read_reference` answers with a follow-up user
+message.** The OpenAI-compatible tool protocol has no way to return an image
+from a tool. `ToolOutcome.attach` carries content parts that the loop pushes
+as a user message *after* every tool result for that round — pushing it
+inline would break the "tool results follow their assistant message"
+invariant when a round has two calls.
+
+**refs/ is staged but never committed.** Reference bytes live in the user's
+draft workspace under `refs/{conversationId}/`, one JSON file each, binaries
+held as `data:` URLs (the exact form the API wants, so reads cost no
+conversion). `publishDraft` unstages the prefix before committing and
+`hasUnpublishedChanges` ignores it. Attaching a competitor's screenshot must
+not light up Publish or land in a proposal diff — provenance isn't worth
+putting someone else's material in the team's history. The cost is honest
+and small: publishing clears a conversation's references, and the agent says
+so when an id stops resolving.
+
+**Uploads cap at 4MB, links don't.** A Vercel route handler's request body
+caps at 4.5MB, so a 10MB PDF would pass locally and fail in production. The
+composer refuses it up front with "link to bigger files instead" — and a
+linked file is fetched server-side, skipping the ceiling entirely. Raising
+the upload limit means a direct-to-store upload path, which is backlog.
+
+**`chat_messages.context` became a discriminated union rather than a new
+column.** Page selections and references are both "things attached to this
+message" and share the chip, storage, and serialization plumbing. Rows
+written before references existed have no `kind`, so the schema defaults it
+to `page` in a `preprocess` — the column is jsonb, so that *is* the whole
+migration.
