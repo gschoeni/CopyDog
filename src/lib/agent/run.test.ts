@@ -302,6 +302,81 @@ describe("runAgentTurn", () => {
     expect(turn.reply).toContain("did you mean Hero");
   });
 
+  describe("streaming", () => {
+    /**
+     * The panel builds the live message by concatenating deltas, then swaps in
+     * the saved reply when the turn lands. If those two disagree the user sees
+     * text reflow for no reason — and, when a round's narration ran straight
+     * into the next one's, sentences fused: "…every band clearly.I can see…".
+     */
+    async function streamsSameTextAsReply(responses: object[]) {
+      const { llm } = scriptedLlm(responses);
+      const streamed: string[] = [];
+      const turn = await runAgentTurn({ oxen, view, pageSlug: "home", llm }, [], "punch up the hero", (event) => {
+        if (event.type === "delta") streamed.push(event.text);
+      });
+      return { streamed: streamed.join(""), turn };
+    }
+
+    /** Narration *and* a tool call in one round — the shape that exposed the bug. */
+    const narrateThenCall = (content: string) => ({
+      model: "m",
+      choices: [
+        {
+          message: {
+            content,
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function",
+                function: {
+                  name: "rewrite_section",
+                  arguments: JSON.stringify({ sectionSlug: "hero", label: "Punchier", markdown: "# Ship it\n" }),
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    it("separates narration from consecutive rounds instead of fusing sentences", async () => {
+      const { streamed, turn } = await streamsSameTextAsReply([
+        narrateThenCall("Let me read the section first to capture every band clearly."),
+        say("I can see all 7 bands clearly. Here's the rewrite."),
+      ]);
+
+      expect(streamed).toBe(turn.reply);
+      expect(streamed).toContain("clearly.\n\nI can see");
+      expect(streamed).not.toContain("clearly.I can see");
+    });
+
+    it("adds no separator before the first narration, or for a single round", async () => {
+      const { streamed, turn } = await streamsSameTextAsReply([say("Three angles: speed, trust, delight.")]);
+      expect(streamed).toBe(turn.reply);
+      expect(streamed).toBe("Three angles: speed, trust, delight.");
+    });
+
+    it("adds no separator when an earlier round was pure tool call, with nothing said", async () => {
+      const { streamed, turn } = await streamsSameTextAsReply([
+        toolCall("rewrite_section", { sectionSlug: "hero", label: "Punchier", markdown: "# Ship it\n" }),
+        say("Rewrote the hero."),
+      ]);
+      expect(streamed).toBe(turn.reply);
+      expect(streamed).toBe("Rewrote the hero.");
+    });
+
+    it("holds across three rounds of narration", async () => {
+      const { streamed, turn } = await streamsSameTextAsReply([
+        narrateThenCall("First I'll look."),
+        narrateThenCall("Now the rewrite."),
+        say("Done — sharper promise."),
+      ]);
+      expect(streamed).toBe(turn.reply);
+      expect(streamed).toBe("First I'll look.\n\nNow the rewrite.\n\nDone — sharper promise.");
+    });
+  });
+
   describe("reference material", () => {
     /** Attaches a screenshot to this conversation and hands back the tool context. */
     async function withReference() {

@@ -12,6 +12,9 @@ import type { ChatInteraction } from "./interactions";
 
 const MAX_ROUNDS = 8;
 
+/** Between one round's narration and the next — a paragraph break, both live and saved. */
+const PART_SEPARATOR = "\n\n";
+
 /** Beyond this the wireframe context is cut — enough for any sane page. */
 const WIREFRAME_CONTEXT_LIMIT = 20_000;
 
@@ -89,15 +92,27 @@ export async function runAgentTurn(
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const options = { model: LLM_MODELS.copy, messages, tools: AGENT_TOOLS, maxTokens: 4000 };
-    // narration between tool calls streams too — the turn reads as one reply
+    // Narration between tool calls streams too, so the turn reads as one reply.
+    // Each round's narration is a finished paragraph, and the stream has to
+    // carry the same separator the final reply gets — otherwise the panel
+    // renders "…every band clearly.I can see…" mid-turn and then silently
+    // reflows once the saved message replaces it. What streams must equal
+    // what lands; `streamsSameTextAsReply` in run.test.ts holds us to it.
+    let roundHasStreamed = false;
     const result = onEvent
-      ? await llm.chatStream(options, (text) => onEvent({ type: "delta", text }))
+      ? await llm.chatStream(options, (text) => {
+          if (!roundHasStreamed && replyParts.length > 0) {
+            onEvent({ type: "delta", text: PART_SEPARATOR });
+          }
+          roundHasStreamed = true;
+          onEvent({ type: "delta", text });
+        })
       : await llm.chat(options);
 
     if (result.content) replyParts.push(result.content);
 
     if (result.toolCalls.length === 0) {
-      return { reply: replyParts.join("\n\n") || "Done.", mutated };
+      return { reply: replyParts.join(PART_SEPARATOR) || "Done.", mutated };
     }
 
     messages.push({ role: "assistant", content: result.content || null, tool_calls: result.toolCalls });
@@ -113,7 +128,7 @@ export async function runAgentTurn(
         outcome = { result: `Tool failed: ${err instanceof Error ? err.message : "unknown error"}`, mutated: false };
       }
       if (outcome.interaction) {
-        return { reply: replyParts.join("\n\n"), mutated, interaction: outcome.interaction };
+        return { reply: replyParts.join(PART_SEPARATOR), mutated, interaction: outcome.interaction };
       }
       if (outcome.mutated) {
         mutated = true;
@@ -134,7 +149,7 @@ export async function runAgentTurn(
   const fallback = mutated
     ? "I made the changes — take a look."
     : "I couldn't finish that — try rephrasing or breaking it into smaller steps.";
-  return { reply: replyParts.concat(fallback).join("\n\n"), mutated };
+  return { reply: replyParts.concat(fallback).join(PART_SEPARATOR), mutated };
 }
 
 async function buildPageContext(ctx: ToolContext): Promise<string> {
