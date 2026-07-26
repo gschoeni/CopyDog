@@ -114,8 +114,8 @@ The site's pages as a tree, nesting to any depth. Rows stay quiet at rest and
 reveal their controls on hover: a grip that drags to reorder (row edges) or
 nest (row middle), a ⊕ that adds a subpage inline, and a trash that deletes.
 
-Deleting always goes through a confirmation modal (`delete-page-dialog.tsx`),
-which names the page, says how many subpages go with it, and reminds the user
+Deleting always goes through a confirmation modal (the shared `ui/modal.tsx`
+shell — see Modals below), which names the page, says how many subpages go with it, and reminds the user
 the page stays in their teammates' view until they publish. The trash goes
 disabled — visible, not hidden, with a tooltip saying why — when a page's
 subtree is the whole site: a site with no pages has no route to land on, and
@@ -129,6 +129,28 @@ content file of every page in the subtree is staged for removal — committed
 files, staged files, and everything `doc.json` references. That eager prune is
 deliberate: once a page leaves the sitemap, publish's `pruneOrphanContent`
 stops considering it, so anything missed would live on the branch forever.
+
+## Modals
+
+One shell for every centred dialog: `src/components/ui/modal.tsx`. Render it
+conditionally — mounted means open — and it owns the scrim, the card, Escape,
+backdrop dismissal, the focus trap, and returning focus to the trigger. Pass
+`dismissible={!busy}` to hold it open while work is in flight.
+
+It portals to `<body>`, and that is the load-bearing detail. `position: fixed`
+only escapes to the viewport while no ancestor has claimed it — `sticky`,
+`transform`, `filter` and friends each create a stacking context that traps
+the overlay behind neighbouring chrome. Written inline, a modal inherits
+whatever context its *trigger* happens to sit in: the delete-page dialog was
+caught by the sidebar's sticky `<aside>` and publish/propose by the sticky
+editor toolbar, both scrimming the copy pane while the header and assistant
+panel stayed bright on top. Portaling puts every modal in the root stacking
+context, so where the trigger lives stops mattering.
+
+The scrim is its own token (`--color-scrim`, `bg-scrim`) because it must
+*darken* in both themes. Written as `ink/20` it inverts — `ink` is near-white
+in dark mode — and washes the page out instead of dimming it. Dark mode takes
+the heavier value, since the card floating on it is dark too.
 
 ## Dual Panel
 

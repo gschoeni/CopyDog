@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 
 import { deleteProjectAction } from "./actions";
 
@@ -44,31 +45,21 @@ export function DeleteProjectDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/20 p-6 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Delete project ${name}`}
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !busy) onClose();
-      }}
-    >
-      <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-6 shadow-raised">
-        <h2 className="text-lg font-semibold tracking-tight">Delete “{name}”?</h2>
-        <p className="mt-2 text-sm leading-relaxed text-ink-secondary">
-          This deletes the project for everyone on it — every page, every copy version, and the whole wireframe
-          history. There is no undo.
-        </p>
-        {error && <p className="mt-3 text-sm text-danger">{error}</p>}
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button variant="danger" onClick={() => void confirmDelete()} disabled={busy}>
-            {busy ? "Deleting…" : "Delete project"}
-          </Button>
-        </div>
+    <Modal label={`Delete project ${name}`} onClose={onClose} dismissible={!busy}>
+      <h2 className="text-lg font-semibold tracking-tight">Delete “{name}”?</h2>
+      <p className="mt-2 text-sm leading-relaxed text-ink-secondary">
+        This deletes the project for everyone on it — every page, every copy version, and the whole wireframe
+        history. There is no undo.
+      </p>
+      {error && <p className="mt-3 text-sm text-danger">{error}</p>}
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="ghost" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button variant="danger" onClick={() => void confirmDelete()} disabled={busy}>
+          {busy ? "Deleting…" : "Delete project"}
+        </Button>
       </div>
-    </div>
+    </Modal>
   );
 }

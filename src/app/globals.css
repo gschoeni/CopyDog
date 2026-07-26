@@ -56,6 +56,11 @@
   --color-menu-fg: oklch(0.22 0.01 60);
   --color-menu-border: oklch(0.915 0.005 85);
 
+  /* modal scrim (ui/modal.tsx) — always darkens, never tints. Carries its own
+     alpha so it can't be written as ink/20, which inverts to a white wash in
+     dark mode. Dark needs the heavier value: the card behind it is dark too. */
+  --color-scrim: oklch(0.22 0.01 60 / 0.28);
+
   /* elevation */
   --shadow-soft: 0 1px 2px oklch(0.2 0.01 60 / 0.05), 0 4px 16px oklch(0.2 0.01 60 / 0.06);
   --shadow-raised: 0 2px 4px oklch(0.2 0.01 60 / 0.06), 0 12px 32px oklch(0.2 0.01 60 / 0.1);
@@ -100,6 +105,8 @@
   --color-menu-fg: oklch(0.94 0.004 85);
   --color-menu-border: oklch(0.4 0.007 60);
 
+  --color-scrim: oklch(0.08 0.004 60 / 0.55);
+
   --shadow-soft: 0 1px 2px oklch(0 0 0 / 0.3), 0 4px 16px oklch(0 0 0 / 0.35);
   --shadow-raised: 0 2px 4px oklch(0 0 0 / 0.35), 0 12px 32px oklch(0 0 0 / 0.5);
 }
@@ -128,6 +135,7 @@
   --color-menu: var(--color-menu);
   --color-menu-fg: var(--color-menu-fg);
   --color-menu-border: var(--color-menu-border);
+  --color-scrim: var(--color-scrim);
 
   --shadow-soft: var(--shadow-soft);
   --shadow-raised: var(--shadow-raised);
