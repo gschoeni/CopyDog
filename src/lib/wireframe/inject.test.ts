@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Element } from "@/lib/copy/elements";
-import { injectCopy } from "./inject";
+import { injectCopy, unplacedElements } from "./inject";
 
 const WIREFRAME = `<section class="wf-section" data-copy="hero">
   <div class="wf-container wf-center" data-overflow>
@@ -138,5 +138,17 @@ describe("injectCopy — the copy is the only source of words", () => {
       { slug: "empty", elements: [] },
     ]);
     expect(html).toContain(`<div class="wf-container"></div>`);
+  });
+});
+
+describe("unplacedElements", () => {
+  it("lists the copy a layout has no slot for, in copy order", () => {
+    const extra: Element[] = [...heroBlocks, { type: "bullets", items: ["One"] }, { type: "p", text: "Second paragraph" }];
+    expect(unplacedElements(WIREFRAME, extra).map((el) => el.type)).toEqual(["bullets", "p"]);
+    expect(unplacedElements(WIREFRAME, heroBlocks)).toEqual([]);
+  });
+
+  it("treats a bare fragment without a section wrapper as the section", () => {
+    expect(unplacedElements(`<h1 class="wf-h1" data-element="h1"></h1>`, [{ type: "h2", text: "x" }])).toEqual([]);
   });
 });

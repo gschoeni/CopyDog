@@ -1,6 +1,7 @@
 import { readDoc, readElementsRun, readSectionVersion, readWireframe } from "@/lib/content/store";
 import { type LlmContentPart, type LlmMessage } from "@/lib/llm/client";
 import { modelFor } from "@/lib/llm/models";
+import { outlineWireframe } from "@/lib/wireframe/outline";
 
 import { AGENT_TOOLS, executeTool, toolActivityLabel, type ToolContext } from "./tools";
 import type { ChatInteraction } from "./interactions";
@@ -29,8 +30,21 @@ Designing wireframes:
 - Section-scoped requests ("make the hero a split", "put the image on the left", "card grid for features")
   → design_section for that one section. It's the default move; it leaves the rest of the page alone.
 - Page-scoped requests ("lay the page out", "more rhythm", "feels monotonous") → redesign_page.
-- You can see the current wireframe HTML below — read it before deciding, describe layouts in its terms
-  (split, grid of cards, tinted band, logo strip, stats, FAQ rows), and vary patterns between sections.
+- The wireframe outline below says what each section is today, in the design system's own words. Read it
+  before deciding, describe layouts in those terms, and vary patterns between neighbouring sections.
+- The layout vocabulary — use these names in instructions so the designer builds exactly that:
+  centered hero (media below) · split, media right · split, media left · 2/3/4-column card grid ·
+  logo strip · testimonial (quote + avatar byline) · stats row · FAQ rows · pricing cards ·
+  email capture form · tinted CTA band · navigation bar / footer (only for nav-like copy).
+  Media shapes: 16:10 by default, or wide (21:9), square, portrait.
+- A vague section request ("make this better", "redesign this", "something different") with no direction
+  → look at the section's copy shape and call ask_user_choice with 3 patterns that suit it (a quote wants a
+  testimonial; repeated h3+p wants a card grid; h1+p+button wants a hero or a split). If the user said to
+  just pick, pick — and say which pattern you chose and why.
+- Write instructions that name every element of the section's copy ("eyebrow above the h2, the two
+  paragraphs stacked, button row below, media on the right"), so nothing ends up without a slot.
+- Every design tool keeps the layout it replaced: if the user dislikes a result, undo_layout restores it
+  (and again redoes). Offer it when they hesitate, rather than piling on another redesign.
 - Building from nothing: when the page is empty and the user describes a site ("landing page for a dog-walking
   startup"), create the sections with add_section — real starter copy, one section per band of the page
   (hero, social proof, features, how it works, testimonial, CTA…) — then one redesign_page to lay it all out.
@@ -227,8 +241,15 @@ async function buildPageContext(ctx: ToolContext): Promise<string> {
   );
 
   const wireframe = (await readWireframe(ctx.oxen, ctx.view, ctx.pageSlug)) ?? "";
+  const outline = wireframe
+    ? outlineWireframe(
+        wireframe,
+        doc.content.flatMap((entry) => (entry.kind === "section" ? [{ slug: entry.slug, title: entry.title }] : [])),
+      )
+    : "";
   const wireframePart = wireframe
-    ? `\n\nCurrent wireframe on page "${ctx.pageSlug}" (copy is injected into the data-element slots at render time):\n\n${truncate(wireframe, WIREFRAME_CONTEXT_LIMIT)}`
+    ? `\n\nWireframe outline for page "${ctx.pageSlug}" — one line per section, in page order:\n${outline}` +
+      `\n\nThe wireframe HTML (copy is injected into the data-element slots at render time):\n\n${truncate(wireframe, WIREFRAME_CONTEXT_LIMIT)}`
     : `\n\nThe page has no wireframe yet.`;
 
   return `Current copy on page "${ctx.pageSlug}":\n\n${parts.join("\n\n")}${wireframePart}`;

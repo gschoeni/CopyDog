@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ContentStoreUnavailableError, requireProjectAccess } from "@/lib/content/access";
 import { pageLinkOptions, pagePath } from "@/lib/content/site";
 import {
+  hasPreviousWireframe,
   hasUnpublishedChanges,
   readDoc,
   readElementsRun,
@@ -11,6 +12,7 @@ import {
   readWireframe,
 } from "@/lib/content/store";
 import { parseElementsMarkdown } from "@/lib/copy/markdown";
+import { getLlmClient } from "@/lib/llm";
 import { listProjectMembers } from "@/lib/members";
 import { createClient } from "@/lib/supabase/server";
 
@@ -44,8 +46,9 @@ export default async function PageEditorRoute({
 
   const supabase = await createClient();
   const doc = await readDoc(oxen, view, pageSlug);
-  const [wireframe, dirty, members, { count: openProposals }, content] = await Promise.all([
+  const [wireframe, hasPreviousLayout, dirty, members, { count: openProposals }, content] = await Promise.all([
     readWireframe(oxen, view, pageSlug),
+    hasPreviousWireframe(oxen, view, pageSlug),
     hasUnpublishedChanges(oxen, view),
     listProjectMembers(supabase, projectId),
     supabase.from("proposals").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("status", "open"),
@@ -94,8 +97,10 @@ export default async function PageEditorRoute({
           linkPages={pageLinkOptions(site.pages).filter((page) => page.slug !== pageSlug)}
           initialContent={content}
           initialWireframe={wireframe}
+          initialHasPreviousLayout={hasPreviousLayout}
           initialDirty={dirty}
           canEdit={canEdit}
+          hasDesigner={getLlmClient() !== null}
         />
       </div>
     </PageSaveNavigationProvider>

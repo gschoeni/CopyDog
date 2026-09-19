@@ -1,9 +1,11 @@
-import { LlmClient, userContent, type LlmContentPart } from "@/lib/llm/client";
+import type { Element } from "@/lib/copy/elements";
+import { LlmClient, userContent, type LlmContentPart, type LlmMessage } from "@/lib/llm/client";
 import { modelForLayout } from "@/lib/llm/models";
 import { serializeElements } from "@/lib/copy/markdown";
 
-import { listWireframeSections, stripCodeFences } from "./edit";
+import { coverageProblem, listWireframeSections, stripCodeFences } from "./edit";
 import { generateWireframeHeuristic, type SectionForLayout } from "./heuristic";
+import { unplacedElements } from "./inject";
 import { referenceNote } from "./references";
 import { sanitizeWireframeHtml } from "./sanitize";
 import { DESIGN_SYSTEM_SPEC } from "./spec";
@@ -39,7 +41,11 @@ export class LlmGenerator implements WireframeGenerator {
 
   async generate(sections: SectionForLayout[]): Promise<string> {
     const copySummary = sections
-      .map((s) => `### Section slug: ${s.slug} (${s.title})\n${serializeElements(s.elements) || "(no copy yet)"}`)
+      .map(
+        (s) =>
+          `### Section slug: ${s.slug} (${s.title})\n${serializeElements(s.elements) || "(no copy yet)"}\n` +
+          `Slots needed, in order: ${s.elements.map((el) => el.type).join(", ") || "none"}`,
+      )
       .join("\n\n");
 
     const direction = this.options.instruction
@@ -48,24 +54,59 @@ export class LlmGenerator implements WireframeGenerator {
     const current = this.options.currentHtml
       ? `\n\nThe page's current wireframe is below. Treat it as the starting point: keep sections the direction doesn't mention as they are, and redesign the ones it does.\n\n${this.options.currentHtml}`
       : "";
-    const result = await this.llm.chat({
-      model: modelForLayout(this.options.references),
-      maxTokens: 8000,
-      messages: [
-        { role: "system", content: DESIGN_SYSTEM_SPEC },
-        {
-          role: "user",
-          content: userContent(
-            this.options.references,
-            `Design a wireframe for a page with this copy. Return the HTML fragment only.` +
-              `${referenceNote(this.options.references, "page")}${direction}\n\n${copySummary}${current}`,
-          ),
-        },
-      ],
-    });
+    const messages: LlmMessage[] = [
+      { role: "system", content: DESIGN_SYSTEM_SPEC },
+      {
+        role: "user",
+        content: userContent(
+          this.options.references,
+          `Design a wireframe for a page with this copy. Return the HTML fragment only.` +
+            `${referenceNote(this.options.references, "page")}${direction}\n\n${copySummary}${current}`,
+        ),
+      },
+    ];
+    const slugs = sections.map((s) => s.slug);
 
-    return acceptPageWireframe(result.content, sections.map((s) => s.slug));
+    // one corrective pass: a structural rejection or a coverage gap goes back
+    // to the designer with the specifics, then the second answer stands
+    const attempt = async (): Promise<{ html: string } | { error: string }> => {
+      const result = await this.llm.chat({ model: modelForLayout(this.options.references), maxTokens: 8000, messages });
+      messages.push({ role: "assistant", content: result.content });
+      try {
+        return { html: acceptPageWireframe(result.content, slugs) };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
+    };
+
+    const first = await attempt();
+    const problem = "error" in first ? first.error : pageCoverageProblem(first.html, sections);
+    if (!("error" in first) && !problem) return first.html;
+
+    messages.push({ role: "user", content: `That wireframe was rejected: ${problem} Return the corrected HTML fragment only.` });
+    const second = await attempt();
+    if ("error" in second) throw new Error(second.error);
+    return second.html;
   }
+}
+
+/** Sections whose layout leaves copy without a slot, for the whole page. */
+export function pageCoverage(html: string, sections: SectionForLayout[]): { slug: string; unplaced: Element[] }[] {
+  const bySlug = new Map(listWireframeSections(html).map((s) => [s.slug, s.html]));
+  return sections
+    .map((section) => ({
+      slug: section.slug,
+      unplaced: unplacedElements(bySlug.get(section.slug) ?? "", section.elements),
+    }))
+    .filter((entry) => entry.unplaced.length > 0);
+}
+
+function pageCoverageProblem(html: string, sections: SectionForLayout[]): string | null {
+  const gaps = pageCoverage(html, sections);
+  if (gaps.length === 0) return null;
+  return gaps
+    .map((gap) => `section "${gap.slug}": ${coverageProblem(gap.unplaced)}`)
+    .join(" ");
 }
 
 /**
@@ -103,6 +144,8 @@ export interface WireframeResult {
   fallback: boolean;
   /** Why the preferred generator failed, for the caller to pass on. */
   error?: string;
+  /** Sections whose layout leaves copy without a slot — rendered as overflow. */
+  unplaced: { slug: string; unplaced: Element[] }[];
 }
 
 export async function generateWireframe(
@@ -118,9 +161,10 @@ export async function generateWireframe(
   for (const [index, generator] of generators.entries()) {
     try {
       const html = await generator.generate(layoutSections);
+      const unplaced = pageCoverage(html, layoutSections);
       return index === 0
-        ? { html, fallback: false }
-        : { html, fallback: true, error: errorText(lastError) };
+        ? { html, fallback: false, unplaced }
+        : { html, fallback: true, error: errorText(lastError), unplaced };
     } catch (err) {
       lastError = err;
     }

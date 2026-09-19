@@ -19,6 +19,7 @@ import {
   TrashIcon,
   WandIcon,
   WireframeModeIcon,
+  UndoIcon,
 } from "@/components/ui/icons";
 import { ResizeHandle, usePanelSize } from "@/components/ui/resize-handle";
 import type { PageContextRef } from "@/lib/agent/context";
@@ -34,6 +35,7 @@ import {
   adoptVersionAction,
   createVersionAction,
   generateWireframeAction,
+  undoLayoutAction,
   readVersionAction,
   readWireframeAction,
   saveElementsRunAction,
@@ -80,9 +82,13 @@ export interface PageEditorProps {
   linkPages: PageLinkOption[];
   initialContent: PageContentItem[];
   initialWireframe: string | null;
+  /** The page has a layout to undo back to (see `undoWireframe`). */
+  initialHasPreviousLayout: boolean;
   initialDirty: boolean;
   /** False for viewer-role members: the whole workbench renders read-only. */
   canEdit: boolean;
+  /** An LLM is configured, so the assistant can design; without one the wand regenerates rule-based. */
+  hasDesigner: boolean;
 }
 
 type SaveState = "saved" | "saving" | "error" | "unauthenticated";
@@ -130,8 +136,10 @@ export function PageEditor({
   linkPages,
   initialContent,
   initialWireframe,
+  initialHasPreviousLayout,
   initialDirty,
   canEdit,
+  hasDesigner,
 }: PageEditorProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -173,6 +181,7 @@ export function PageEditor({
   const [looseCount, setLooseCount] = useState(() => countLoose(initialSnapshot));
 
   const [wireframe, setWireframe] = useState<string | null>(initialWireframe);
+  const [hasPreviousLayout, setHasPreviousLayout] = useState(initialHasPreviousLayout);
   const [mode, setMode] = useState<ViewMode>("copy");
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [generating, setGenerating] = useState(false);
@@ -633,13 +642,45 @@ export function PageEditor({
   const generate = useCallback(async () => {
     setGenerating(true);
     try {
-      const { html } = await generateWireframeAction({ projectId, pageSlug });
+      const { html, hasPrevious } = await generateWireframeAction({ projectId, pageSlug });
       setWireframe(html);
+      setHasPreviousLayout(hasPrevious);
+      setDirty(true);
       if (mode === "copy") changeMode("split");
     } finally {
       setGenerating(false);
     }
   }, [projectId, pageSlug, mode, changeMode]);
+
+  /** Swap the wireframe with the layout it replaced; again is redo. */
+  const undoLayout = useCallback(async () => {
+    setGenerating(true);
+    try {
+      const { html } = await undoLayoutAction({ projectId, pageSlug });
+      if (html === null) {
+        setHasPreviousLayout(false);
+        return;
+      }
+      setWireframe(html);
+      setDirty(true);
+    } finally {
+      setGenerating(false);
+    }
+  }, [projectId, pageSlug]);
+
+  // ---- "Redesign…": the assistant opens with the target attached and pattern
+  // chips ready, so the user never has to know the layout vocabulary --------
+  const openDesignPrompt = useCallback(
+    (sectionSlug: string | null) => {
+      setAssistantOpen(true);
+      localStorage.setItem(`copydog:assistant:${projectId}`, "1");
+      chatRef.current?.startDesign({
+        sectionSlug,
+        sectionTitle: sectionSlug ? metaRef.current.get(sectionSlug)?.title ?? null : null,
+      });
+    },
+    [projectId],
+  );
 
   useEffect(() => {
     const unregister = registerFlush(flushPendingSaves);
@@ -698,6 +739,17 @@ export function PageEditor({
             <span className="shrink-0 rounded-full bg-surface-sunken px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ink-tertiary">
               unlinked
             </span>
+          )}
+          {canEdit && hasDesigner && (
+            <button
+              type="button"
+              aria-label="Design this section"
+              title="Design this section with the assistant"
+              onClick={() => openDesignPrompt(slug)}
+              className="flex size-6 shrink-0 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-accent"
+            >
+              <WandIcon />
+            </button>
           )}
           {canEdit && (
             <button
@@ -776,7 +828,7 @@ export function PageEditor({
         </div>
       );
     },
-    [projectId, pageSlug, sections, canEdit, renameSection, toggleLinked, guarded, switchVersion, createVersion, adoptTeammateVersion, moveSection, duplicateSection, deleteSection],
+    [projectId, pageSlug, sections, canEdit, hasDesigner, openDesignPrompt, renameSection, toggleLinked, guarded, switchVersion, createVersion, adoptTeammateVersion, moveSection, duplicateSection, deleteSection],
   );
 
   return (
@@ -944,6 +996,10 @@ export function PageEditor({
             omitted={{ looseElements: looseCount, unlinkedSections: unlinkedCount }}
             onGenerate={generate}
             canGenerate={canEdit}
+            hasPreviousLayout={hasPreviousLayout}
+            onUndo={canEdit ? undoLayout : undefined}
+            onRedesignPage={canEdit && hasDesigner ? () => openDesignPrompt(null) : undefined}
+            onRedesignSection={canEdit && hasDesigner ? (slug) => openDesignPrompt(slug) : undefined}
             bordered={mode === "split"}
             exportHref={`/projects/${projectId}/pages/${pageSlug}/export`}
             pagePath={`/${pageSlug}`}
@@ -965,8 +1021,9 @@ export function PageEditor({
             setDirty(true);
             // mid-turn: pull just the wireframe so the design evolves live
             // without remounting the editor (which would kill the stream)
-            void readWireframeAction({ projectId, pageSlug }).then(({ html }) => {
+            void readWireframeAction({ projectId, pageSlug }).then(({ html, hasPrevious }) => {
               if (html) setWireframe(html);
+              setHasPreviousLayout(hasPrevious);
             });
           }}
           onMutated={() => {
@@ -1050,6 +1107,10 @@ function WireframePane({
   omitted,
   onGenerate,
   canGenerate,
+  hasPreviousLayout,
+  onUndo,
+  onRedesignPage,
+  onRedesignSection,
   bordered,
   exportHref,
   pagePath,
@@ -1062,6 +1123,12 @@ function WireframePane({
   onGenerate: () => void;
   /** Viewers can look at the wireframe but never regenerate it. */
   canGenerate: boolean;
+  hasPreviousLayout: boolean;
+  onUndo?: () => void;
+  /** With a designer configured, the wand hands the page to the assistant instead of regenerating blind. */
+  onRedesignPage?: () => void;
+  /** Hovering a section offers to redesign it through the assistant. */
+  onRedesignSection?: (slug: string) => void;
   bordered: boolean;
   exportHref: string;
   /** Shown in the frame's address bar, so the preview reads as the page it is. */
@@ -1130,7 +1197,7 @@ function WireframePane({
   const handleMouseOver = (event: React.MouseEvent) => {
     const container = containerRef.current;
     const target = event.target as HTMLElement | null;
-    if (!container || target?.closest("[data-add-to-chat]")) return;
+    if (!container || target?.closest("[data-section-pin]")) return;
     const section = target?.closest("[data-copy]");
     const slug = section?.getAttribute("data-copy");
     if (!section || !slug) {
@@ -1154,8 +1221,8 @@ function WireframePane({
     <div
       ref={containerRef}
       onMouseUp={preview && onAddToChat ? handleMouseUp : undefined}
-      onMouseOver={preview && onAddToChat ? handleMouseOver : undefined}
-      onMouseLeave={preview && onAddToChat ? () => setHoverPin(null) : undefined}
+      onMouseOver={preview && (onAddToChat || onRedesignSection) ? handleMouseOver : undefined}
+      onMouseLeave={preview && (onAddToChat || onRedesignSection) ? () => setHoverPin(null) : undefined}
       className={`relative min-w-0 flex-1 basis-0 overflow-y-auto bg-surface-sunken ${
         bordered
           ? // split: pin to the viewport below the chrome and scroll internally,
@@ -1182,13 +1249,27 @@ function WireframePane({
               >
                 <DownloadIcon />
               </a>
+              {canGenerate && hasPreviousLayout && onUndo && (
+                <button
+                  type="button"
+                  onClick={onUndo}
+                  disabled={generating}
+                  aria-label="Undo layout change"
+                  title="Undo the last layout change (again to redo)"
+                  className="flex size-8 items-center justify-center rounded-md text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink disabled:pointer-events-none"
+                >
+                  <UndoIcon />
+                </button>
+              )}
               {canGenerate && (
                 <button
                   type="button"
-                  onClick={onGenerate}
+                  onClick={onRedesignPage ?? onGenerate}
                   disabled={generating}
-                  aria-label="Regenerate layout"
-                  title={generating ? "Designing…" : "Regenerate layout"}
+                  aria-label={onRedesignPage ? "Redesign page" : "Regenerate layout"}
+                  title={
+                    generating ? "Designing…" : onRedesignPage ? "Redesign the page with the assistant" : "Regenerate layout"
+                  }
                   className="flex size-8 items-center justify-center rounded-md text-ink-secondary transition-colors hover:bg-surface-hover hover:text-ink disabled:pointer-events-none"
                 >
                   <WandIcon className={generating ? "size-4 animate-pulse" : "size-4"} />
@@ -1234,21 +1315,43 @@ function WireframePane({
               Add to chat
             </button>
           )}
-          {hoverPin && !selectionPin && onAddToChat && (
-            <button
-              type="button"
-              data-add-to-chat
+          {hoverPin && !selectionPin && (onAddToChat || onRedesignSection) && (
+            <div
+              data-section-pin
               style={{ top: hoverPin.top, right: hoverPin.right }}
-              onClick={() => {
-                onAddToChat({ sectionSlug: hoverPin.slug, text: null, elementType: null });
-                setHoverPin(null);
-              }}
-              aria-label="Add section to chat"
-              title="Add section to chat"
-              className="absolute z-20 flex size-8 items-center justify-center rounded-lg border border-border bg-bg/85 text-ink-secondary shadow-soft backdrop-blur-sm transition-colors hover:bg-accent-soft hover:text-accent"
+              className="absolute z-20 flex items-center gap-0.5 rounded-lg border border-border bg-bg/85 p-0.5 shadow-soft backdrop-blur-sm"
             >
-              <AddToChatIcon />
-            </button>
+              {onRedesignSection && (
+                <button
+                  type="button"
+                  data-add-to-chat
+                  onClick={() => {
+                    onRedesignSection(hoverPin.slug);
+                    setHoverPin(null);
+                  }}
+                  aria-label="Redesign section"
+                  title="Redesign this section with the assistant"
+                  className="flex size-7 items-center justify-center rounded-md text-ink-secondary transition-colors hover:bg-accent-soft hover:text-accent"
+                >
+                  <WandIcon className="size-4" />
+                </button>
+              )}
+              {onAddToChat && (
+                <button
+                  type="button"
+                  data-add-to-chat
+                  onClick={() => {
+                    onAddToChat({ sectionSlug: hoverPin.slug, text: null, elementType: null });
+                    setHoverPin(null);
+                  }}
+                  aria-label="Add section to chat"
+                  title="Add section to chat"
+                  className="flex size-7 items-center justify-center rounded-md text-ink-secondary transition-colors hover:bg-accent-soft hover:text-accent"
+                >
+                  <AddToChatIcon />
+                </button>
+              )}
+            </div>
           )}
         </>
       ) : (

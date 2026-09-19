@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { LlmClient } from "@/lib/llm/client";
+import type { LlmClient, LlmMessage } from "@/lib/llm/client";
 
 import { generateSectionLayout, listWireframeSections, upsertWireframeSection } from "./edit";
 
@@ -77,7 +77,7 @@ describe("generateSectionLayout", () => {
   }
 
   it("returns the sanitized section fragment", async () => {
-    const html = await generateSectionLayout(
+    const { html, unplaced } = await generateSectionLayout(
       fakeLlm(
         "```html\n<section class=\"wf-section\" data-copy=\"hero\" onclick=\"x()\"><h1 class=\"wf-h1 evil\" data-element=\"h1\"></h1></section>\n```",
       ),
@@ -87,6 +87,59 @@ describe("generateSectionLayout", () => {
     expect(html).toContain(`data-copy="hero"`);
     expect(html).not.toContain("onclick");
     expect(html).not.toContain("evil");
+    expect(unplaced).toEqual([]);
+  });
+
+  /** Answers in order, and records what it was asked. */
+  function scriptedLlm(answers: string[]): LlmClient & { calls: LlmMessage[][] } {
+    const calls: LlmMessage[][] = [];
+    return {
+      calls,
+      chat: async ({ messages }: { messages: LlmMessage[] }) => {
+        calls.push([...messages]);
+        return { content: answers[Math.min(calls.length - 1, answers.length - 1)]!, toolCalls: [], model: "fake" };
+      },
+    } as unknown as LlmClient & { calls: LlmMessage[][] };
+  }
+
+  const full = `<section class="wf-section" data-copy="hero"><h1 class="wf-h1" data-element="h1"></h1><p class="wf-p" data-element="p"></p></section>`;
+  const twoElements = { slug: "hero", title: "Hero", elements: [{ type: "h1", text: "Big" } as const, { type: "p", text: "Sub" } as const] };
+
+  it("sends a layout that leaves copy without a slot back once, with the shortfall named", async () => {
+    const llm = scriptedLlm([`<section class="wf-section" data-copy="hero"><h1 class="wf-h1" data-element="h1"></h1></section>`, full]);
+    const { html, unplaced } = await generateSectionLayout(llm, twoElements, { instruction: "x" });
+    expect(llm.calls).toHaveLength(2);
+    const correction = llm.calls[1]!.at(-1)!.content as string;
+    expect(correction).toMatch(/rejected/);
+    expect(correction).toContain("(p)");
+    expect(html).toContain(`data-element="p"`);
+    expect(unplaced).toEqual([]);
+  });
+
+  it("sends a structurally rejected layout back once, then throws if it's still wrong", async () => {
+    const llm = scriptedLlm([`<div>nope</div>`, full]);
+    const { html } = await generateSectionLayout(llm, twoElements, { instruction: "x" });
+    expect(llm.calls).toHaveLength(2);
+    expect(html).toContain(`data-copy="hero"`);
+
+    const stubborn = scriptedLlm([`<div>nope</div>`]);
+    await expect(generateSectionLayout(stubborn, twoElements, { instruction: "x" })).rejects.toThrow(/exactly one/);
+    expect(stubborn.calls).toHaveLength(2);
+  });
+
+  it("accepts a second answer that still lacks a slot, and reports what's unplaced", async () => {
+    const partial = `<section class="wf-section" data-copy="hero"><h1 class="wf-h1" data-element="h1"></h1></section>`;
+    const { html, unplaced } = await generateSectionLayout(scriptedLlm([partial]), twoElements, { instruction: "x" });
+    expect(html).toBe(partial);
+    expect(unplaced.map((el) => el.type)).toEqual(["p"]);
+  });
+
+  it("shows the designer where the section sits on the page", async () => {
+    const llm = scriptedLlm([full]);
+    await generateSectionLayout(llm, twoElements, { instruction: "x", pageOutline: "1. hero — centered hero\n2. cta — tinted" });
+    const prompt = JSON.stringify(llm.calls[0]![1]!.content);
+    expect(prompt).toContain("2. cta — tinted");
+    expect(prompt).toContain("do NOT output the other sections");
   });
 
   it("rejects output without the requested section", async () => {

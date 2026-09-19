@@ -43,7 +43,38 @@ interface ChatMessage {
 /** Imperative surface for the editor panes ("Add to chat" attachments). */
 export interface ChatPanelHandle {
   addContext: (ref: ChatContextRef) => void;
+  /**
+   * "Redesign…" from the wireframe or a section header: attaches the target
+   * and offers layout patterns as one-click prompts, so the user never has
+   * to know the vocabulary. A null slug means the whole page.
+   */
+  startDesign: (target: DesignTarget) => void;
 }
+
+export interface DesignTarget {
+  sectionSlug: string | null;
+  sectionTitle: string | null;
+}
+
+/**
+ * The layout patterns offered as chips. Each prompt names the pattern the
+ * way the agent's vocabulary does, so the designer builds exactly that.
+ */
+const SECTION_PATTERNS: { label: string; prompt: (title: string) => string }[] = [
+  { label: "Split, image left", prompt: (t) => `Redesign the "${t}" section as a split with the media on the left and the copy on the right.` },
+  { label: "Split, image right", prompt: (t) => `Redesign the "${t}" section as a split with the copy on the left and the media on the right.` },
+  { label: "Centered, media below", prompt: (t) => `Redesign the "${t}" section as a centered band with a wide media placeholder below the copy.` },
+  { label: "Card grid", prompt: (t) => `Redesign the "${t}" section as a grid of cards, one card per item, with a short intro above.` },
+  { label: "Tinted CTA band", prompt: (t) => `Redesign the "${t}" section as a compact, centered call-to-action band on a tinted background.` },
+  { label: "Designer's pick", prompt: (t) => `Redesign the "${t}" section — pick the pattern that suits its copy best, and tell me why.` },
+];
+
+const PAGE_PATTERNS: { label: string; prompt: string }[] = [
+  { label: "More rhythm", prompt: "Redesign the page with more visual rhythm: alternate plain and tinted bands, and vary the pattern from one section to the next." },
+  { label: "More imagery", prompt: "Redesign the page so every band that can carry imagery does — splits and media placeholders instead of text-only bands." },
+  { label: "Tighter", prompt: "Redesign the page tighter: denser bands, no section taller than its copy needs." },
+  { label: "Designer's pick", prompt: "Redesign the whole page — your call on the patterns. Keep what already works and tell me what you changed." },
+];
 
 interface ChatThread {
   id: string;
@@ -108,6 +139,7 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [pendingContext, setPendingContext] = useState<ChatContextRef[]>([]);
+  const [designTarget, setDesignTarget] = useState<DesignTarget | null>(null);
   const [attaching, setAttaching] = useState(0);
   const [attachProgress, setAttachProgress] = useState(0);
   const [attachError, setAttachError] = useState<string | null>(null);
@@ -126,19 +158,37 @@ export function ChatPanel({
   // "Add to chat" from the editor panes: queue a chip on the composer.
   // Attaching doesn't switch conversations, so the history bootstrap may
   // still resume the latest thread underneath — the chips ride along.
+  const attachContext = useCallback((contextRef: ChatContextRef) => {
+    setShowHistory(false);
+    setPendingContext((current) => {
+      // references have their own, tighter cap — they don't crowd out selections
+      if (current.filter((ref) => !isReferenceRef(ref)).length >= MAX_CONTEXT_REFS) return current;
+      const key = JSON.stringify(contextRef);
+      if (current.some((existing) => JSON.stringify(existing) === key)) return current;
+      return [...current, contextRef];
+    });
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
+
   useImperativeHandle(ref, () => ({
-    addContext: (contextRef: ChatContextRef) => {
+    addContext: attachContext,
+    startDesign: (target: DesignTarget) => {
       setShowHistory(false);
-      setPendingContext((current) => {
-        // references have their own, tighter cap — they don't crowd out selections
-        if (current.filter((ref) => !isReferenceRef(ref)).length >= MAX_CONTEXT_REFS) return current;
-        const key = JSON.stringify(contextRef);
-        if (current.some((existing) => JSON.stringify(existing) === key)) return current;
-        return [...current, contextRef];
-      });
-      window.requestAnimationFrame(() => textareaRef.current?.focus());
+      setDesignTarget(target);
+      if (target.sectionSlug) {
+        attachContext({
+          kind: "page",
+          source: "wireframe",
+          sectionSlug: target.sectionSlug,
+          sectionTitle: target.sectionTitle,
+          text: null,
+          elementType: null,
+        });
+      } else {
+        window.requestAnimationFrame(() => textareaRef.current?.focus());
+      }
     },
-  }), []);
+  }), [attachContext]);
 
   /** Switch to a conversation and load its messages (empty for a fresh one). */
   const loadConversation = useCallback(async (id: string) => {
@@ -293,6 +343,7 @@ export function ChatPanel({
     lastSendRef.current = { prompt, context: refs };
     setDraft("");
     setPendingContext([]);
+    setDesignTarget(null);
     setBusy(true);
     setError(null);
     setAttachError(null);
@@ -527,6 +578,13 @@ export function ChatPanel({
                 {attachError}
               </p>
             )}
+            {designTarget && !busy && (
+              <DesignPatternChips
+                target={designTarget}
+                onPick={(prompt) => void send(prompt, pendingContext)}
+                onDismiss={() => setDesignTarget(null)}
+              />
+            )}
             <textarea
               ref={textareaRef}
               name="message"
@@ -638,6 +696,56 @@ function HistoryView({
               <TraceDownloadIcon className="size-3.5" />
             </button>
           </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One-click layout directions for a "Redesign…" request. Sends straight
+ * away: the chip is the whole instruction, and the target rides along as
+ * the attached section chip (or, for the page, needs no chip at all).
+ */
+function DesignPatternChips({
+  target,
+  onPick,
+  onDismiss,
+}: {
+  target: DesignTarget;
+  onPick: (prompt: string) => void;
+  onDismiss: () => void;
+}) {
+  const title = target.sectionTitle ?? target.sectionSlug ?? "this";
+  const chips = target.sectionSlug
+    ? SECTION_PATTERNS.map((pattern) => ({ label: pattern.label, prompt: pattern.prompt(title) }))
+    : PAGE_PATTERNS;
+  return (
+    <div className="mb-2.5" role="group" aria-label="Layout patterns">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="text-[11px] font-medium text-ink-secondary">
+          {target.sectionSlug ? `Redesign “${title}” as…` : "Redesign the page…"}
+        </span>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss layout patterns"
+          title="Or just describe it"
+          className="flex size-5 items-center justify-center rounded text-ink-tertiary transition-colors hover:bg-surface-hover hover:text-ink"
+        >
+          <CloseIcon className="size-3" />
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {chips.map((chip) => (
+          <button
+            key={chip.label}
+            type="button"
+            onClick={() => onPick(chip.prompt)}
+            className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-ink-secondary transition-[background-color,border-color,color] hover:border-accent hover:bg-accent-soft hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            {chip.label}
+          </button>
         ))}
       </div>
     </div>

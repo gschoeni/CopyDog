@@ -80,6 +80,7 @@ Designing layout — two modes:
 | `write_page_layout` | The external model authors the whole page's HTML itself |
 | `design_section` | Delegate one section's layout to CopyDog's built-in designer LLM |
 | `redesign_page` | Delegate a whole-page redesign to the built-in designer |
+| `undo_layout` | Restore the page's previous layout (again to redo) — every layout write keeps one undo step |
 
 Externally-authored HTML passes through the exact acceptance gate the
 internal designer faces (`acceptSectionLayout` / `acceptPageWireframe`):

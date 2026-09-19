@@ -44,6 +44,8 @@ const server = createServer(async (req, res) => {
   // Scripted chat-completions endpoint so agent e2e runs offline. Scenarios:
   //  - a section-layout request ("Design ONE wireframe section") answers with
   //    a split-layout fragment for the requested slug
+  //  - a "Redesign the …" message with a section attached (the pane's pattern
+  //    chips) designs that section; "undo" restores the previous layout
   //  - a user message mentioning layout ("split"/"design"/"layout") triggers a
   //    design_section tool call; anything else triggers rewrite_section
   //  - after tool results, a closing text reply
@@ -73,12 +75,18 @@ const server = createServer(async (req, res) => {
     const slugMatch = context.match(/slug: ([a-z0-9-]+)/);
     const slug = slugMatch?.[1] ?? "hero";
 
+    // the section designer's request names its target; a correction round
+    // ("That layout was rejected: …") refers back to it
+    const designRequest = body.messages
+      .map((m) => (typeof m.content === "string" ? m.content : ""))
+      .find((text) => text.includes("Design ONE wireframe section"));
+    const splitFor = (target: string) =>
+      `<section class="wf-section" data-copy="${target}"><div class="wf-container wf-split-reverse wf-split"><div class="wf-stack" data-overflow><h1 class="wf-h1" data-element="h1"></h1><p class="wf-p" data-element="p"></p></div><div class="wf-media" aria-hidden="true"></div></div></section>`;
+
     let message: { content: string | null; tool_calls?: unknown[] };
-    if (lastUserText.includes("Design ONE wireframe section")) {
-      const target = lastUserText.match(/data-copy="([a-z0-9-]+)"/)?.[1] ?? slug;
-      message = {
-        content: `<section class="wf-section" data-copy="${target}"><div class="wf-container wf-split"><div class="wf-stack" data-overflow><h1 class="wf-h1" data-element="h1"></h1></div><div class="wf-media" aria-hidden="true"></div></div></section>`,
-      };
+    if (lastUserText.includes("Design ONE wireframe section") || (designRequest && /^That layout was rejected/.test(lastUserText))) {
+      const target = (designRequest ?? lastUserText).match(/data-copy="([a-z0-9-]+)"/)?.[1] ?? slug;
+      message = { content: splitFor(target) };
     } else if (/critique the structure/i.test(lastUserText)) {
       // markdown-rich reply for the chat renderer test
       message = {
@@ -104,7 +112,28 @@ const server = createServer(async (req, res) => {
       const label = lastUserText.match(/\d+\. "([^"]+)"/)?.[1] ?? "unknown";
       const media = lastUserMedia.includes("image_url") ? " (image)" : lastUserMedia.includes("file") ? " (pdf)" : "";
       message = { content: `Reference received: ${label}${media} (stub)` };
-    } else if (lastUserText.includes("The user attached page context")) {
+    } else if (!hadToolResult && lastUserText.includes("The user attached page context") && /^Redesign the "/m.test(lastUserText)) {
+      // a "Redesign…" pattern chip: design the attached section
+      const attached = lastUserText.match(/\(slug: ([a-z0-9-]+)\)/)?.[1] ?? slug;
+      message = {
+        content: null,
+        tool_calls: [
+          {
+            id: "call_stub_design_attached",
+            type: "function",
+            function: {
+              name: "design_section",
+              arguments: JSON.stringify({ sectionSlug: attached, instruction: "split, media left" }),
+            },
+          },
+        ],
+      };
+    } else if (/undo|go back|previous layout/i.test(lastUserText) && !hadToolResult) {
+      message = {
+        content: null,
+        tool_calls: [{ id: "call_stub_undo", type: "function", function: { name: "undo_layout", arguments: "{}" } }],
+      };
+    } else if (!hadToolResult && lastUserText.includes("The user attached page context")) {
       // echo the attachment back so tests can prove the agent saw it
       const quoted = lastUserText.match(/"""\n([\s\S]*?)\n"""/)?.[1];
       const wholeSection = lastUserText.match(/The whole "([^"]+)" section/)?.[1];
@@ -133,10 +162,13 @@ const server = createServer(async (req, res) => {
       message = { content: "Done — I’ll use that direction for the next revision. (stub)" };
     } else if (hadToolResult) {
       const wasDesign = calledTools.includes("design_section");
+      const wasUndo = calledTools.includes("undo_layout");
       message = {
-        content: wasDesign
-          ? "Done — the section is a split with media beside the copy. (stub)"
-          : "Done — I rewrote it with a stronger promise. (stub)",
+        content: wasUndo
+          ? "Restored the earlier layout. (stub)"
+          : wasDesign
+            ? "Done — the section is a split with media beside the copy. (stub)"
+            : "Done — I rewrote it with a stronger promise. (stub)",
       };
     } else if (/split|design|layout/i.test(lastUserText)) {
       message = {

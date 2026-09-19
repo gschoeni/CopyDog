@@ -590,3 +590,38 @@ sensible layout rather than a wall of overflow.
 the window; the export, where the wireframe is the whole body, behaves the
 same as before.
 
+## 2026-09-19 — Redesigning with the agent: entry points, coverage, undo
+
+**The user shouldn't need the vocabulary.** Redesigning a section used to
+mean opening the assistant, attaching the section, and knowing to type
+"split with the image on the left". Now every surface a section has offers
+"Redesign…", and the assistant answers with pattern chips that *are* the
+instruction. The chips send immediately: a chip that only prefilled the
+composer would make the user confirm a decision they'd already made.
+
+**One correction, then accept.** The designer LLM gets exactly one chance to
+fix a rejected layout, with the specific shortfall. More retries cost time
+and rarely converge; zero retries wastes the cheapest fix there is. After the
+retry, a structural failure throws (the tool reports it and the layout stays
+put), while a coverage gap is accepted and reported — an imperfect layout the
+user can see and undo beats an error they can't act on. MCP's own authoring
+tools warn rather than reject on coverage for the same reason, and because a
+section with no slots at all is repaired at render time anyway.
+
+**A redesign never falls back to the heuristic.** The rule-based generator is
+a floor for a page with nothing on it. Silently replacing a layout someone has
+been shaping with a generic one — which is what the old `redesign_page`
+fallback did — is a regression dressed as a result.
+
+**One undo step, by swap, workspace-only.** A full layout history would mean
+a versioning scheme for wireframes like sections have. One step covers the
+real case ("no, put it back") and swapping makes it redo too. It lives beside
+the wireframe in the workspace and is pruned at publish like reference
+material, so it never reaches main or a proposal diff; publishing is the line.
+
+**The agent reads an outline, not just HTML.** Twenty thousand characters of
+wireframe HTML is expensive to read and still truncates a long page. The
+outline is a few hundred characters, complete, and phrased in the pattern
+names the agent uses to give instructions — so the agent can see that
+"sections 2 and 3 are both splits, media right" without parsing markup.
+

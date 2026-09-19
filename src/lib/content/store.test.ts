@@ -6,12 +6,17 @@ import { OxenStub } from "@/lib/oxen/stub";
 
 import {
   ensureDraftView,
+  hasPreviousWireframe,
+  hasUnpublishedChanges,
   publishDraft,
   readDoc,
   readSectionVersion,
   readSite,
+  readWireframe,
+  undoWireframe,
   writeDoc,
   writeSectionVersion,
+  writeWireframe,
   type DraftView,
 } from "./store";
 
@@ -87,5 +92,46 @@ describe("content store", () => {
     await writeSectionVersion(oxen, view, "home", "hero", "original", "# Mine\n");
 
     expect(await readSectionVersion(oxen, other, "home", "hero", "original")).toBeNull();
+  });
+
+  describe("wireframe undo", () => {
+    const first = `<section class="wf-section" data-copy="hero"><h1 class="wf-h1" data-element="h1"></h1></section>`;
+    const second = `<section class="wf-section" data-copy="hero"><div class="wf-split"><h1 class="wf-h1" data-element="h1"></h1></div></section>`;
+
+    it("the first layout has nothing to undo to; the next write keeps the one it replaced", async () => {
+      await writeWireframe(oxen, view, "home", first);
+      expect(await hasPreviousWireframe(oxen, view, "home")).toBe(false);
+      expect(await undoWireframe(oxen, view, "home")).toBeNull();
+
+      await writeWireframe(oxen, view, "home", second);
+      expect(await hasPreviousWireframe(oxen, view, "home")).toBe(true);
+    });
+
+    it("undo swaps back, and undoing again redoes", async () => {
+      await writeWireframe(oxen, view, "home", first);
+      await writeWireframe(oxen, view, "home", second);
+
+      expect(await undoWireframe(oxen, view, "home")).toBe(first);
+      expect(await readWireframe(oxen, view, "home")).toBe(first);
+      expect(await undoWireframe(oxen, view, "home")).toBe(second);
+      expect(await readWireframe(oxen, view, "home")).toBe(second);
+    });
+
+    it("the undo step is scratch: it never publishes and never counts as an unpublished change", async () => {
+      await writeWireframe(oxen, view, "home", first);
+      await publishDraft(oxen, view, { message: "first layout", author: AUTHOR });
+      expect(await hasUnpublishedChanges(oxen, view)).toBe(false);
+
+      await writeWireframe(oxen, view, "home", second);
+      await publishDraft(oxen, view, { message: "second layout", author: AUTHOR });
+      expect(await hasUnpublishedChanges(oxen, view)).toBe(false);
+
+      const files = await oxen.listDir(REPO, view.branch, "pages/home");
+      expect(files.entries.map((entry) => entry.filename)).not.toContain("wireframe.prev.html");
+      // publishing is the line: what came before it is history, not an undo step
+      expect(await hasPreviousWireframe(oxen, view, "home")).toBe(false);
+      expect(await undoWireframe(oxen, view, "home")).toBeNull();
+      expect(await readWireframe(oxen, view, "home")).toBe(second);
+    });
   });
 });

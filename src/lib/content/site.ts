@@ -172,6 +172,20 @@ export function pageWireframePath(pageSlug: string): string {
   return `pages/${pageSlug}/wireframe.html`;
 }
 
+/**
+ * The layout a page had before its last redesign — one step of undo for the
+ * wireframe, kept beside it in the workspace. Scratch, like reference
+ * material: publish prunes it and `hasUnpublishedChanges` ignores it, so a
+ * safety net never reaches the team's history or a proposal diff.
+ */
+export function pageWireframePreviousPath(pageSlug: string): string {
+  return `pages/${pageSlug}/wireframe.prev.html`;
+}
+
+export function isWireframePreviousPath(path: string): boolean {
+  return path.endsWith("/wireframe.prev.html");
+}
+
 export function sectionVersionPath(pageSlug: string, sectionSlug: string, versionSlug: string): string {
   return `pages/${pageSlug}/sections/${sectionSlug}/${versionSlug}.md`;
 }

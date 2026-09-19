@@ -8,8 +8,10 @@ import {
   elementsRunPath,
   flattenPages,
   isReferencePath,
+  isWireframePreviousPath,
   pageDocPath,
   pageWireframePath,
+  pageWireframePreviousPath,
   parseSiteFile,
   sectionVersionPath,
   serializeSiteFile,
@@ -200,13 +202,51 @@ export async function readWireframe(oxen: OxenClient, view: DraftView, pageSlug:
   }
 }
 
+/**
+ * Replaces the page's wireframe, keeping the one it replaces as the undo
+ * step. Every layout write goes through here — the designer, the import, an
+ * MCP client authoring HTML — so any overwrite can be taken back.
+ */
 export async function writeWireframe(
   oxen: OxenClient,
   view: DraftView,
   pageSlug: string,
   html: string,
 ): Promise<void> {
+  const current = await readWireframe(oxen, view, pageSlug);
+  if (current !== null && current !== html) {
+    await oxen.writeWorkspaceFile(view.repo, view.workspaceId, pageWireframePreviousPath(pageSlug), current);
+  }
   await oxen.writeWorkspaceFile(view.repo, view.workspaceId, pageWireframePath(pageSlug), html);
+}
+
+/** Whether the page has a layout to undo back to. */
+export async function hasPreviousWireframe(oxen: OxenClient, view: DraftView, pageSlug: string): Promise<boolean> {
+  return (await readPreviousWireframe(oxen, view, pageSlug)) !== null;
+}
+
+async function readPreviousWireframe(oxen: OxenClient, view: DraftView, pageSlug: string): Promise<string | null> {
+  try {
+    return await oxen.readWorkspaceFile(view.repo, view.workspaceId, pageWireframePreviousPath(pageSlug));
+  } catch (err) {
+    if (err instanceof OxenError && err.status === 404) return null;
+    throw err;
+  }
+}
+
+/**
+ * Swaps the wireframe with the layout it replaced. Swapping (rather than
+ * popping) means calling it again is redo, so a user can flip between the
+ * two and keep whichever they prefer. Returns the restored wireframe, or
+ * null when there is nothing to go back to.
+ */
+export async function undoWireframe(oxen: OxenClient, view: DraftView, pageSlug: string): Promise<string | null> {
+  const previous = await readPreviousWireframe(oxen, view, pageSlug);
+  if (previous === null) return null;
+  const current = (await readWireframe(oxen, view, pageSlug)) ?? "";
+  await oxen.writeWorkspaceFile(view.repo, view.workspaceId, pageWireframePreviousPath(pageSlug), current);
+  await oxen.writeWorkspaceFile(view.repo, view.workspaceId, pageWireframePath(pageSlug), previous);
+  return previous;
 }
 
 /** Publishes everything staged in the draft workspace to the user's draft branch. */
@@ -229,8 +269,13 @@ export async function publishDraft(
  */
 async function pruneReferences(oxen: OxenClient, view: DraftView): Promise<void> {
   const changes = await oxen.workspaceChanges(view.repo, view.workspaceId);
-  const staged = [...changes.added, ...changes.modified].filter(isReferencePath);
+  const staged = [...changes.added, ...changes.modified].filter(isScratchPath);
   await oxen.deleteWorkspaceFiles(view.repo, view.workspaceId, staged);
+}
+
+/** Workspace-only files: reference material and the wireframe undo step. */
+function isScratchPath(path: string): boolean {
+  return isReferencePath(path) || isWireframePreviousPath(path);
 }
 
 /**
@@ -274,7 +319,7 @@ async function pruneOrphanContent(oxen: OxenClient, view: DraftView): Promise<vo
  */
 export async function hasUnpublishedChanges(oxen: OxenClient, view: DraftView): Promise<boolean> {
   const changes = await oxen.workspaceChanges(view.repo, view.workspaceId);
-  return [...changes.added, ...changes.modified, ...changes.removed].some((path) => !isReferencePath(path));
+  return [...changes.added, ...changes.modified, ...changes.removed].some((path) => !isScratchPath(path));
 }
 
 /**

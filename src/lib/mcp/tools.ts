@@ -16,6 +16,7 @@ import {
   readSite,
   readWireframe,
   syncPageFromMain,
+  undoWireframe,
   writeDoc,
   writeElementsRun,
   writeSectionVersion,
@@ -23,8 +24,11 @@ import {
 } from "@/lib/content/store";
 import type { ApiKeyScope } from "@/lib/db/schema/api-keys";
 import { diffLines } from "@/lib/diff";
-import { acceptSectionLayout, upsertWireframeSection } from "@/lib/wireframe/edit";
-import { acceptPageWireframe } from "@/lib/wireframe/generate";
+import { parseElementsMarkdown } from "@/lib/copy/markdown";
+import { acceptSectionLayout, coverageProblem, upsertWireframeSection } from "@/lib/wireframe/edit";
+import { acceptPageWireframe, pageCoverage } from "@/lib/wireframe/generate";
+import { unplacedElements } from "@/lib/wireframe/inject";
+import { outlineWireframe } from "@/lib/wireframe/outline";
 import { DESIGN_SYSTEM_SPEC } from "@/lib/wireframe/spec";
 
 import { LLM_TOOL_COST, type McpToolApi, type ProjectHandle } from "./context";
@@ -412,6 +416,13 @@ const TOOLS: Record<string, RegisteredMcpTool> = {
       // validate BEFORE any write — a rejected layout must not leave the draft
       // mutated (a linked section with no slot would then wedge write_page_layout)
       const sectionHtml = acceptLayout(() => acceptSectionLayout(args.html, section.slug));
+      // copy without a slot renders as overflow — accepted, but said out loud
+      // so the author can fix its HTML (a section with no slots at all is
+      // re-laid out by the injector at render time)
+      const elements = parseElementsMarkdown(
+        (await readSectionVersion(oxen, view, args.page_slug, section.slug, section.activeVersion)) ?? "",
+      ).filter((el) => !(el.type === "p" && !el.text));
+      const gap = coverageProblem(unplacedElements(sectionHtml, elements));
 
       // authoring a layout is an explicit "put this in the wireframe"
       if (!section.linked) {
@@ -424,7 +435,9 @@ const TOOLS: Record<string, RegisteredMcpTool> = {
         .filter((s) => s.linked)
         .map((s) => s.slug);
       await writeWireframe(oxen, view, args.page_slug, upsertWireframeSection(wireframe, section.slug, sectionHtml, docOrder));
-      return `Set the layout for section "${section.slug}".`;
+      return `Set the layout for section "${section.slug}". The previous layout is one undo_layout away.${
+        gap ? `\n\nWARNING: ${gap} Those elements render as overflow at the end of the section.` : ""
+      }`;
     },
   }),
 
@@ -441,12 +454,26 @@ const TOOLS: Record<string, RegisteredMcpTool> = {
     run: async (args, api) => {
       const { oxen, view } = await api.requireProject(args.project_id);
       const doc = await readDoc(oxen, view, args.page_slug);
-      const linked = docSections(doc)
-        .filter((s) => s.linked)
-        .map((s) => s.slug);
+      const linkedSections = docSections(doc).filter((s) => s.linked);
+      const linked = linkedSections.map((s) => s.slug);
       const html = acceptLayout(() => acceptPageWireframe(args.html, linked));
+      const sections = await Promise.all(
+        linkedSections.map(async (section) => ({
+          slug: section.slug,
+          title: section.title,
+          elements: parseElementsMarkdown(
+            (await readSectionVersion(oxen, view, args.page_slug, section.slug, section.activeVersion)) ?? "",
+          ).filter((el) => !(el.type === "p" && !el.text)),
+        })),
+      );
+      const gaps = pageCoverage(html, sections);
       await writeWireframe(oxen, view, args.page_slug, html);
-      return `Replaced the wireframe for "${args.page_slug}" (${linked.length} section slots verified).`;
+      const warning = gaps.length
+        ? `\n\nWARNING — copy without a slot renders as overflow: ${gaps
+            .map((gap) => `section "${gap.slug}": ${coverageProblem(gap.unplaced)}`)
+            .join(" ")}`
+        : "";
+      return `Replaced the wireframe for "${args.page_slug}" (${linked.length} section slots verified). The previous layout is one undo_layout away.${warning}`;
     },
   }),
 
@@ -487,6 +514,20 @@ const TOOLS: Record<string, RegisteredMcpTool> = {
     run: async (args, api) => {
       const handle = await api.requireProject(args.project_id);
       return runAgentTool(handle, api, args.page_slug, "redesign_page", { instruction: args.instruction });
+    },
+  }),
+
+  undo_layout: defineMcpTool({
+    description:
+      "Restore a page's wireframe to the layout it had before the last change (any of write_section_layout, write_page_layout, design_section, redesign_page). Calling it again redoes.",
+    args: z.object({ project_id: projectId, page_slug: pageSlug }),
+    scope: "write",
+    mutates: true,
+    run: async (args, api) => {
+      const { oxen, view } = await api.requireProject(args.project_id);
+      const restored = await undoWireframe(oxen, view, args.page_slug);
+      if (restored === null) throw new McpToolError(`Page "${args.page_slug}" has no earlier layout to restore.`);
+      return `Restored the previous layout of "${args.page_slug}":\n${outlineWireframe(restored) || "(empty wireframe)"}`;
     },
   }),
 

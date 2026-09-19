@@ -17,7 +17,9 @@ import {
   readSectionVersion,
   readSite,
   writeSite,
+  hasPreviousWireframe,
   readWireframe,
+  undoWireframe,
   replaceDoc,
   syncPageFromMain,
   writeDoc,
@@ -347,10 +349,26 @@ const readWireframeInput = z.object({
  */
 export async function readWireframeAction(
   input: z.infer<typeof readWireframeInput>,
-): Promise<{ html: string | null }> {
+): Promise<{ html: string | null; hasPrevious: boolean }> {
   const { projectId, pageSlug } = readWireframeInput.parse(input);
   const { oxen, view } = await requireProjectAccess(projectId);
-  return { html: await readWireframe(oxen, view, pageSlug) };
+  const [html, hasPrevious] = await Promise.all([
+    readWireframe(oxen, view, pageSlug),
+    hasPreviousWireframe(oxen, view, pageSlug),
+  ]);
+  return { html, hasPrevious };
+}
+
+/**
+ * Swaps the wireframe with the layout it replaced — the pane's undo, and
+ * redo when called again. Returns null when there is nothing to go back to.
+ */
+export async function undoLayoutAction(
+  input: z.infer<typeof readWireframeInput>,
+): Promise<{ html: string | null }> {
+  const { projectId, pageSlug } = readWireframeInput.parse(input);
+  const { oxen, view } = await requireProjectAccess(projectId, { write: true });
+  return { html: await undoWireframe(oxen, view, pageSlug) };
 }
 
 const generateWireframeInput = z.object({
@@ -365,7 +383,7 @@ const generateWireframeInput = z.object({
  */
 export async function generateWireframeAction(
   input: z.infer<typeof generateWireframeInput>,
-): Promise<{ html: string }> {
+): Promise<{ html: string; hasPrevious: boolean }> {
   const { projectId, pageSlug } = generateWireframeInput.parse(input);
   const { oxen, view } = await requireProjectAccess(projectId, { write: true });
 
@@ -385,7 +403,7 @@ export async function generateWireframeAction(
   const { html } = await generateWireframe(selectGenerator(getLlmClient()), sections);
   await writeWireframe(oxen, view, pageSlug, html);
 
-  return { html };
+  return { html, hasPrevious: await hasPreviousWireframe(oxen, view, pageSlug) };
 }
 
 const addPageInput = z.object({

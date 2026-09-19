@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { acceptPageWireframe, generateWireframe, type WireframeGenerator } from "./generate";
+import type { LlmClient, LlmMessage } from "@/lib/llm/client";
+
+import { acceptPageWireframe, generateWireframe, LlmGenerator, pageCoverage, type WireframeGenerator } from "./generate";
 
 const SECTIONS = [{ slug: "hero", title: "Hero", elements: [{ type: "h1" as const, text: "Hi" }] }];
 
@@ -53,5 +55,52 @@ describe("acceptPageWireframe", () => {
     const withLiteral =
       '<section class="wf-section" data-copy="hero"><p class="wf-body" data-element="body">data-copy="ghost"</p></section>';
     expect(() => acceptPageWireframe(withLiteral, ["hero", "ghost"])).toThrow(/ghost/);
+  });
+});
+
+describe("LlmGenerator", () => {
+  const sections = [
+    { slug: "hero", title: "Hero", elements: [{ type: "h1" as const, text: "Hi" }, { type: "button" as const, label: "Go", url: "#" }] },
+    { slug: "cta", title: "CTA", elements: [{ type: "h2" as const, text: "Ready" }] },
+  ];
+  const complete =
+    `<section class="wf-section" data-copy="hero"><h1 class="wf-h1" data-element="h1"></h1><div class="wf-actions"><a class="wf-button" data-element="button" href="#"></a></div></section>` +
+    `<section class="wf-section wf-section-tint" data-copy="cta"><h2 class="wf-h2" data-element="h2"></h2></section>`;
+  const missingButton =
+    `<section class="wf-section" data-copy="hero"><h1 class="wf-h1" data-element="h1"></h1></section>` +
+    `<section class="wf-section" data-copy="cta"><h2 class="wf-h2" data-element="h2"></h2></section>`;
+
+  function scriptedLlm(answers: string[]) {
+    const calls: LlmMessage[][] = [];
+    const llm = {
+      calls,
+      chat: async ({ messages }: { messages: LlmMessage[] }) => {
+        calls.push([...messages]);
+        return { content: answers[Math.min(calls.length - 1, answers.length - 1)]!, toolCalls: [], model: "fake" };
+      },
+    };
+    return llm as unknown as LlmClient & { calls: LlmMessage[][] };
+  }
+
+  it("asks the designer to fix a page that leaves copy without a slot, naming the section", async () => {
+    const llm = scriptedLlm([missingButton, complete]);
+    const html = await new LlmGenerator(llm).generate(sections);
+    expect(llm.calls).toHaveLength(2);
+    const correction = llm.calls[1]!.at(-1)!.content as string;
+    expect(correction).toContain(`section "hero"`);
+    expect(correction).toContain("(button)");
+    expect(html).toContain(`data-element="button"`);
+  });
+
+  it("tells every section how many slots it needs", async () => {
+    const llm = scriptedLlm([complete]);
+    await new LlmGenerator(llm).generate(sections);
+    expect(JSON.stringify(llm.calls[0]![1]!.content)).toContain("Slots needed, in order: h1, button");
+  });
+
+  it("reports remaining gaps through generateWireframe", async () => {
+    const result = await generateWireframe([new LlmGenerator(scriptedLlm([missingButton]))], sections);
+    expect(result.unplaced).toEqual([{ slug: "hero", unplaced: [{ type: "button", label: "Go", url: "#" }] }]);
+    expect(pageCoverage(complete, sections)).toEqual([]);
   });
 });

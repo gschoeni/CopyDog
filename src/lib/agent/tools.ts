@@ -5,6 +5,7 @@ import {
   readDoc,
   readSectionVersion,
   readWireframe,
+  undoWireframe,
   writeDoc,
   writeSectionVersion,
   writeWireframe,
@@ -16,6 +17,7 @@ import type { OxenClient } from "@/lib/oxen/client";
 import { generateSectionLayout, listWireframeSections, upsertWireframeSection } from "@/lib/wireframe/edit";
 import { generateWireframe, LlmGenerator, HeuristicGenerator } from "@/lib/wireframe/generate";
 import type { SectionForLayout } from "@/lib/wireframe/heuristic";
+import { describeSectionLayout, outlineWireframe } from "@/lib/wireframe/outline";
 
 import type { ChatInteraction } from "./interactions";
 import type { ReferenceLibrary } from "./references";
@@ -127,7 +129,7 @@ const TOOLS: Record<string, RegisteredTool> = {
 
   design_section: defineTool({
     description:
-      "Redesign (or first lay out) ONE section of the wireframe per an instruction — e.g. 'make the hero a split with the image left', 'turn these features into a 3-up card grid'. Every other section keeps its current layout. Prefer this over redesign_page for anything section-scoped.",
+      "Redesign (or first lay out) ONE section of the wireframe per an instruction — e.g. 'make the hero a split with the image left', 'turn these features into a 3-up card grid'. Every other section keeps its current layout. Prefer this over redesign_page for anything section-scoped. The designer sees the rest of the page's outline, so 'match the band above' and 'don't repeat the neighbour's pattern' work.",
     args: z.object({
       sectionSlug: z.string().describe("slug of the copy section whose layout changes"),
       instruction: z
@@ -160,6 +162,14 @@ const TOOLS: Record<string, RegisteredTool> = {
     }),
     activity: () => "Looking at the reference…",
     run: readReference,
+  }),
+
+  undo_layout: defineTool({
+    description:
+      "Restore the wireframe to the layout it had before the last design change (design_section, redesign_page, a regenerate, or an import). Calling it again redoes. Use when the user dislikes a result, or asks to go back.",
+    args: z.object({}),
+    activity: () => "Restoring the previous layout…",
+    run: undoLayout,
   }),
 
   ask_user_choice: defineTool({
@@ -338,21 +348,40 @@ async function designSection(
   const wireframe = (await readWireframe(ctx.oxen, ctx.view, ctx.pageSlug)) ?? "";
   const current = listWireframeSections(wireframe).find((s) => s.slug === section.slug)?.html;
   const references = await resolveReferences(ctx, args.referenceIds);
+  const titles = docSections(doc).map((s) => ({ slug: s.slug, title: s.title }));
+  const pageOutline = outlineWireframe(wireframe, titles, { highlight: section.slug });
 
-  const sectionHtml = await generateSectionLayout(ctx.llm, forLayout, {
-    instruction: args.instruction,
-    currentHtml: current,
-    references: references.parts,
-  });
+  let layout;
+  try {
+    layout = await generateSectionLayout(ctx.llm, forLayout, {
+      instruction: args.instruction,
+      currentHtml: current,
+      references: references.parts,
+      pageOutline: pageOutline || undefined,
+    });
+  } catch (err) {
+    // the current layout is untouched — say so, rather than leaving the
+    // user to wonder whether something half-applied
+    const reason = err instanceof Error ? err.message : String(err);
+    return {
+      result: `The designer couldn't produce a valid layout for "${section.title}" (${reason}). Its current layout is unchanged. Try a more specific instruction, or a different pattern.`,
+      mutated: relinked,
+    };
+  }
 
   const docOrder = docSections(doc)
     .filter((s) => s.linked)
     .map((s) => s.slug);
-  await writeWireframe(ctx.oxen, ctx.view, ctx.pageSlug, upsertWireframeSection(wireframe, section.slug, sectionHtml, docOrder));
+  await writeWireframe(ctx.oxen, ctx.view, ctx.pageSlug, upsertWireframeSection(wireframe, section.slug, layout.html, docOrder));
 
   const note = relinked ? " (it was unlinked — I linked it back into the wireframe)" : "";
+  const gap = layout.unplaced.length
+    ? `\n\nNOTE: the layout has no slot for ${layout.unplaced.length} of the section's elements (${layout.unplaced
+        .map((el) => el.type)
+        .join(", ")}); they render as overflow at the end of the band. Mention it if it matters, or redesign with an instruction that names every element.`
+    : "";
   return {
-    result: `Redesigned the "${section.title}" section${note}${references.note}: ${args.instruction}\n\nIts layout is now:\n${sectionHtml}`,
+    result: `Redesigned the "${section.title}" section${note}${references.note}: ${args.instruction}\n\nIt is now: ${describeSectionLayout(layout.html)}. The user can undo this with undo_layout.${gap}\n\nIts HTML:\n${layout.html}`,
     mutated: true,
   };
 }
@@ -385,13 +414,21 @@ async function redesignPage(
 
   const currentHtml = (await readWireframe(ctx.oxen, ctx.view, ctx.pageSlug)) || undefined;
   const references = await resolveReferences(ctx, args.referenceIds);
-  const layout = await generateWireframe(
-    [
-      new LlmGenerator(ctx.llm, { instruction: args.instruction, currentHtml, references: references.parts }),
-      new HeuristicGenerator(),
-    ],
-    sections,
-  );
+  const designer = new LlmGenerator(ctx.llm, { instruction: args.instruction, currentHtml, references: references.parts });
+
+  // A first layout may fall back to the rule-based generator: something on
+  // the page beats nothing. A REDESIGN never does — replacing a layout the
+  // user has been shaping with a generic one is worse than leaving it alone.
+  let layout;
+  try {
+    layout = await generateWireframe(currentHtml ? [designer] : [designer, new HeuristicGenerator()], sections);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    return {
+      result: `The designer couldn't produce a valid page layout (${reason}). The current wireframe is unchanged. Try a more specific direction, or redesign one section at a time with design_section.`,
+      mutated: false,
+    };
+  }
   await writeWireframe(ctx.oxen, ctx.view, ctx.pageSlug, layout.html);
 
   // the rule-based generator never saw the reference, so a silent fallback
@@ -401,9 +438,32 @@ async function redesignPage(
         references.parts ? ", so this layout does NOT follow the reference" : ""
       }. Tell the user plainly rather than describing this as a match.`
     : "";
+  const gaps = layout.unplaced.length
+    ? `\n\nNOTE: some copy has no slot and renders as overflow — ${layout.unplaced
+        .map((gap) => `${gap.slug}: ${gap.unplaced.map((el) => el.type).join(", ")}`)
+        .join("; ")}. Fix with design_section on those sections if it matters.`
+    : "";
 
   return {
-    result: `Redesigned the wireframe${references.note}: ${args.instruction}${fallbackNote}`,
+    result: `Redesigned the wireframe${references.note}: ${args.instruction}\n\nThe page is now:\n${outlineWireframe(
+      layout.html,
+      sections,
+    )}\n\nThe user can undo this with undo_layout.${fallbackNote}${gaps}`,
+    mutated: true,
+  };
+}
+
+async function undoLayout(_args: Record<string, never>, ctx: ToolContext): Promise<ToolOutcome> {
+  const restored = await undoWireframe(ctx.oxen, ctx.view, ctx.pageSlug);
+  if (restored === null) {
+    return { result: "There is no earlier layout to go back to — nothing has redesigned this page yet.", mutated: false };
+  }
+  const doc = await readDoc(ctx.oxen, ctx.view, ctx.pageSlug);
+  const titles = docSections(doc).map((s) => ({ slug: s.slug, title: s.title }));
+  return {
+    result: `Restored the previous layout. Calling undo_layout again brings the newer one back. The page is now:\n${
+      outlineWireframe(restored, titles) || "(empty wireframe)"
+    }`,
     mutated: true,
   };
 }

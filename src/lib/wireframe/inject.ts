@@ -88,23 +88,44 @@ function stripStrayText(node: ParsedElement): void {
   }
 }
 
+/**
+ * The copy elements a section layout has no slot for — what would render as
+ * overflow. The designer gates use this to send a layout back for another
+ * pass, with the exact shortfall, instead of shipping a layout that dumps
+ * half the copy at the bottom of the band.
+ */
+export function unplacedElements(sectionHtml: string, elements: Element[]): Element[] {
+  const root = parse(sectionHtml);
+  const container = root.querySelector("[data-copy]") ?? root;
+  return planSlots(container.querySelectorAll("[data-element]"), elements).overflow;
+}
+
+/** Elements match slots of their own kind in document order; the rest overflow. */
+function planSlots(
+  slots: ParsedElement[],
+  elements: Element[],
+): { assignments: Map<ParsedElement, Element>; overflow: Element[] } {
+  const assignments = new Map<ParsedElement, Element>();
+  const overflow: Element[] = [];
+  for (const element of elements) {
+    const slot = slots.find(
+      (s) => !assignments.has(s) && slotAccepts(s.getAttribute("data-element") ?? "", element.type),
+    );
+    if (slot) assignments.set(slot, element);
+    else overflow.push(element);
+  }
+  return { assignments, overflow };
+}
+
 function injectSection(container: ParsedElement, elements: Element[]): void {
   const slots = container.querySelectorAll("[data-element]");
-  const filled = new Set<ParsedElement>();
-  const overflow: Element[] = [];
-
-  for (const element of elements) {
-    const slot = slots.find((s) => !filled.has(s) && slotAccepts(s.getAttribute("data-element") ?? "", element.type));
-    if (!slot) {
-      overflow.push(element);
-      continue;
-    }
-    filled.add(slot);
-    fillSlot(slot, element);
-  }
+  const { assignments, overflow } = planSlots(slots, elements);
 
   for (const slot of slots) {
-    if (!filled.has(slot)) {
+    const element = assignments.get(slot);
+    if (element) {
+      fillSlot(slot, element);
+    } else {
       slot.setAttribute("class", `${slot.getAttribute("class") ?? ""} wf-empty`.trim());
       slot.innerHTML = "";
     }

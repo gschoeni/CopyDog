@@ -280,6 +280,16 @@ export function WandIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** A counter-clockwise arrow — undo the last layout change. */
+export function UndoIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M3 7v6h6" />
+      <path d="M21 17a9 9 0 0 0-15-6.7L3 13" />
+    </Icon>
+  );
+}
+
 /** Arrow down onto a line — download / export a file. */
 export function DownloadIcon(props: SVGProps<SVGSVGElement>) {
   return (

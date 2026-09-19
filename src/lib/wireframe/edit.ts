@@ -1,10 +1,12 @@
 import { parse, HTMLElement as ParsedElement } from "node-html-parser";
 
-import { userContent, type LlmClient, type LlmContentPart } from "@/lib/llm/client";
+import type { Element } from "@/lib/copy/elements";
+import { userContent, type LlmClient, type LlmContentPart, type LlmMessage } from "@/lib/llm/client";
 import { modelForLayout } from "@/lib/llm/models";
 import { serializeElements } from "@/lib/copy/markdown";
 
 import type { SectionForLayout } from "./heuristic";
+import { unplacedElements } from "./inject";
 import { referenceNote } from "./references";
 import { sanitizeWireframeHtml } from "./sanitize";
 import { DESIGN_SYSTEM_SPEC } from "./spec";
@@ -78,39 +80,77 @@ export function upsertWireframeSection(
   return root.outerHTML.trim();
 }
 
+export interface SectionLayoutResult {
+  html: string;
+  /** Copy elements the accepted layout still has no slot for (they render as overflow). */
+  unplaced: Element[];
+}
+
 /**
  * Asks the LLM to (re)design a single section and returns the sanitized
  * <section> fragment. The current layout, when there is one, is the starting
- * point — the instruction says what changes about it.
+ * point — the instruction says what changes about it. `pageOutline` is the
+ * rest of the page in words, so "match the band above" and "don't repeat the
+ * neighbour's pattern" are things the designer can actually do.
+ *
+ * A layout that fails the gate, or leaves copy without a slot, goes back to
+ * the designer once with the exact shortfall. A second structural failure
+ * throws; a second coverage gap is accepted and reported, because a slightly
+ * imperfect layout the user can see beats an error they can't act on.
  */
 export async function generateSectionLayout(
   llm: LlmClient,
   section: SectionForLayout,
-  options: { instruction: string; currentHtml?: string; references?: LlmContentPart[] },
-): Promise<string> {
+  options: { instruction: string; currentHtml?: string; references?: LlmContentPart[]; pageOutline?: string },
+): Promise<SectionLayoutResult> {
   const copy = serializeElements(section.elements) || "(no copy yet)";
   const current = options.currentHtml
     ? `\n\nIts current layout, the starting point — change what the instruction asks and keep the rest of its character:\n${options.currentHtml}`
     : "";
+  const outline = options.pageOutline
+    ? `\n\nThe whole page in order, for context (do NOT output the other sections — design only the one asked for, and make it sit well between its neighbours):\n${options.pageOutline}`
+    : "";
+  const slotList = section.elements.map((el) => el.type).join(", ") || "none";
 
-  const result = await llm.chat({
-    model: modelForLayout(options.references),
-    maxTokens: 2000,
-    messages: [
-      { role: "system", content: DESIGN_SYSTEM_SPEC },
-      {
-        role: "user",
-        content: userContent(
-          options.references,
-          `Design ONE wireframe section — output only that single <section class="wf-section" data-copy="${section.slug}"> fragment, ` +
-            `no navbar, no footer, no other sections.${referenceNote(options.references, "section")}\n\nInstruction: ${options.instruction}\n\n` +
-            `### Section slug: ${section.slug} (${section.title})\n${copy}${current}`,
-        ),
-      },
-    ],
-  });
+  const messages: LlmMessage[] = [
+    { role: "system", content: DESIGN_SYSTEM_SPEC },
+    {
+      role: "user",
+      content: userContent(
+        options.references,
+        `Design ONE wireframe section — output only that single <section class="wf-section" data-copy="${section.slug}"> fragment, ` +
+          `no navbar, no footer, no other sections.${referenceNote(options.references, "section")}\n\nInstruction: ${options.instruction}\n\n` +
+          `### Section slug: ${section.slug} (${section.title})\n${copy}\n\nIt needs exactly these slots, one per copy element, in this order: ${slotList}.${current}${outline}`,
+      ),
+    },
+  ];
 
-  return acceptSectionLayout(result.content, section.slug);
+  const attempt = async (): Promise<{ html: string; unplaced: Element[] } | { error: string }> => {
+    const result = await llm.chat({ model: modelForLayout(options.references), maxTokens: 2000, messages });
+    messages.push({ role: "assistant", content: result.content });
+    try {
+      const html = acceptSectionLayout(result.content, section.slug);
+      return { html, unplaced: unplacedElements(html, section.elements) };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  };
+
+  const first = await attempt();
+  const problem = "error" in first ? first.error : coverageProblem(first.unplaced);
+  if (!("error" in first) && !problem) return first;
+
+  messages.push({ role: "user", content: `That layout was rejected: ${problem} Return the corrected <section> fragment only.` });
+  const second = await attempt();
+  if ("error" in second) throw new Error(second.error);
+  return second;
+}
+
+/** Why a layout goes back for another pass, or null when it needn't. */
+export function coverageProblem(unplaced: Element[]): string | null {
+  if (unplaced.length === 0) return null;
+  const types = unplaced.map((el) => el.type).join(", ");
+  return `${unplaced.length} copy element${unplaced.length === 1 ? " has" : "s have"} no slot (${types}). Every copy element needs its own data-element slot of the matching type, in order.`;
 }
 
 /**

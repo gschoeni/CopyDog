@@ -35,6 +35,48 @@ at two grains:
 - On an empty page, "design me a landing page for X" builds a first draft:
   sections with starter copy (add_section), then a full layout.
 
+**Getting to a redesign without knowing the vocabulary.** Every place a
+section appears offers to redesign it: the wand in the copy editor's section
+header, the wand on the wireframe's hover pill, and the wand in the wireframe
+toolbar for the whole page. Each opens the assistant with the target attached
+and a row of pattern chips — *Split, image left · Split, image right ·
+Centered, media below · Card grid · Tinted CTA band · Designer's pick* for a
+section; *More rhythm · More imagery · Tighter · Designer's pick* for the
+page. A chip is a complete instruction and sends on click; dismissing the row
+leaves the composer ready for a description instead. Without a designer LLM
+configured, the toolbar wand regenerates the rule-based layout as before.
+
+**Undo, for layouts.** Copy has versions; a layout has one undo step.
+`writeWireframe` keeps the layout it replaces beside the wireframe
+(`wireframe.prev.html`), and undo *swaps* them, so undoing again is redo. The
+toolbar shows the undo arrow whenever there is a step to go back to; the
+assistant has the same move as `undo_layout` and offers it when a result
+lands badly. The step is scratch like reference material: publish prunes it
+and it never counts as an unpublished change, so publishing is the line — what
+came before it is history, not an undo step.
+
+**The agent reads an outline, the designer sees the neighbours.** Raw wireframe
+HTML is what the designer edits; what the agent *reads* is an outline
+(`wireframe/outline.ts`): one line per section in the design system's own
+words — "split, media left; tinted; slots: h2, p" — complete even when the
+HTML is truncated, and flagging any copy the layout has no slot for.
+`design_section` hands the same outline to the designer with the target
+section marked, so "match the band above" and "don't repeat the neighbour's
+pattern" are things it can actually do. The agent's own prompt carries the
+pattern vocabulary, and a vague request ("make this better") becomes an
+`ask_user_choice` of three patterns that suit the copy's shape.
+
+**The gate checks coverage, and the designer gets one correction.** Beyond the
+structural gate (one `<section data-copy>` per linked section), both designers
+now check that every copy element has a slot of its type
+(`unplacedElements`). A layout that fails either check goes back to the model
+once with the exact shortfall — "section hero: 1 copy element has no slot
+(button)" — and the second answer stands: a structural failure throws, a
+remaining coverage gap is accepted and reported in the tool result. A failed
+*redesign* leaves the current layout untouched and says so; only a *first*
+layout falls back to the rule-based generator, because something on the page
+beats nothing but a generic layout never beats one the user has been shaping.
+
 Turns stream live: tokens render as they arrive, tool activity shows as status
 lines ("Designing hero…"), and the wireframe pane refreshes after every
 mutating tool so you watch the design evolve. All agent edits land in the
