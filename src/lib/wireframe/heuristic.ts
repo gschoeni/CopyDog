@@ -18,10 +18,15 @@ export interface SectionForLayout {
 // section for one (the LLM designers lay nav-like copy out as wf-navbar /
 // wf-footer).
 export function generateWireframeHeuristic(sections: SectionForLayout[]): string {
-  return sections.map((section, index) => renderSection(section, index)).join("\n");
+  return sections.map((section, index) => layoutSection(section, index)).join("\n");
 }
 
-function renderSection(section: SectionForLayout, index: number): string {
+/**
+ * One section's rule-based layout. `index` is its position on the page —
+ * only the first section can be a hero. Also the injector's repair for a
+ * section whose stored layout has no copy slots at all.
+ */
+export function layoutSection(section: SectionForLayout, index: number): string {
   const counts = countTypes(section.elements);
   const hasHero = (counts.h1 ?? 0) > 0 && index === 0;
   const hasBullets = (counts.bullets ?? 0) + (counts.numbered ?? 0) > 0;

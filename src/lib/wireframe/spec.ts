@@ -1,19 +1,48 @@
 /**
  * The design-system contract given to the LLM whenever it designs wireframe
  * HTML — the single description of the wf-* vocabulary and the slot rules.
- * Shared by full-page generation and section-scoped edits.
+ * Shared by full-page generation and section-scoped edits, and the same
+ * vocabulary the sanitizer enforces, so the spec can never promise a class
+ * the gate then strips.
  */
+
+/** The wf-* vocabulary, grouped the way the spec presents it. */
+export const WIREFRAME_CLASS_GROUPS = {
+  layout: [
+    "wf-section", "wf-section-tint", "wf-container", "wf-center", "wf-split", "wf-split-reverse",
+    "wf-grid-2", "wf-grid-3", "wf-grid-4", "wf-stack", "wf-actions", "wf-card",
+  ],
+  type: ["wf-eyebrow", "wf-h1", "wf-h2", "wf-h3", "wf-h4", "wf-h5", "wf-h6", "wf-p", "wf-list", "wf-quote"],
+  controls: ["wf-button", "wf-button-secondary", "wf-form", "wf-form-stack", "wf-input"],
+  placeholders: [
+    "wf-media", "wf-media-wide", "wf-media-square", "wf-media-portrait", "wf-avatar", "wf-avatar-row",
+    "wf-pill", "wf-logo-strip", "wf-logo-box", "wf-stat", "wf-faq-item",
+  ],
+  chrome: ["wf-navbar", "wf-logo", "wf-nav-items", "wf-footer"],
+} as const;
+
+/**
+ * Every class the sanitizer lets through. `wf-empty` is the injector's own
+ * mark for an unfilled slot — never authored, so it isn't in the spec.
+ */
+export const WIREFRAME_CLASSES: ReadonlySet<string> = new Set([
+  ...Object.values(WIREFRAME_CLASS_GROUPS).flat(),
+  "wf-empty",
+]);
+
+const classList = (group: keyof typeof WIREFRAME_CLASS_GROUPS) => WIREFRAME_CLASS_GROUPS[group].join(" ");
+
 export const DESIGN_SYSTEM_SPEC = `You generate greyscale wireframes in CopyDog's design system.
 
 Output rules:
 - Output ONLY an HTML fragment. No markdown fences, no <html>/<head>/<body>, no <style>, no <script>.
 - Allowed tags: section div header footer nav main aside figure h1-h6 p a span ul ol li blockquote strong em code
-- Allowed classes (nothing else):
-  layout: wf-section wf-section-tint wf-container wf-center wf-split wf-split-reverse wf-grid-2 wf-grid-3 wf-grid-4 wf-stack wf-actions wf-card
-  type: wf-eyebrow wf-h1 wf-h2 wf-h3 wf-h4 wf-h5 wf-h6 wf-p wf-list wf-quote
-  controls: wf-button wf-button-secondary wf-form wf-form-stack wf-input
-  placeholders: wf-media wf-avatar wf-avatar-row wf-pill wf-logo-strip wf-logo-box wf-stat wf-faq-item
-  chrome: wf-navbar wf-logo wf-nav-items wf-footer
+- Allowed classes (nothing else — any other class is stripped):
+  layout: ${classList("layout")}
+  type: ${classList("type")}
+  controls: ${classList("controls")}
+  placeholders: ${classList("placeholders")}
+  chrome: ${classList("chrome")}
 
 Copy slots (the contract — copy is injected later, never write copy text yourself):
 - Each copy section becomes: <section class="wf-section" data-copy="SECTION_SLUG"> … </section>
@@ -21,6 +50,8 @@ Copy slots (the contract — copy is injected later, never write copy text yours
   h1 h2 h3 h4 h5 h6 p eyebrow button bullets numbered quote. Slots must appear in a sensible visual order.
   Use exactly one slot per copy element (count them). bullets slots are <ul class="wf-list" data-element="bullets"></ul>; numbered slots are <ol class="wf-list" data-element="numbered"></ol>.
   button slots are <a class="wf-button" data-element="button" href="#"></a> grouped inside <div class="wf-actions">.
+- The HTML carries no words of its own: any text outside a copy slot is removed. Labels, captions,
+  and headings all come from the copy, through slots.
 - Add one element with data-overflow per section (usually the main text column) so extra copy has a home.
 - Decoration (anything that is not a copy slot) carries aria-hidden="true": wf-media, wf-avatar, wf-pill,
   wf-input, wf-logo-box, and any wrapper that exists purely to suggest imagery or UI.
@@ -42,6 +73,8 @@ Layout patterns (mix these for variety — never the same pattern twice in a row
 - Email capture / signup: <div class="wf-form"> (inline) or wf-form-stack with 1-2
   <span class="wf-input" aria-hidden="true"></span> and the button slot.
 - CTA band: a compact wf-section-tint with wf-center, an h2 slot, p slot and wf-actions.
+- Media shapes: wf-media is 16:10; add wf-media-wide (cinematic 21:9, for full-width bands),
+  wf-media-square, or wf-media-portrait when the imagery has that proportion.
 - Use wf-section-tint on some sections to create rhythm between white and grey bands.
 - Navigation / footer: ONLY when a copy section's own content is nav-like (a short list of links,
   a brand line) may you lay that section out as a wf-navbar or wf-footer, with its copy in slots.

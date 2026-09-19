@@ -150,6 +150,29 @@ The greyscale design system the agent composes with: heroes, split layouts
 avatar bylines, logo strips, stats, FAQ rows, pricing cards, and email-capture
 forms — all `wf-*` classes, sanitizer-enforced, swappable as a module.
 
+### The wireframe pane
+
+The right-hand pane is a browser frame — three dots, the page's path in an
+address bar — around the wireframe, so it reads as *the site* rather than a
+second document. The wireframe renders as light paper in both themes and is
+its own CSS container: every breakpoint and fluid type size in the design
+system answers to the wireframe's width, so a 700px pane in split view lays
+out like a 700px site (stacked splits, two-up grids) instead of a squeezed
+desktop one. Hovering a section outlines it and names it with the same
+uppercase label the editor's section header uses; the top-right pill adds it
+to the assistant.
+
+**The copy is the only source of words.** Layout HTML never carries text of
+its own — the sanitizer drops any text outside a `data-element` slot, and
+holds classes to the design-system vocabulary (`WIREFRAME_CLASSES` in
+`spec.ts`, the same list the LLM spec is generated from). `injectCopy` applies
+the same two rules at render time, so pages stored before they existed clean
+up without a regenerate. A section whose stored layout has no slots at all
+can't place its copy anywhere deliberate, so the injector re-lays it out with
+the rule-based generator (`layoutSection`) — the page stays in sync with the
+editor even when a designer or an import handed back layout that ignored the
+slot contract.
+
 ## Pages sidebar
 
 The site's pages as a tree, nesting to any depth. Rows stay quiet at rest and

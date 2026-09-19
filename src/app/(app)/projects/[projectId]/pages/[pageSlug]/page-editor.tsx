@@ -652,7 +652,13 @@ export function PageEditor({
   /** The wireframe renders linked sections only. */
   const linkedSections = useMemo(() => sections.filter((s) => s.linked), [sections]);
   const preview = useMemo(
-    () => (wireframe ? injectCopy(wireframe, linkedSections.map((s) => ({ slug: s.slug, elements: s.elements }))) : null),
+    () =>
+      wireframe
+        ? injectCopy(
+            wireframe,
+            linkedSections.map((s) => ({ slug: s.slug, title: s.title, elements: s.elements })),
+          )
+        : null,
     [wireframe, linkedSections],
   );
   const unlinkedCount = sections.length - linkedSections.length;
@@ -940,6 +946,7 @@ export function PageEditor({
             canGenerate={canEdit}
             bordered={mode === "split"}
             exportHref={`/projects/${projectId}/pages/${pageSlug}/export`}
+            pagePath={`/${pageSlug}`}
             onAddToChat={canEdit ? (payload) => addContextToChat({ source: "wireframe", ...payload }) : undefined}
           />
         )}
@@ -1045,6 +1052,7 @@ function WireframePane({
   canGenerate,
   bordered,
   exportHref,
+  pagePath,
   onAddToChat,
 }: {
   preview: string | null;
@@ -1056,6 +1064,8 @@ function WireframePane({
   canGenerate: boolean;
   bordered: boolean;
   exportHref: string;
+  /** Shown in the frame's address bar, so the preview reads as the page it is. */
+  pagePath: string;
   /** Absent for viewers — they have no assistant to attach context to. */
   onAddToChat?: (payload: WireframeChatPayload) => void;
 }) {
@@ -1186,12 +1196,24 @@ function WireframePane({
               )}
             </div>
           </div>
-          <div className="px-6 pb-16">
-            <div
-              className="wf-root mx-auto max-w-5xl overflow-hidden rounded-lg border border-border shadow-soft"
-              // sanitized at generation; copy is escaped during injection
-              dangerouslySetInnerHTML={{ __html: preview }}
-            />
+          <div className="px-6 pb-16 pt-1">
+            {/* a browser frame: the wireframe is a page, and the chrome says so
+                without competing with it */}
+            <div className="wf-pane wireframe-frame mx-auto max-w-5xl overflow-hidden rounded-xl border border-border shadow-raised">
+              <div className="wireframe-frame-bar" aria-hidden>
+                <span className="wireframe-frame-dot" />
+                <span className="wireframe-frame-dot" />
+                <span className="wireframe-frame-dot" />
+                <span className="wireframe-frame-url">{pagePath}</span>
+                {/* balances the dots so the address bar sits centred */}
+                <span className="w-[2.625rem]" />
+              </div>
+              <div
+                className="wf-root"
+                // sanitized at generation; copy is escaped during injection
+                dangerouslySetInnerHTML={{ __html: preview }}
+              />
+            </div>
           </div>
           {selectionPin && onAddToChat && (
             <button

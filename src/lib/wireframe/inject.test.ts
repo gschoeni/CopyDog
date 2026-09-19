@@ -92,3 +92,51 @@ describe("injectCopy", () => {
     expect(injectCopy(copyNav, [{ slug: "nav", elements: [{ type: "p", text: "Home" }] }])).toContain("wf-navbar");
   });
 });
+
+describe("injectCopy — the copy is the only source of words", () => {
+  it("labels each section with its title for the pane", () => {
+    const html = injectCopy(WIREFRAME, [{ slug: "hero", title: "Hero", elements: heroBlocks }]);
+    expect(html).toContain(`data-copy="hero" data-title="Hero"`);
+  });
+
+  it("drops words a stored layout carries outside its slots", () => {
+    const stale = `<section class="wf-section" data-copy="hero">
+  <div class="wf-container">
+    <p class="wf-eyebrow">Old imported eyebrow</p>
+    <h1 class="wf-h1" data-element="h1">stale</h1>
+    <span>Editorial / Photo</span>
+  </div>
+</section>`;
+    const html = injectCopy(stale, [{ slug: "hero", elements: [{ type: "h1", text: "Fresh headline" }] }]);
+    expect(html).not.toContain("Old imported eyebrow");
+    expect(html).not.toContain("Editorial");
+    expect(html).not.toContain("stale");
+    expect(html).toContain(`data-element="h1">Fresh headline</h1>`);
+  });
+
+  it("re-lays out a section whose layout has no slots at all", () => {
+    const slotless = `<section class="wf-section" data-copy="hero"><div><div></div><span>Baked-in words</span></div></section>
+<section class="wf-section" data-copy="who"><div class="wf-container"></div></section>`;
+    const html = injectCopy(slotless, [
+      { slug: "hero", title: "Hero", elements: heroBlocks },
+      { slug: "who", title: "Who we are", elements: [{ type: "h2", text: "People" }, { type: "p", text: "Together." }] },
+    ]);
+    expect(html).not.toContain("Baked-in words");
+    // the first section becomes a real hero: eyebrow, h1, p and button slots, in order, with media
+    expect(html).toContain(`<p class="wf-eyebrow" data-element="eyebrow">NEW</p>`);
+    expect(html).toContain(`<h1 class="wf-h1" data-element="h1">Ship <strong>faster</strong></h1>`);
+    expect(html).toContain(`data-element="button" href="#">Start free</a>`);
+    expect(html).toContain(`class="wf-media"`);
+    // and a plain section gets a content layout with slots of its own
+    expect(html).toContain(`<h2 class="wf-h2" data-element="h2">People</h2>`);
+    expect(html).toContain(`<p class="wf-p" data-element="p">Together.</p>`);
+    expect(html).toContain(`data-copy="who" data-title="Who we are"`);
+  });
+
+  it("leaves a slotless section alone when it has no copy to place", () => {
+    const html = injectCopy(`<section class="wf-section" data-copy="empty"><div class="wf-container"></div></section>`, [
+      { slug: "empty", elements: [] },
+    ]);
+    expect(html).toContain(`<div class="wf-container"></div>`);
+  });
+});

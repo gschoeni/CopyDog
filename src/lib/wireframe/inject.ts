@@ -1,7 +1,9 @@
-import { parse, HTMLElement as ParsedElement } from "node-html-parser";
+import { parse, HTMLElement as ParsedElement, NodeType } from "node-html-parser";
 
 import type { Element, ElementType } from "@/lib/copy/elements";
 import { renderElement, renderInline } from "@/lib/copy/html";
+
+import { layoutSection } from "./heuristic";
 
 /**
  * Copy injection — substitutes a page's active copy into its wireframe.
@@ -13,6 +15,13 @@ import { renderElement, renderInline } from "@/lib/copy/html";
  * `[data-overflow]` container (or the section itself); slots left without
  * copy become greyed placeholder bars (`wf-empty`).
  *
+ * The copy is the only source of words. Text a layout carries outside a slot
+ * (an imported page's own headline, a designer's stray caption) is dropped
+ * here as well as at the sanitizer, so pages stored before that rule existed
+ * render clean without a regenerate. A section whose layout has no slots at
+ * all can't hold its copy in any deliberate place, so it is re-laid out with
+ * the rule-based generator instead of dumping every element at its end.
+ *
  * Pure and isomorphic: the server renders it, and the editor re-runs it on
  * every keystroke for the live preview.
  */
@@ -20,6 +29,8 @@ import { renderElement, renderInline } from "@/lib/copy/html";
 export interface SectionCopy {
   slug: string;
   elements: Element[];
+  /** Shown as the section's label in the app's wireframe pane. */
+  title?: string;
 }
 
 const HEADING_TYPES: ReadonlySet<string> = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
@@ -38,15 +49,43 @@ export function injectCopy(wireframeHtml: string, sections: SectionCopy[]): stri
   }
 
   // blank lines are editor layout, not copy — they never reach the wireframe
-  const bySlug = new Map(sections.map((s) => [s.slug, s.elements.filter((el) => !(el.type === "p" && !el.text))]));
+  const bySlug = new Map(
+    sections.map((s) => [s.slug, { ...s, elements: s.elements.filter((el) => !(el.type === "p" && !el.text)) }]),
+  );
 
-  for (const container of root.querySelectorAll("[data-copy]")) {
+  root.querySelectorAll("[data-copy]").forEach((container, index) => {
     const slug = container.getAttribute("data-copy");
-    const elements = slug ? bySlug.get(slug) : undefined;
-    injectSection(container, elements ?? []);
-  }
+    const section = slug ? bySlug.get(slug) : undefined;
+    const elements = section?.elements ?? [];
+
+    let target = container;
+    if (section && elements.length > 0 && container.querySelectorAll("[data-element]").length === 0) {
+      // no slots anywhere: the layout can't place this copy, so lay it out
+      const fresh = parse(layoutSection({ slug: section.slug, title: section.title ?? section.slug, elements }, index))
+        .querySelector("[data-copy]");
+      if (fresh) {
+        container.replaceWith(fresh);
+        target = fresh;
+      }
+    }
+
+    if (section?.title) target.setAttribute("data-title", section.title);
+    stripStrayText(target);
+    injectSection(target, elements);
+  });
 
   return root.innerHTML.trim();
+}
+
+/** Removes words that live outside copy slots — layout never carries its own text. */
+function stripStrayText(node: ParsedElement): void {
+  for (const child of [...node.childNodes]) {
+    if (child.nodeType === NodeType.TEXT_NODE) {
+      if (child.rawText.trim()) child.remove();
+    } else if (child instanceof ParsedElement && !child.hasAttribute("data-element")) {
+      stripStrayText(child);
+    }
+  }
 }
 
 function injectSection(container: ParsedElement, elements: Element[]): void {

@@ -561,3 +561,32 @@ at all. It stays on the code-strong model.
 **What we cannot get from HTML** is visual geometry — column widths, actual
 alignment — because we fetch markup without rendering CSS. The outline reports
 what the markup supports and stays quiet about the rest rather than guessing.
+
+## 2026-09-19 — Layout carries no words; the pane heals slotless sections
+
+**Why.** An imported page came back as the site's own HTML: its headline and
+captions baked into the markup, invented `wf-hero-headline`-style classes with
+no styles behind them, and no `data-element` slots. The sanitizer let all of
+it through (its class check was a `wf-` prefix regex), so the pane showed the
+stale unstyled words *and*, below them, every element of the real copy dumped
+as overflow — the wireframe and the editor visibly disagreed.
+
+**Sanitizer enforces the vocabulary and strips text.** Classes are checked
+against `WIREFRAME_CLASSES`, the same list the LLM spec is rendered from, so
+the spec can never promise a class the gate strips. Any text outside a copy
+slot is removed: layout is structure, and words only ever arrive through
+injection.
+
+**Injection repairs, at render time.** `injectCopy` also drops stray words and,
+when a section has no slots at all but does have copy, swaps in the rule-based
+layout for that section. Same reasoning as the 2026-07-18 legacy-chrome strip:
+pages stored under the old rules clean up without anyone regenerating them,
+and a designer (internal or MCP) that ignores the slot contract degrades to a
+sensible layout rather than a wall of overflow.
+
+**The design system is a container.** `.wf-root` declares
+`container: wf / inline-size`, and the CSS breakpoints and fluid type sizes
+(`cqi`) key off it. Viewport media queries were wrong for a pane that is half
+the window; the export, where the wireframe is the whole body, behaves the
+same as before.
+

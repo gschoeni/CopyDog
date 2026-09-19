@@ -39,3 +39,27 @@ describe("sanitizeWireframeHtml", () => {
     expect(html).toContain(`href="#"`);
   });
 });
+
+describe("sanitizeWireframeHtml — layout carries no words", () => {
+  it("drops wf- classes that aren't in the design system", () => {
+    const html = sanitizeWireframeHtml(`<div class="wf-split wf-hero-content wf-btn--ghost"></div>`);
+    expect(html).toBe(`<div class="wf-split"></div>`);
+  });
+
+  it("removes text outside copy slots and keeps text inside them", () => {
+    const html = sanitizeWireframeHtml(
+      `<section class="wf-section" data-copy="hero">
+  <div class="wf-container">
+    Looking for Civics Unplugged? <a class="wf-button" href="#">Click here</a>
+    <h1 class="wf-h1" data-element="h1">Today <strong>we</strong> build</h1>
+    <span class="wf-eyebrow"><span>Editorial / Photo</span></span>
+  </div>
+</section>`,
+    );
+    expect(html).not.toContain("Civics");
+    expect(html).not.toContain("Click here");
+    expect(html).not.toContain("Editorial");
+    expect(html).toContain(`data-element="h1">Today <strong>we</strong> build</h1>`);
+    expect(html).toContain(`<a class="wf-button" href="#"></a>`);
+  });
+});
