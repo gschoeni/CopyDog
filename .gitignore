@@ -26,4 +26,5 @@ supabase/.temp/
 supabase/.branches/
 
 /.next-build/
+/.next-preview/
 .oxen-harness/

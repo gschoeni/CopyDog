@@ -2,7 +2,7 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextPlugin from "eslint-config-next";
 
 export default defineConfig([
-  globalIgnores([".next/**", ".next-build/**", "node_modules/**", "playwright-report/**", "test-results/**", "supabase/**"]),
+  globalIgnores([".next/**", ".next-build/**", ".next-preview/**", "node_modules/**", "playwright-report/**", "test-results/**", "supabase/**"]),
   ...nextPlugin,
   {
     // The service-role client bypasses RLS. Exactly two modules may hold it:
