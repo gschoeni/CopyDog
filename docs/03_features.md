@@ -204,6 +204,13 @@ desktop one. Hovering a section outlines it and names it with the same
 uppercase label the editor's section header uses; the top-right pill adds it
 to the assistant.
 
+**What's left out is one click away.** A quiet note at the top of the pane
+counts the copy the wireframe doesn't show: loose elements (group them into a
+section) and unlinked sections. Each unlinked section is a chip, numbered the
+way the section map numbers it, that jumps the copy editor to that section —
+where the link toggle lives. From wireframe-only mode the jump opens the
+split first, so the editor is there to land on.
+
 **The copy is the only source of words.** Layout HTML never carries text of
 its own — the sanitizer drops any text outside a `data-element` slot, and
 holds classes to the design-system vocabulary (`WIREFRAME_CLASSES` in

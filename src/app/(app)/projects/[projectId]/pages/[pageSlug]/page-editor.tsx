@@ -639,6 +639,28 @@ export function PageEditor({
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
+  // Jumping from the wireframe pane to a section in the copy editor: in
+  // wireframe-only mode the editor is hidden, so open the split first and
+  // scroll once the copy pane has rendered.
+  const pendingJump = useRef<string | null>(null);
+  const jumpToSection = useCallback(
+    (slug: string) => {
+      if (mode === "wireframe") {
+        pendingJump.current = slug;
+        changeMode("split");
+        return;
+      }
+      scrollToSection(slug);
+    },
+    [mode, changeMode, scrollToSection],
+  );
+  useEffect(() => {
+    const slug = pendingJump.current;
+    if (!slug || mode === "wireframe") return;
+    pendingJump.current = null;
+    scrollToSection(slug);
+  }, [mode, scrollToSection]);
+
   const generate = useCallback(async () => {
     setGenerating(true);
     try {
@@ -702,7 +724,12 @@ export function PageEditor({
         : null,
     [wireframe, linkedSections],
   );
-  const unlinkedCount = sections.length - linkedSections.length;
+  /** Unlinked sections, numbered as the section map numbers them, so the wireframe's nudge can point at each one. */
+  const unlinkedSections = useMemo(
+    () =>
+      sections.flatMap((s, index) => (s.linked ? [] : [{ slug: s.slug, title: s.title, number: index + 1 }])),
+    [sections],
+  );
 
   const statusLabel = !canEdit
     ? "Read-only view"
@@ -993,7 +1020,8 @@ export function PageEditor({
             preview={preview}
             generating={generating}
             hasLayoutReadyCopy={linkedSections.some((s) => s.elements.length > 0)}
-            omitted={{ looseElements: looseCount, unlinkedSections: unlinkedCount }}
+            omitted={{ looseElements: looseCount, unlinkedSections }}
+            onGoToSection={jumpToSection}
             onGenerate={generate}
             canGenerate={canEdit}
             hasPreviousLayout={hasPreviousLayout}
@@ -1115,11 +1143,14 @@ function WireframePane({
   exportHref,
   pagePath,
   onAddToChat,
+  onGoToSection,
 }: {
   preview: string | null;
   generating: boolean;
   hasLayoutReadyCopy: boolean;
-  omitted: { looseElements: number; unlinkedSections: number };
+  omitted: OmittedCopy;
+  /** Jumps the copy editor to a section — the nudge's way of reaching an unlinked one. */
+  onGoToSection: (slug: string) => void;
   onGenerate: () => void;
   /** Viewers can look at the wireframe but never regenerate it. */
   canGenerate: boolean;
@@ -1136,7 +1167,7 @@ function WireframePane({
   /** Absent for viewers — they have no assistant to attach context to. */
   onAddToChat?: (payload: WireframeChatPayload) => void;
 }) {
-  const omittedNote = describeOmitted(omitted);
+  const omittedNote = hasOmitted(omitted) ? <OmittedNote omitted={omitted} onGoToSection={onGoToSection} /> : null;
   const containerRef = useRef<HTMLDivElement>(null);
   // a finished text selection: pill pinned under its end. Anchored with
   // `right` (not left + translate) so the absolutely-positioned pill can
@@ -1235,9 +1266,9 @@ function WireframePane({
         <>
           <div className="pointer-events-none sticky top-0 z-10 flex items-center justify-end gap-2 p-3">
             {omittedNote && (
-              <p className="pointer-events-auto rounded-md bg-bg/80 px-2 py-1 text-[11px] text-ink-tertiary backdrop-blur-sm">
+              <div className="pointer-events-auto flex min-w-0 flex-wrap items-center justify-end gap-x-1.5 gap-y-1 rounded-md bg-bg/80 px-2 py-1 text-[11px] text-ink-tertiary backdrop-blur-sm">
                 {omittedNote}
-              </p>
+              </div>
             )}
             <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-border bg-bg/80 p-0.5 shadow-soft backdrop-blur-sm">
               <a
@@ -1368,7 +1399,11 @@ function WireframePane({
                 ? "Turn your sections into a greyscale layout you can keep editing."
                 : "The wireframe lays out sections. Highlight some copy and use “Group into section” first."}
             </p>
-            {omittedNote && <p className="mt-2 text-xs text-ink-tertiary">{omittedNote}</p>}
+            {omittedNote && (
+              <div className="mt-2 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-xs text-ink-tertiary">
+                {omittedNote}
+              </div>
+            )}
             {canGenerate && (
               <Button className="mt-5" onClick={onGenerate} disabled={generating || !hasLayoutReadyCopy}>
                 {generating ? "Designing…" : "Generate wireframe from sections"}
@@ -1381,10 +1416,48 @@ function WireframePane({
   );
 }
 
-function describeOmitted({ looseElements, unlinkedSections }: { looseElements: number; unlinkedSections: number }): string | null {
+interface OmittedCopy {
+  looseElements: number;
+  /** Numbered as the section map numbers them. */
+  unlinkedSections: { slug: string; title: string; number: number }[];
+}
+
+function hasOmitted({ looseElements, unlinkedSections }: OmittedCopy): boolean {
+  return looseElements > 0 || unlinkedSections.length > 0;
+}
+
+/**
+ * The quiet nudge for copy the wireframe leaves out. Loose copy has no
+ * anchor, so it's only counted; each unlinked section is a chip that jumps
+ * the copy editor to it, where the link toggle lives.
+ */
+function OmittedNote({ omitted, onGoToSection }: { omitted: OmittedCopy; onGoToSection: (slug: string) => void }) {
+  const { looseElements, unlinkedSections } = omitted;
   const parts: string[] = [];
   if (looseElements > 0) parts.push(`${looseElements} loose element${looseElements === 1 ? "" : "s"}`);
-  if (unlinkedSections > 0) parts.push(`${unlinkedSections} unlinked section${unlinkedSections === 1 ? "" : "s"}`);
-  if (parts.length === 0) return null;
-  return `${parts.join(" and ")} won't appear — group or link to include.`;
+  if (unlinkedSections.length > 0) {
+    parts.push(`${unlinkedSections.length} unlinked section${unlinkedSections.length === 1 ? "" : "s"}`);
+  }
+  const hint =
+    unlinkedSections.length === 0 ? "group to include." : looseElements > 0 ? "group or link to include:" : "link to include:";
+  return (
+    <>
+      <span>
+        {parts.join(" and ")} won&apos;t appear — {hint}
+      </span>
+      {unlinkedSections.map((section) => (
+        <button
+          key={section.slug}
+          type="button"
+          onClick={() => onGoToSection(section.slug)}
+          aria-label={`Go to section ${section.number}: ${section.title}`}
+          title={`Go to section ${section.number}: ${section.title}`}
+          className="flex h-5 max-w-40 items-center gap-1 rounded border border-border bg-surface px-1.5 text-ink-secondary transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+        >
+          <span className="font-semibold tabular-nums">{section.number}</span>
+          <span className="truncate">{section.title}</span>
+        </button>
+      ))}
+    </>
+  );
 }

@@ -76,6 +76,14 @@ test("wireframe renders linked sections only, with a nudge for the rest", async 
   // the nudge now counts the unlinked section too
   await page.getByRole("tab", { name: "Split" }).click();
   await expect(page.getByText(/unlinked section.*won't appear/)).toBeVisible();
+
+  // each unlinked section is a chip on the nudge; from wireframe-only mode it
+  // opens the split and lands the copy editor on that section
+  await page.getByRole("tab", { name: "Wireframe" }).click();
+  await expect(page.getByRole("textbox", { name: "Page copy" })).toBeHidden();
+  await page.getByRole("button", { name: /Go to section 1: Sectioned headline/ }).click();
+  await expect(page.getByRole("textbox", { name: "Page copy" })).toBeVisible();
+  await expect(page.locator("[data-section-slug]").first()).toBeInViewport();
 });
 
 test("blank lines are freeform: multiple Enters persist across reload", async ({ page }) => {
