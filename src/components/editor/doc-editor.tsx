@@ -8,6 +8,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -132,6 +133,8 @@ export const DocEditor = forwardRef<DocEditorHandle, DocEditorProps>(function Do
   );
 });
 
+const noopSubscribe = () => () => {};
+
 function DocEditorInner({
   handleRef,
   linkPages,
@@ -153,6 +156,14 @@ function DocEditorInner({
 }) {
   const [editor] = useLexicalComposerContext();
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // Lexical seeds the initial content in an async update, so on the server the
+  // root still reads as empty and the placeholder would render — then vanish on
+  // the client, a hydration mismatch. The placeholder only exists after mount.
+  const mounted = useSyncExternalStore(
+    noopSubscribe,
+    () => true,
+    () => false,
+  );
   const [sectionRects, setSectionRects] = useState<SectionRect[]>([]);
   const [sectionDropLine, setSectionDropLine] = useState<number | null>(null);
   const [hoveredSlug, setHoveredSlug] = useState<string | null>(null);
@@ -334,7 +345,7 @@ function DocEditorInner({
       <RichTextPlugin
         contentEditable={<ContentEditable className="outline-none" aria-label="Page copy" />}
         placeholder={
-          readOnly ? null : (
+          readOnly || !mounted ? null : (
             // 2.85rem = .doc-editor padding-top (2.5rem) + .editor-p top margin (0.35em)
             <p className="pointer-events-none absolute left-18 top-[2.85rem] text-ink-tertiary">
               Start writing — highlight copy to group it into a section…
