@@ -17,15 +17,13 @@ export default function Home() {
 
       <main className="flex flex-1 flex-col items-center justify-center px-6 pb-24 text-center">
         <p className="mb-4 text-xs font-medium uppercase tracking-[0.2em] text-ink-tertiary">
-          Copy &amp; wireframes, together
+          Copy &amp; wireframes
         </p>
         <h1 className="max-w-2xl text-balance text-5xl font-semibold tracking-tight sm:text-6xl">
-          Write the words.
-          <br />
-          Shape the layout.
+          CopyDog
         </h1>
         <p className="mt-6 max-w-md text-balance text-lg leading-relaxed text-ink-secondary">
-          A shared home for website copy and greyscale wireframes — so the dance between them never loses a step.
+          A shared home for website copy and wireframes.
         </p>
         <Link
           href="/projects"
